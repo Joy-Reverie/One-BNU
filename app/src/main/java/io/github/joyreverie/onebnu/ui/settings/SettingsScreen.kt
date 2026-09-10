@@ -8,31 +8,41 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.BrightnessAuto
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.NetworkCheck
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.github.joyreverie.onebnu.BuildConfig
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.store.ThemeMode
 import io.github.joyreverie.onebnu.core.update.UpdateChecker
 import io.github.joyreverie.onebnu.data.model.GpaScale
 import io.github.joyreverie.onebnu.ui.components.SectionCard
@@ -40,7 +50,7 @@ import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.listPadding
 
 /**
- * 设置：绩点口径、作息时间、网络诊断、检查更新。
+ * 设置：外观、绩点口径、作息时间、网络诊断、检查更新。
  * 「关于与支持」不在这里 —— 它是「我的」页的一级入口，与设置并列。
  *
  * [currentVersion] 默认取构建版本号；debug 包的预览入口可以传一个旧版本号来演练更新流程。
@@ -56,6 +66,7 @@ fun SettingsScreen(
     var scale by remember { mutableStateOf(settings.gpaScale) }
     val periods = remember { settings.periodTimes }
     val checker = remember(currentVersion) { UpdateChecker(currentVersion) }
+    val themeMode by settings.themeMode.collectAsState()
 
     Scaffold(
         topBar = {
@@ -72,6 +83,22 @@ fun SettingsScreen(
             contentPadding = LocalScreenInfo.current.listPadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            item {
+                SectionCard("外观") {
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        ThemeMode.entries.forEachIndexed { i, mode ->
+                            SegmentedButton(
+                                selected = themeMode == mode,
+                                onClick = { settings.setThemeMode(mode) },
+                                shape = SegmentedButtonDefaults.itemShape(index = i, count = ThemeMode.entries.size),
+                                icon = { Icon(mode.icon, null, Modifier.size(SegmentedButtonDefaults.IconSize)) },
+                                label = { Text(mode.label) },
+                            )
+                        }
+                    }
+                }
+            }
+
             item {
                 SectionCard("绩点口径") {
                     GpaScale.entries.forEach { s ->
@@ -113,7 +140,7 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.primary,
                             )
                         }
-                        if (i < periods.lastIndex) Divider()
+                        if (i < periods.lastIndex) HorizontalDivider()
                     }
                 }
             }
@@ -152,3 +179,10 @@ fun SettingsScreen(
         }
     }
 }
+
+private val ThemeMode.icon: ImageVector
+    get() = when (this) {
+        ThemeMode.SYSTEM -> Icons.Outlined.BrightnessAuto
+        ThemeMode.LIGHT -> Icons.Outlined.LightMode
+        ThemeMode.DARK -> Icons.Outlined.DarkMode
+    }

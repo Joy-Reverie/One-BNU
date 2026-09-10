@@ -1,6 +1,10 @@
 package io.github.joyreverie.onebnu.ui.theme
 
 import android.app.Activity
+import android.graphics.drawable.ColorDrawable
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
@@ -8,15 +12,20 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.store.ThemeMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.CircleShape
@@ -224,9 +233,29 @@ private val AppTypography = Typography(
     labelSmall = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.2.sp),
 )
 
+/** 当前是否深色主题。比 `isSystemInDarkTheme()` 多考虑了用户在设置里的手动选择。 */
+val LocalDarkTheme = staticCompositionLocalOf { false }
+
+/**
+ * 深浅色的最终判定：设置里选了浅色 / 深色就按选择，「跟随系统」时读系统。
+ * 主题切换只改 Compose 状态，不重建 Activity，页面就地换色。
+ */
+@Composable
+fun resolveDarkTheme(): Boolean {
+    val system = isSystemInDarkTheme()
+    // Compose 预览等场景下 ServiceLocator 尚未初始化，退回系统设置
+    val settings = runCatching { ServiceLocator.settings }.getOrNull() ?: return system
+    val mode by settings.themeMode.collectAsState()
+    return when (mode) {
+        ThemeMode.SYSTEM -> system
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+}
+
 @Composable
 fun OneBnuTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = resolveDarkTheme(),
     content: @Composable () -> Unit,
 ) {
     val colors = if (darkTheme) DarkColors else LightColors
@@ -234,14 +263,25 @@ fun OneBnuTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
-            WindowCompat.getInsetsController(window, view).apply {
+            val activity = view.context as Activity
+            // 手动选的深浅色可能与系统相反，XML 主题里的窗口底色和系统栏样式都是按系统给的，
+            // 这里按实际主题重设，否则键盘弹出、页面切换的瞬间会露出反色的底。
+            val transparent = android.graphics.Color.TRANSPARENT
+            (activity as? ComponentActivity)?.enableEdgeToEdge(
+                statusBarStyle = if (darkTheme) SystemBarStyle.dark(transparent) else SystemBarStyle.light(transparent, transparent),
+                navigationBarStyle = if (darkTheme) SystemBarStyle.dark(transparent) else SystemBarStyle.light(transparent, transparent),
+            )
+            activity.window.setBackgroundDrawable(ColorDrawable(colors.background.toArgb()))
+            WindowCompat.getInsetsController(activity.window, view).apply {
                 isAppearanceLightStatusBars = !darkTheme
                 isAppearanceLightNavigationBars = !darkTheme
             }
         }
     }
-    androidx.compose.runtime.CompositionLocalProvider(LocalAccents provides accents) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalAccents provides accents,
+        LocalDarkTheme provides darkTheme,
+    ) {
         MaterialTheme(colorScheme = colors, typography = AppTypography, content = content)
     }
 }

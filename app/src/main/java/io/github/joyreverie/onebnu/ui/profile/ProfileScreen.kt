@@ -90,7 +90,7 @@ fun ProfileScreen(
                 MenuItem(Icons.Outlined.School, "学分核算", "各学期修读学分与模块归类") {
                     nav.navigate(Routes.CREDITS)
                 }
-                MenuItem(Icons.Outlined.Settings, "设置", "绩点口径、作息时间、网络诊断、检查更新") {
+                MenuItem(Icons.Outlined.Settings, "设置", "外观、绩点口径、作息时间、网络与更新") {
                     nav.navigate(Routes.SETTINGS)
                 }
                 MenuItem(Icons.Outlined.Info, "关于与支持", "联系开发者 · 反馈 · 打赏") {

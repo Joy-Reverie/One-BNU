@@ -2,6 +2,8 @@ package io.github.joyreverie.onebnu.core.store
 
 import android.content.Context
 import io.github.joyreverie.onebnu.data.model.GpaScale
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.time.LocalDate
 
 /**
@@ -28,6 +30,18 @@ class Settings(context: Context) {
 
     /** 节次作息时间，"HH:mm-HH:mm" 共 12 节。学校统一作息，不提供自定义。 */
     val periodTimes: List<String> get() = PERIOD_TIMES
+
+    private val _themeMode = MutableStateFlow(
+        runCatching { ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "") }.getOrDefault(ThemeMode.SYSTEM),
+    )
+
+    /** 深浅色模式。以流的形式暴露，主题在设置页改动后整个界面立即重绘，不重建 Activity。 */
+    val themeMode: StateFlow<ThemeMode> get() = _themeMode
+
+    fun setThemeMode(mode: ThemeMode) {
+        prefs.edit().putString(KEY_THEME, mode.name).apply()
+        _themeMode.value = mode
+    }
 
     /** 是否在进入应用时要求生物识别 / 设备锁验证。 */
     var requireUnlock: Boolean
@@ -56,6 +70,7 @@ class Settings(context: Context) {
         private const val KEY_SCHEDULE_ZOOM = "schedule_zoom"
         private const val KEY_REMIND = "reminders_enabled"
         private const val KEY_REMIND_LEAD = "reminder_lead_minutes"
+        private const val KEY_THEME = "theme_mode"
 
         /**
          * 2026-2027 学年秋季学期第一周周一，取自学校校历。

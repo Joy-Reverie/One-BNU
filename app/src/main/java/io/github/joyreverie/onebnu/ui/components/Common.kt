@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
+import io.github.joyreverie.onebnu.ui.theme.LocalDarkTheme
 import io.github.joyreverie.onebnu.ui.theme.Shape
 
 /**
@@ -67,7 +68,7 @@ fun BnuCard(
 /** 统一的轻投影，暗色下自动减弱（暗背景上强阴影会变成黑块）。 */
 @Composable
 fun Modifier.shadowSoft(shape: RoundedCornerShape, elevation: Dp = 2.dp): Modifier {
-    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val dark = LocalDarkTheme.current
     return this.then(
         shadow(
             elevation = if (dark) 0.dp else elevation,
