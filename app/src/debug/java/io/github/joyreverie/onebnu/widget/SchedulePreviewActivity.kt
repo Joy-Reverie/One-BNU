@@ -60,6 +60,11 @@ class SchedulePreviewActivity : ComponentActivity() {
                 // 与周四 5-6 节的课重叠，验证并排与上下对齐
                 PersonalEvent("e2", "导师组会", LocalDate.of(2026, 9, 17), LocalTime.of(14, 0), LocalTime.of(16, 0), "生地楼 306"),
                 PersonalEvent("e3", "讲座：人工智能前沿", LocalDate.of(2026, 9, 14), LocalTime.of(19, 0), LocalTime.of(20, 30), "京师学堂"),
+                // 首尾相接的两条日程：不算重叠，按时间比例上下排开
+                PersonalEvent("e5", "吃饭", LocalDate.of(2026, 9, 16), LocalTime.of(8, 0), LocalTime.of(9, 0), "学五食堂"),
+                PersonalEvent("e6", "自习", LocalDate.of(2026, 9, 16), LocalTime.of(9, 0), LocalTime.of(10, 0), "图书馆"),
+                // 落在午休里的短日程：网格里没有对应高度，贴在第 5 节上沿并保证最小高度
+                PersonalEvent("e7", "取快递", LocalDate.of(2026, 9, 14), LocalTime.of(12, 0), LocalTime.of(12, 15), "菜鸟驿站"),
                 // 重复日程：从 9/7 起每周二、周六 07:00 晨跑
                 PersonalEvent(
                     "e4", "晨跑", LocalDate.of(2026, 9, 7), LocalTime.of(7, 0), LocalTime.of(7, 45), "操场",

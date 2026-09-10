@@ -77,8 +77,9 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 ## 个人日程
 
 存在应用私有目录的 `personal_events.json`（`core/store/PersonalEventStore.kt`），不上传、不同步。重复规则以 `repeat`
-（星期几数组）和 `until` 字段存储，旧数据没有这两个字段照常读。课表网格按作息时间把日程时刻映射到节次
-（`data/model/PeriodMapper.kt`）。
+（星期几数组）和 `until` 字段存储，旧数据没有这两个字段照常读。课表网格里日程不按整节占格，而是按起止时刻在行内线性定位、按时长取高（`data/model/PeriodMapper.position`：
+第 k 节占 [k-1, k)，课间与午休压成两节之间的边界，作息之外贴两端）；重叠判定用真实时间区间，首尾相接的两条日程各自显示，
+真正重叠的才归为一簇、一次显示一个（`ui/schedule/ScheduleLayout.groupColumn`）。课程仍按整节占格。
 
 ## 学分核算
 

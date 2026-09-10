@@ -423,12 +423,13 @@ internal fun ScheduleGrid(
 
             for (day in 1..7) {
                 val date = dates.getOrNull(day - 1)
-                // 课与日程放进同一列；按节次重叠关系分组，撞课、与课重叠的日程都并排画出来
+                // 课与日程放进同一列：课程占整节，日程按起止时刻在行内定位；
+                // 时间上真正重叠的才归为一簇（一次显示一个），首尾相接的各自显示
                 val items = schedule.slotsOn(s.week, day).map { (course, sess) ->
-                    ScheduleLayout.GridItem(sess.startPeriod, sess.endPeriod, GridPayload.CourseSlot(course, sess) as GridPayload)
+                    ScheduleLayout.GridItem.periods(sess.startPeriod, sess.endPeriod, GridPayload.CourseSlot(course, sess) as GridPayload)
                 } + (if (date != null) s.events.filter { it.occursOn(date) } else emptyList()).map { e ->
-                    val range = PeriodMapper.periodsFor(e.start, e.end, s.periodTimes)
-                    ScheduleLayout.GridItem(range.first, range.last, GridPayload.Event(e) as GridPayload)
+                    val (top, bottom) = PeriodMapper.span(e.start, e.end, s.periodTimes, ScheduleLayout.MIN_SPAN)
+                    ScheduleLayout.GridItem(top, bottom, GridPayload.Event(e) as GridPayload)
                 }
                 val groups = ScheduleLayout.groupColumn(items)
                 val isToday = isCurrentWeek && day == today
@@ -452,20 +453,25 @@ internal fun ScheduleGrid(
                             EmptyCell(rowHeight)
                             period++
                         }
-                        // 重叠的格子不再并排挤成细条：一次只显示一个，底部的切换条点一下换下一个
-                        val items = group.items
-                        val key = "${s.week}:$day:${group.start}"
-                        val shownIndex = (shown[key] ?: 0).mod(items.size)
-                        val item = items[shownIndex]
-                        val conflicting = items.count { it.payload is GridPayload.CourseSlot } > 1
-                        val inset = if (items.size > 1) OVERLAP_STRIP else 0.dp
-                        Box(Modifier.height(rowHeight * group.span).fillMaxWidth()) {
+                        val blockHeight = rowHeight * group.span
+                        Box(Modifier.height(blockHeight).fillMaxWidth()) {
                             Column { repeat(group.span) { EmptyCell(rowHeight) } }
+                            group.clusters.forEachIndexed { clusterIndex, items ->
+                            // 时间上重叠的一簇不并排挤成细条：一次只显示一个，底部的切换条点一下换下一个
+                            val key = "${s.week}:$day:${group.start}:$clusterIndex"
+                            val shownIndex = (shown[key] ?: 0).mod(items.size)
+                            val item = items[shownIndex]
+                            val conflicting = items.count { it.payload is GridPayload.CourseSlot } > 1
+                            val inset = if (items.size > 1) OVERLAP_STRIP else 0.dp
+                            // 按时刻定位、按时长取高；太短的日程保证一个最小高度，能读出标题
+                            val cellHeight = maxOf(rowHeight * (item.bottom - item.top), MIN_CELL_HEIGHT)
+                            val cellTop = (rowHeight * (item.top - (group.start - 1)))
+                                .coerceIn(0.dp, (blockHeight - cellHeight).coerceAtLeast(0.dp))
                             Box(
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(top = rowHeight * (item.start - group.start))
-                                    .height(rowHeight * (item.end - item.start + 1))
+                                    .padding(top = cellTop)
+                                    .height(cellHeight)
                                     .padding(1.5.dp),
                             ) {
                                 when (val p = item.payload) {
@@ -498,6 +504,7 @@ internal fun ScheduleGrid(
                                         modifier = Modifier.align(Alignment.BottomCenter),
                                     ) { shown[key] = shownIndex + 1 }
                                 }
+                            }
                             }
                         }
                         period = group.end + 1
@@ -585,6 +592,9 @@ private fun OverlapSwitch(
 
 private val OVERLAP_STRIP = 20.dp
 
+/** 日程格子的最小高度：一行标题加内边距。 */
+private val MIN_CELL_HEIGHT = 26.dp
+
 /** 个人日程的格子：木铎金底 + 细描边，与课程块一眼区分；显示标题、时间、地点。 */
 @Composable
 private fun EventCell(
@@ -611,10 +621,12 @@ private fun EventCell(
                 val avail = maxHeight
                 // 窄格放不下「08:00–10:00」，只给开始时间
                 val timeText = if (maxWidth < 64.dp) event.start.format(PersonalEvent.HM) else event.timeLabel
-                // 至少留一行给时间；地点有空间再放
-                val showLocation = event.location.isNotBlank() && avail >= titleLineDp + subLineDp * 2 + GAP * 2
-                val subLines = if (showLocation) 2 else 1
-                val titleLines = ((avail - subLineDp * subLines - GAP) / titleLineDp).toInt().coerceIn(1, 10)
+                // 高度够就放时间，再够就放地点；很短的日程只留标题
+                val showTime = avail >= titleLineDp + subLineDp + GAP
+                val showLocation = showTime && event.location.isNotBlank() && avail >= titleLineDp + subLineDp * 2 + GAP * 2
+                val subLines = if (showLocation) 2 else if (showTime) 1 else 0
+                val titleLines = ((avail - subLineDp * subLines - (if (showTime) GAP else 0.dp)) / titleLineDp)
+                    .toInt().coerceIn(1, 10)
                 Column {
                     Text(
                         event.title,
@@ -626,14 +638,16 @@ private fun EventCell(
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onTertiaryContainer,
                     )
-                    Spacer(Modifier.height(GAP))
-                    Text(
-                        timeText,
-                        fontSize = subSize,
-                        lineHeight = subSize * LINE_SPACING,
-                        maxLines = 1,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
-                    )
+                    if (showTime) {
+                        Spacer(Modifier.height(GAP))
+                        Text(
+                            timeText,
+                            fontSize = subSize,
+                            lineHeight = subSize * LINE_SPACING,
+                            maxLines = 1,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
+                        )
+                    }
                     if (showLocation) {
                         Text(
                             event.location,

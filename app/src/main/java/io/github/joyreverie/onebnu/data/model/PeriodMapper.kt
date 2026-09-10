@@ -1,11 +1,13 @@
 package io.github.joyreverie.onebnu.data.model
 
+import java.time.Duration
 import java.time.LocalTime
 
 /**
- * 把一段具体时间映射到课表的节次区间，用来把日程画进课表网格。
- * 与某一节的上课时间有交集就算占用这一节；整段落在作息之外时贴到最近的一节，
- * 保证日程总能在网格里被看见。
+ * 把具体时刻映射到课表网格的纵向位置，用来把日程画进课表。
+ *
+ * [position] 以「行」为单位：第 k 节占 [k-1, k)，节内按时间线性插值；课间与午休在网格里没有高度，
+ * 压成两节之间的边界；作息之外贴到两端。[periodsFor] 是老的整节换算，提醒等只关心「占哪几节」的地方仍在用。
  */
 object PeriodMapper {
 
@@ -21,6 +23,30 @@ object PeriodMapper {
     fun parse(hhmm: String): LocalTime? {
         val m = Regex("""^\s*(\d{1,2}):(\d{2})\s*$""").find(hhmm) ?: return null
         return runCatching { LocalTime.of(m.groupValues[1].toInt(), m.groupValues[2].toInt()) }.getOrNull()
+    }
+
+    fun position(t: LocalTime, periodTimes: List<String>): Float {
+        val periods = periodTimes.mapNotNull { parsePeriod(it) }
+        if (periods.isEmpty()) return 0f
+        if (!t.isAfter(periods.first().first)) return 0f
+        if (!t.isBefore(periods.last().second)) return periods.size.toFloat()
+        for ((i, p) in periods.withIndex()) {
+            val (a, b) = p
+            if (!t.isBefore(a) && t.isBefore(b)) {
+                val length = Duration.between(a, b).toMinutes().toFloat().coerceAtLeast(1f)
+                return i + Duration.between(a, t).toMinutes() / length
+            }
+            val next = periods.getOrNull(i + 1) ?: break
+            // 落在课间：贴到下一节的上沿
+            if (!t.isBefore(b) && t.isBefore(next.first)) return (i + 1).toFloat()
+        }
+        return periods.size.toFloat()
+    }
+
+    /** 一段时间在网格里的上下沿（行单位）；整段落在课间时下沿只比上沿高出最小跨度，界面再保证最小高度。 */
+    fun span(start: LocalTime, end: LocalTime, periodTimes: List<String>, minSpan: Float = 0.1f): Pair<Float, Float> {
+        val top = position(start, periodTimes)
+        return top to maxOf(position(end, periodTimes), top + minSpan)
     }
 
     fun periodsFor(start: LocalTime, end: LocalTime, periodTimes: List<String>): IntRange {

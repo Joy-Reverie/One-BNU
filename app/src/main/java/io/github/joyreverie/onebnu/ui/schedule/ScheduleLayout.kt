@@ -1,5 +1,8 @@
 package io.github.joyreverie.onebnu.ui.schedule
 
+import kotlin.math.ceil
+import kotlin.math.floor
+
 /**
  * 课表网格的尺寸规则，纯计算、不依赖 Compose，便于单元测试。
  *
@@ -17,6 +20,9 @@ object ScheduleLayout {
 
     /** 行高的下限（dp），再小课名与地点就挤不下两行了。 */
     const val MIN_ROW_DP = 44f
+
+    /** 格子的最小纵向跨度（行），保证再短的日程也画得出来。 */
+    const val MIN_SPAN = 0.1f
 
     /** 某屏幕档位的默认行高（dp）。 */
     fun baseRowDp(isShort: Boolean, isExpanded: Boolean, isMedium: Boolean): Float = when {
@@ -44,55 +50,84 @@ object ScheduleLayout {
     /** 字号随缩放变化，但幅度只取一半并限制范围：放大到 1.8 倍时字不至于过大，缩到 0.6 倍时仍可读。 */
     fun fontScale(zoom: Float): Float = (1f + (clampZoom(zoom) - 1f) * 0.5f).coerceIn(0.85f, 1.3f)
 
-    /** 网格一列里的一个格子：占第 [start]～[end] 节，[payload] 是课或日程。 */
-    data class GridItem<T>(val start: Int, val end: Int, val payload: T)
+    /**
+     * 网格一列里的一个格子。纵向位置以「行」为单位：第 k 节占 [k-1, k)，
+     * 课程落在整行上，日程按具体时刻落在行内的任意位置（见 `PeriodMapper.span`）。
+     */
+    data class GridItem<T>(val top: Float, val bottom: Float, val payload: T) {
+
+        /** 首尾相接不算重叠。 */
+        fun overlaps(other: GridItem<*>): Boolean = top < other.bottom && other.top < bottom
+
+        /** 所占的第一行 / 最后一行（1 起）。 */
+        val firstRow: Int get() = floor(top).toInt() + 1
+        val lastRow: Int get() = maxOf(ceil(bottom).toInt(), firstRow)
+
+        companion object {
+            /** 占整节 [start]～[end] 的格子（课程）。 */
+            fun <T> periods(start: Int, end: Int, payload: T): GridItem<T> =
+                GridItem(start - 1f, end.toFloat(), payload)
+        }
+    }
 
     /**
-     * 节次上互相重叠的一组格子，并排画在同一块区域里。[columns] 是并排的子列，
-     * 同一子列内的格子互不重叠、只是上下错开，这样 5-6 节的课、7-8 节的课和一条 5-7 节的日程
-     * 只占两列而不是三列，文字才有地方放。
+     * 行范围互有交集的一片格子，界面上作为一块整体布局，块内每个格子按自己的 [GridItem.top] /
+     * [GridItem.bottom] 绝对定位。[clusters] 是块内按**时间**真正重叠的分簇：同一簇一次只显示一个、
+     * 底部切换条换下一个；不同簇（如 8:00–9:00 与 9:00–10:00 两条相接的日程）同时显示。
      */
     data class GridGroup<T>(
         val start: Int,
         val end: Int,
-        /** 组内全部格子，按起始节排序；界面按这个顺序切换显示。 */
+        /** 块内全部格子，按上沿排序。 */
         val items: List<GridItem<T>>,
-        val columns: List<List<GridItem<T>>>,
+        val clusters: List<List<GridItem<T>>>,
     ) {
         val span: Int get() = end - start + 1
     }
 
     /**
-     * 把一列里的格子按节次重叠关系分组：只要与前一组有任何一节重叠就归入同一组，
-     * 组内再贪心塞进尽量少的子列。界面上一组一次只显示一个格子、底部切换条换下一个，
-     * 这样撞课、以及与课重叠的日程都不会因为起点被别的课盖住而消失。
+     * 把一列里的格子分块：先按时间重叠关系连成簇（与簇内任一格子有交集即并入，首尾相接不算），
+     * 再把行范围有交集的簇合成一块，供界面按行顺序布局。
+     * 只按上沿排序且保持稳定：同一时刻开始的，调用方先放进来的（课程）排在前面、默认显示。
      */
     fun <T> groupColumn(items: List<GridItem<T>>, periods: Int = PERIODS): List<GridGroup<T>> {
+        val max = periods.toFloat()
         val sorted = items
             .map { item ->
-                val start = item.start.coerceIn(1, periods)
-                item.copy(start = start, end = item.end.coerceIn(start, periods))
+                val top = item.top.coerceIn(0f, max - MIN_SPAN)
+                item.copy(top = top, bottom = item.bottom.coerceIn(top + MIN_SPAN, max))
             }
-            // 只按起始节排序且保持稳定：同一节开始的，调用方先放进来的（课程）排在前面、默认显示
-            .sortedBy { it.start }
+            .sortedBy { it.top }
+
+        val clusters = ArrayList<MutableList<GridItem<T>>>()
+        var current: MutableList<GridItem<T>>? = null
+        var clusterEnd = 0f
+        for (item in sorted) {
+            val c = current
+            if (c == null || item.top >= clusterEnd) {
+                current = arrayListOf(item).also { clusters += it }
+                clusterEnd = item.bottom
+            } else {
+                c += item
+                clusterEnd = maxOf(clusterEnd, item.bottom)
+            }
+        }
+
         val groups = ArrayList<GridGroup<T>>()
-        var current = ArrayList<GridItem<T>>()
+        var block = ArrayList<List<GridItem<T>>>()
         var start = 0
         var end = -1
         fun flush() {
-            if (current.isEmpty()) return
-            val columns = ArrayList<ArrayList<GridItem<T>>>()
-            for (item in current) {
-                val slot = columns.firstOrNull { it.last().end < item.start } ?: ArrayList<GridItem<T>>().also { columns += it }
-                slot += item
-            }
-            groups += GridGroup(start, end, current.toList(), columns)
-            current = ArrayList()
+            if (block.isEmpty()) return
+            groups += GridGroup(start, end, block.flatten().sortedBy { it.top }, block.toList())
+            block = ArrayList()
         }
-        for (item in sorted) {
-            if (current.isNotEmpty() && item.start > end) flush()
-            if (current.isEmpty()) { start = item.start; end = item.end } else end = maxOf(end, item.end)
-            current += item
+        for (cluster in clusters) {
+            val s = cluster.minOf { it.firstRow }
+            val e = cluster.maxOf { it.lastRow }
+            if (block.isNotEmpty() && s > end) flush()
+            if (block.isEmpty()) { start = s; end = e } else end = maxOf(end, e)
+            block += cluster
         }
         flush()
         return groups
