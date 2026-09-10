@@ -14,7 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import io.github.joyreverie.onebnu.core.store.Settings
+import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.data.model.ClassSession
 import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
@@ -68,7 +68,7 @@ class HomePreviewActivity : ComponentActivity() {
                                 todayCourses = courses,
                                 todayEvents = events.sortedBy { it.start },
                                 todayHint = "第 1 周 周四 没有排课",
-                                periodTimes = Settings.PERIOD_TIMES,
+                                periodTimes = ServiceLocator.settings.periodTimes,
                             ),
                             onRetry = {},
                             onNavigate = {},

@@ -103,4 +103,33 @@ class ScheduleLayoutTest {
         assertEquals(0.85f, ScheduleLayout.fontScale(0.6f))
         assertEquals(60f * 1.5f, ScheduleLayout.rowDp(isLandscape = false, availableDp = 0f, baseDp = 60f, zoom = 1.5f))
     }
+
+    @Test
+    fun `左侧刻度按行高决定显示到哪一档`() {
+        val detail = ScheduleLayout::gutterDetail
+        // 竖屏各档位的默认行高（46～76dp）都放得下节次 + 上下课三行
+        listOf(46f, 60f, 66f, 76f).forEach {
+            assertEquals(ScheduleLayout.GutterDetail.START_AND_END, detail(it, 1f))
+        }
+        // 横屏压到最矮、又缩到最小：只留节次 + 上课
+        val squeezed = ScheduleLayout.rowDp(isLandscape = true, availableDp = 400f, baseDp = 60f, zoom = 0.6f)
+        assertEquals(26.4f, squeezed, 1e-3f)
+        assertEquals(ScheduleLayout.GutterDetail.START_ONLY, detail(squeezed, ScheduleLayout.fontScale(0.6f)))
+        // 系统字体调到最大时同样降级，而不是把时间裁掉
+        assertEquals(ScheduleLayout.GutterDetail.START_AND_END, detail(60f, 1.5f))
+        assertEquals(ScheduleLayout.GutterDetail.START_ONLY, detail(60f, 2f))
+        assertEquals(ScheduleLayout.GutterDetail.NUMBER_ONLY, detail(20f, 1f))
+    }
+
+    @Test
+    fun `刻度列正常字号下宽度不变，字放大时才加宽`() {
+        assertEquals(42f, ScheduleLayout.gutterDp(isExpanded = false, isMedium = false, textScale = 1f))
+        assertEquals(48f, ScheduleLayout.gutterDp(isExpanded = false, isMedium = true, textScale = 1f))
+        assertEquals(56f, ScheduleLayout.gutterDp(isExpanded = true, isMedium = false, textScale = 1f))
+        // 缩小时不跟着变窄（时刻还是那五个字），放大至多 1.5 倍，再宽就该让给课程列了
+        assertEquals(42f, ScheduleLayout.gutterDp(isExpanded = false, isMedium = false, textScale = 0.85f))
+        assertEquals(42f * 1.3f, ScheduleLayout.gutterDp(isExpanded = false, isMedium = false, textScale = 1.3f))
+        assertEquals(42f * 1.5f, ScheduleLayout.gutterDp(isExpanded = false, isMedium = false, textScale = 3f))
+    }
 }
+

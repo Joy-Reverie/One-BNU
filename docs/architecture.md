@@ -51,7 +51,7 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 | 学籍 | `STU_BaseInfoAction.do`（XML） | 身份证号、准考证号等敏感字段不展示 |
 | 培养方案要求 | `DataTable.jsp?tableId=6033` | 学分核算里有数据时附带显示 |
 | 校历 | 无接口 | 手工录入，见 `data/model/OfficialCalendar.kt` |
-| 作息时间 | 无接口 | `Settings.PERIOD_TIMES` 按学校统一作息生成 |
+| 作息时间 | 无接口 | 默认 `Settings.PERIOD_TIMES` 按学校统一作息生成，可在设置里逐节自定义 |
 
 解析全部在 `data/parse/Parsers.kt`，用 Jsoup；单元测试的样本在 `app/src/test/resources/fixtures/`，已脱敏。
 
@@ -68,13 +68,16 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 `requestPinAppWidget` 静默吞掉且没有公开的申请接口，`widget/MiuiShortcutPermission.kt` 通过 AppOps 10017 读状态并
 跳到 MIUI 的权限编辑页；其他情况给手动添加步骤。
 
-## 上课提醒
+## 上课提醒与日程提醒
 
 每次只向 AlarmManager 登记**一个**定时（下一次需要提醒的时刻，`core/notify/ClassReminder.kt`），到点送达后再登记下一个；
 课表缓存或日程变动、开机、时区 / 时间变化、应用升级后重算。Android 12 上若「闹钟和提醒」权限未开则退回非精确定时。
 
-提醒范围含课程与日程两类（`Settings.remindEvents` 可只留课程）。日程随时能加，所以「下一次」不是简单的
-`开始时刻 − 提前时间`（`core/notify/ReminderPlanner.next`）：
+课程与日程是两个平级开关（`Settings.remindClasses` / `Settings.remindEvents`），共用一个提前时间；
+两个都关掉才会取消系统里的定时。1.9.3 及更早版本「日程也提醒」是挂在总开关下的子项，
+`Settings.migrateReminderSwitches` 按「用户此前实际收到哪几类提醒」迁移一次。
+
+日程随时能加，所以「下一次」不是简单的 `开始时刻 − 提前时间`（`core/notify/ReminderPlanner.next`）：
 
 - **提醒点已过、但事项还没开始**就立刻提醒。否则在开始前 5 分钟添加的日程（提前时间 10 分钟）会被整条跳过。
 - 立刻提醒会被反复算出来，所以送达前先把「已提醒到哪一刻」记进 `Settings.lastRemindedStart`（被提醒事项的开始时刻），
@@ -82,7 +85,7 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 - 通知与闹钟的「N 分钟后开始」按**真实剩余时间**算（`ClassReminder.remainingLabel`），不照抄提前时间，
   不足一分钟写「即将开始」。
 
-两种送达方式（`core/store/ReminderStyle.kt`，「我的 → 上课提醒 → 提醒方式」）：
+两种送达方式（`core/store/ReminderStyle.kt`，「我的 → 提醒 → 提醒方式」）：
 
 - **通知提醒**（默认）：`setExactAndAllowWhileIdle` 登记，到点发一条高优先级通知，按通知音量响一声。
 - **闹钟提醒**：改用 `setAlarmClock` 登记 —— 系统把它当作用户可见的闹钟，Doze 不延后，状态栏显示闹钟图标，
@@ -91,7 +94,7 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
   亮屏时是横幅加「停止」。两分钟没人理会自动停，`MediaPlayer.setWakeMode` 与服务自持的唤醒锁保证灭屏期间不被 CPU 休眠掐断。
 
   停止有四条路，任何一条失效都还有别的：通知上的「停止」（走 `AlarmStopReceiver` 广播 + `stopService`，不受后台启动限制）、
-  锁屏全屏页上的大按钮、「我的 → 上课提醒」卡片上的「停止」（响铃时「试一下」就地变成它）、两分钟自动停。
+  锁屏全屏页上的大按钮、「我的 → 提醒」卡片上的「停止」（响铃时「试一下」就地变成它）、两分钟自动停。
   亮屏且应用在前台时系统只会把全屏意图降级成横幅，若用户还关掉了通知权限就没有可点的「停止」，所以前台时直接把全屏页拉起来。
   重复拉起不会叠加：`onStartCommand` 先 `stopPlayback()` 再起新的，全程只有一个 `MediaPlayer`。
   勿扰模式（`currentInterruptionFilter != INTERRUPTION_FILTER_ALL`）下不出声，只震动，通知里写明原因。
@@ -99,6 +102,13 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 定时始终由系统 AlarmManager 保管，应用进程被清理不影响到点；精确闹钟触发时系统会给应用一段临时白名单，后台也能拉起前台服务。
 真正能挡住提醒的只有 ROM 级别的「强制停止」，所以卡片上保留了忽略电池优化的入口。前台服务万一起不来（系统拒绝后台启动），
 `ClassReminder.deliver` 会退回普通通知，不让这一条整个丢掉。
+
+## 课表网格
+
+行高按屏幕档位取默认值，横屏改为「一天 12 节尽量落进一屏」并有下限，再乘用户双指缩放的倍数（`ui/schedule/ScheduleLayout`，
+倍数跨启动记住）。左侧刻度每格是节次号 + 上课 + 下课时刻；三行放不下时（横屏压缩、缩到最小、系统字体调大）
+按 `gutterDetail` 逐级降为「节次 + 上课」和「只有节次」，宽度按实际字号倍数放宽至多 1.5 倍 —— 宁可少显示一行，
+也不把时刻裁掉半截。
 
 ## 个人日程
 

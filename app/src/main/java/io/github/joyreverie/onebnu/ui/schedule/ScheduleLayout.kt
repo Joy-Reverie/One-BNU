@@ -50,6 +50,56 @@ object ScheduleLayout {
     /** 字号随缩放变化，但幅度只取一半并限制范围：放大到 1.8 倍时字不至于过大，缩到 0.6 倍时仍可读。 */
     fun fontScale(zoom: Float): Float = (1f + (clampZoom(zoom) - 1f) * 0.5f).coerceIn(0.85f, 1.3f)
 
+    /** 左侧刻度一格显示到什么程度。 */
+    enum class GutterDetail {
+        /** 只有节次号。 */
+        NUMBER_ONLY,
+
+        /** 节次号 + 上课时刻。 */
+        START_ONLY,
+
+        /** 节次号 + 上课 + 下课时刻。 */
+        START_AND_END,
+    }
+
+    /** 节次号那一行占的高度（dp，文字缩放为 1 时）。 */
+    private const val NUMBER_LINE_DP = 12f
+
+    /** 一行时刻占的高度（dp，文字缩放为 1 时）。 */
+    private const val TIME_LINE_DP = 10f
+
+    /** 刻度上下留一点余量，不贴着相邻的行。 */
+    private const val GUTTER_PADDING_DP = 4f
+
+    /**
+     * 行高 [rowDp] 放不下三行字时逐级降级：三行（节次 + 上下课）→ 两行（节次 + 上课）→ 只有节次号。
+     *
+     * [textScale] 是字号的实际倍数（缩放倍数 × 系统字体大小）。行高只跟缩放走、不跟系统字体走，
+     * 所以系统字体调大时同样要降级，否则时间行会互相挤压甚至被裁掉。
+     */
+    fun gutterDetail(rowDp: Float, textScale: Float): GutterDetail {
+        val scale = textScale.coerceAtLeast(0.5f)
+        return when {
+            rowDp >= (NUMBER_LINE_DP + 2 * TIME_LINE_DP + GUTTER_PADDING_DP) * scale -> GutterDetail.START_AND_END
+            rowDp >= (NUMBER_LINE_DP + TIME_LINE_DP + GUTTER_PADDING_DP) * scale -> GutterDetail.START_ONLY
+            else -> GutterDetail.NUMBER_ONLY
+        }
+    }
+
+    /**
+     * 左侧刻度列的宽度（dp）：要放得下 "08:00"。
+     * 正常字号下与各屏幕档位的老宽度一致；系统字体或缩放把字放大时按比例加宽（至多 1.5 倍），
+     * 否则时刻会被裁成 "08:0"。再宽就该让给七列课程了。
+     */
+    fun gutterDp(isExpanded: Boolean, isMedium: Boolean, textScale: Float): Float {
+        val base = when {
+            isExpanded -> 56f
+            isMedium -> 48f
+            else -> 42f
+        }
+        return base * textScale.coerceIn(1f, 1.5f)
+    }
+
     /**
      * 网格一列里的一个格子。纵向位置以「行」为单位：第 k 节占 [k-1, k)，
      * 课程落在整行上，日程按具体时刻落在行内的任意位置（见 `PeriodMapper.span`）。

@@ -73,4 +73,31 @@ class PeriodMapperTest {
         // 正好落在午休（11:40-13:30）：贴到下一节
         assertEquals(5..5, PeriodMapper.periodsFor(LocalTime.of(12, 0), LocalTime.of(13, 0), p))
     }
+
+    @Test
+    fun `默认作息通过校验，自定义作息按节次顺序校验`() {
+        assertEquals(null, PeriodMapper.validate(p))
+
+        // 整体挪早、每节 50 分钟：合法
+        val early = List(12) { i ->
+            val start = LocalTime.of(7, 30).plusMinutes(i * 60L)
+            "${PeriodMapper.format(start)}-${PeriodMapper.format(start.plusMinutes(50))}"
+        }
+        assertEquals(null, PeriodMapper.validate(early))
+
+        // 下课不晚于上课
+        assertEquals(
+            "第 2 节的下课时间要晚于上课时间",
+            PeriodMapper.validate(listOf("08:00-08:45", "08:55-08:55")),
+        )
+        // 上课早于前一节下课：网格会画错，必须挡住
+        assertEquals(
+            "第 3 节的上课时间不能早于第 2 节下课",
+            PeriodMapper.validate(listOf("08:00-08:45", "08:55-09:40", "09:30-10:15")),
+        )
+        // 首尾相接不算冲突
+        assertEquals(null, PeriodMapper.validate(listOf("08:00-08:45", "08:45-09:30")))
+        assertEquals("第 1 节的时间格式不对", PeriodMapper.validate(listOf("八点-九点")))
+    }
 }
+

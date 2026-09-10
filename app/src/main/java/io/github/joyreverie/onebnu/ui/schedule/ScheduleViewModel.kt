@@ -57,6 +57,10 @@ class ScheduleViewModel : ViewModel() {
         viewModelScope.launch {
             ServiceLocator.events.events.collect { all -> _state.value = _state.value.copy(events = all) }
         }
+        viewModelScope.launch {
+            // 设置里改了作息，时间刻度与日程的纵向定位要立即跟着变，不必重新查课表
+            settings.periodTimesFlow.collect { _state.value = _state.value.copy(periodTimes = it) }
+        }
     }
 
     fun load(term: Term? = null) {

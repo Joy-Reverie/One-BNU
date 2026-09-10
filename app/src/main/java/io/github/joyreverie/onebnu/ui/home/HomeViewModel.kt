@@ -49,6 +49,10 @@ class HomeViewModel : ViewModel() {
                 _state.value = _state.value.copy(todayEvents = all.filter { it.occursOn(today) }.sortedBy { it.start })
             }
         }
+        viewModelScope.launch {
+            // 设置里改了作息，今日课程的起止时间要立即跟着变
+            settings.periodTimesFlow.collect { _state.value = _state.value.copy(periodTimes = it) }
+        }
     }
 
     fun refresh() {

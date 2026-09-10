@@ -7,6 +7,7 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,7 +26,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.AddToHomeScreen
-import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.EditCalendar
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.School
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
@@ -51,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -224,22 +228,23 @@ private fun ManualPinDialog(size: WidgetSize, onDismiss: () -> Unit) {
     )
 }
 
-/** 「我的」页：上课提醒开关、提前时间、提醒方式、后台运行权限。 */
+/** 「我的」页：上课 / 日程提醒的开关、提前时间、提醒方式、后台运行权限。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReminderCard() {
     val context = LocalContext.current
     val settings = ServiceLocator.settings
-    var enabled by remember { mutableStateOf(settings.remindersEnabled) }
+    var remindClasses by remember { mutableStateOf(settings.remindClasses) }
+    var remindEvents by remember { mutableStateOf(settings.remindEvents) }
     var lead by remember { mutableIntStateOf(settings.reminderLeadMinutes) }
     var editingLead by remember { mutableStateOf(false) }
     var style by remember { mutableStateOf(settings.reminderStyle) }
     val ringing by AlarmService.ringing.collectAsState()
-    var remindEvents by remember { mutableStateOf(settings.remindEvents) }
     var next by remember { mutableStateOf(ClassReminder.nextDescription(context)) }
     var batteryOk by remember { mutableStateOf(ClassReminder.ignoringBatteryOptimizations(context)) }
     var exactOk by remember { mutableStateOf(ClassReminder.canScheduleExact(context)) }
     var notifyOk by remember { mutableStateOf(ClassReminder.notificationsAllowed(context)) }
+    val enabled = remindClasses || remindEvents
 
     // 从系统设置页回来时刷新各项权限状态
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -256,46 +261,76 @@ fun ReminderCard() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    fun apply(on: Boolean) {
-        settings.remindersEnabled = on
-        enabled = on
+    /** 提醒范围一变，下一次是谁也就变了。 */
+    fun apply(isEvent: Boolean, on: Boolean) {
+        if (isEvent) {
+            remindEvents = on
+            settings.remindEvents = on
+        } else {
+            remindClasses = on
+            settings.remindClasses = on
+        }
         ClassReminder.reschedule(context)
         next = ClassReminder.nextDescription(context)
     }
 
+    // 两个开关都要先有通知权限；记下是哪一个在等授权，授权回来接着开它
+    var awaiting by remember { mutableStateOf<Boolean?>(null) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         notifyOk = granted
-        if (granted) apply(true) else Toast.makeText(context, "需要允许通知才能提醒上课", Toast.LENGTH_LONG).show()
+        val isEvent = awaiting
+        awaiting = null
+        if (granted && isEvent != null) apply(isEvent, true)
+        if (!granted) Toast.makeText(context, "需要允许通知才能提醒", Toast.LENGTH_LONG).show()
     }
 
-    SectionCard("上课提醒") {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.NotificationsActive, null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("上课前提醒", style = MaterialTheme.typography.bodyMedium)
+    fun toggle(isEvent: Boolean, on: Boolean) {
+        when {
+            !on -> apply(isEvent, false)
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notifyOk -> {
+                awaiting = isEvent
+                permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            else -> apply(isEvent, true)
+        }
+    }
+
+    SectionCard("提醒") {
+        ReminderToggleRow(
+            icon = Icons.Outlined.School,
+            label = "上课提醒",
+            checked = remindClasses,
+            onCheckedChange = { toggle(isEvent = false, on = it) },
+        )
+        Divider(Modifier.padding(vertical = 4.dp))
+        ReminderToggleRow(
+            icon = Icons.Outlined.EditCalendar,
+            label = "日程提醒",
+            checked = remindEvents,
+            onCheckedChange = { toggle(isEvent = true, on = it) },
+        )
+
+        if (enabled) {
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.secondaryContainer)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Outlined.Schedule, null, Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    when {
-                        !enabled -> if (remindEvents) "每节课和日程开始前提醒一次" else "每节课开始前提醒一次"
-                        next != null -> "下一次：$next"
-                        else -> "近期没有课程或日程"
-                    },
+                    next?.let { "下一次 $it" } ?: "近期没有课程或日程",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
-            Switch(
-                checked = enabled,
-                onCheckedChange = { on ->
-                    if (!on) {
-                        apply(false)
-                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notifyOk) {
-                        permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    } else {
-                        apply(true)
-                    }
-                },
-            )
         }
 
         Divider(Modifier.padding(vertical = 8.dp))
@@ -306,21 +341,6 @@ fun ReminderCard() {
             Text("提前时间", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Text("$lead 分钟", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
             Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
-        }
-
-        Divider(Modifier.padding(vertical = 8.dp))
-        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("日程也提醒", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Switch(
-                checked = remindEvents,
-                onCheckedChange = { on ->
-                    remindEvents = on
-                    settings.remindEvents = on
-                    // 提醒范围变了，下一次是谁也就变了
-                    ClassReminder.reschedule(context)
-                    next = ClassReminder.nextDescription(context)
-                },
-            )
         }
 
         Divider(Modifier.padding(vertical = 8.dp))
@@ -422,6 +442,35 @@ fun ReminderCard() {
                 next = ClassReminder.nextDescription(context)
             },
         )
+    }
+}
+
+/**
+ * 提醒卡片里的一行开关。上课与日程用同一个样式：图标 + 名称 + 开关，整行可点，
+ * 图标随开关点亮 —— 两类提醒是平级的，看起来也该一样。
+ */
+@Composable
+private fun ReminderToggleRow(
+    icon: ImageVector,
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icon, null,
+            tint = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

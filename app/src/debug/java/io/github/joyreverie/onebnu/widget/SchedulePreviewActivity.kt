@@ -20,7 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import java.time.LocalTime
 import androidx.compose.ui.Modifier
-import io.github.joyreverie.onebnu.core.store.Settings
+import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.data.model.ClassSession
 import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
@@ -53,7 +53,7 @@ class SchedulePreviewActivity : ComponentActivity() {
             week = 2,
             currentWeek = 2,
             maxWeek = 20,
-            periodTimes = Settings.PERIOD_TIMES,
+            periodTimes = ServiceLocator.settings.periodTimes,
             termStart = LocalDate.of(2026, 9, 7),
             events = listOf(
                 PersonalEvent("e1", "体检", LocalDate.of(2026, 9, 18), LocalTime.of(8, 0), LocalTime.of(10, 0), "校医院", "带学生卡"),

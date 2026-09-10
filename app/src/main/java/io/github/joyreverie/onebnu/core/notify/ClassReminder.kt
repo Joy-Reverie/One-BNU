@@ -19,7 +19,6 @@ import io.github.joyreverie.onebnu.MainActivity
 import io.github.joyreverie.onebnu.R
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.store.ReminderStyle
-import io.github.joyreverie.onebnu.core.store.Settings
 import io.github.joyreverie.onebnu.ui.notify.AlarmActivity
 import java.time.Duration
 import java.time.Instant
@@ -29,7 +28,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * 上课提醒：每节课（和日程）开始前 N 分钟发一条通知。
+ * 上课提醒与日程提醒：课程、日程开始前 N 分钟提醒一次，两类各自开关、共用一个提前时间。
  *
  * 实现要点：
  *  - 用 AlarmManager 的精确闹钟一次只排「下一次」，响了再排下一次；课表、日程、设置一变就重排。
@@ -78,11 +77,12 @@ object ClassReminder {
     fun ignoringBatteryOptimizations(context: Context): Boolean =
         context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) == true
 
-    /** 所有待提醒事项（今天起 8 天）；关掉「日程也提醒」时只算课程。 */
+    /** 所有待提醒事项（今天起 8 天）；「上课提醒」与「日程提醒」各自关掉后就不算那一类。 */
     fun upcoming(context: Context, now: LocalDateTime = LocalDateTime.now()): List<ReminderItem> {
-        val schedule = ServiceLocator.scheduleCache.load()?.schedule
-        val events = if (ServiceLocator.settings.remindEvents) ServiceLocator.events.all() else emptyList()
-        return ReminderPlanner.items(schedule, events, now.toLocalDate(), LOOKAHEAD_DAYS, Settings.PERIOD_TIMES)
+        val settings = ServiceLocator.settings
+        val schedule = if (settings.remindClasses) ServiceLocator.scheduleCache.load()?.schedule else null
+        val events = if (settings.remindEvents) ServiceLocator.events.all() else emptyList()
+        return ReminderPlanner.items(schedule, events, now.toLocalDate(), LOOKAHEAD_DAYS, settings.periodTimes)
     }
 
     /** 已提醒到哪一刻；没提醒过则为 null。 */

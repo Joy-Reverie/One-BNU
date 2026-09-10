@@ -332,9 +332,11 @@ internal fun ScheduleGrid(
 
     // 随屏幕尺寸调整：大屏放大；横屏宽度富余、高度紧张，行高按一天 12 节尽量落进一屏来算；
     // 再乘上用户双指缩放的倍数
-    val gutter = if (screen.isExpanded) 56.dp else if (screen.isMedium) 48.dp else 42.dp
     val baseRowDp = ScheduleLayout.baseRowDp(screen.isShort, screen.isExpanded, screen.isMedium)
     val fontScale = ScheduleLayout.fontScale(zoom)
+    // 刻度里的字是 sp，系统字体大小也会放大它：宽度与「显示几行」都得按实际倍数算
+    val textScale = fontScale * density.fontScale
+    val gutter = ScheduleLayout.gutterDp(screen.isExpanded, screen.isMedium, textScale).dp
     val titleSize = (if (screen.isCompact) 10.sp else 12.sp) * fontScale
     val subSize = (if (screen.isCompact) 9.sp else 11.sp) * fontScale
 
@@ -396,9 +398,12 @@ internal fun ScheduleGrid(
                 .pinchToZoom(onZoom, onZoomEnd)
                 .padding(horizontal = 2.dp),
         ) {
-            // 左侧节次与时间刻度
+            // 左侧节次与上下课时刻。节次号比时间小一号，三行才不至于互相挤压；
+            // 行高不够（横屏压缩、缩到最小、系统字体调大）时按 gutterDetail 逐级少显示一行
+            val detail = ScheduleLayout.gutterDetail(rowHeight.value, textScale)
             Column(Modifier.width(gutter)) {
                 for (period in 1..PERIODS) {
+                    val spec = s.periodTimes.getOrNull(period - 1)
                     Column(
                         Modifier.height(rowHeight).fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -406,16 +411,30 @@ internal fun ScheduleGrid(
                     ) {
                         Text(
                             "$period",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Medium,
+                            fontSize = 10.sp * fontScale,
+                            lineHeight = 12.sp * fontScale,
+                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
                         )
-                        s.periodTimes.getOrNull(period - 1)?.let { t ->
+                        if (spec != null && detail != ScheduleLayout.GutterDetail.NUMBER_ONLY) {
                             Text(
-                                t.substringBefore('-'),
-                                fontSize = 8.sp,
+                                spec.substringBefore('-'),
+                                fontSize = 8.5.sp * fontScale,
+                                lineHeight = 10.sp * fontScale,
                                 color = MaterialTheme.colorScheme.outline,
+                                maxLines = 1,
                             )
+                            if (detail == ScheduleLayout.GutterDetail.START_AND_END) {
+                                Text(
+                                    spec.substringAfter('-'),
+                                    fontSize = 8.5.sp * fontScale,
+                                    lineHeight = 10.sp * fontScale,
+                                    // 下课时刻弱一档，一眼能看出哪个是上课时间
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                                    maxLines = 1,
+                                )
+                            }
                         }
                     }
                 }

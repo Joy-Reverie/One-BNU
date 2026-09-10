@@ -22,12 +22,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -42,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
 import io.github.joyreverie.onebnu.ui.theme.LocalDarkTheme
 import io.github.joyreverie.onebnu.ui.theme.Shape
+import java.time.LocalTime
 
 /**
  * 应用统一的卡片：白面 + 极淡描边 + 很轻的投影。
@@ -271,4 +277,25 @@ fun InfoRow(label: String, value: String, modifier: Modifier = Modifier) {
         Spacer(Modifier.width(12.dp))
         Text(value, style = MaterialTheme.typography.bodyMedium)
     }
+}
+
+/** 选一个时刻（24 小时制）。日程的起止时间与作息时间都用它，样式一致。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimePickerDialog(
+    title: String,
+    initial: LocalTime,
+    onDismiss: () -> Unit,
+    onConfirm: (LocalTime) -> Unit,
+) {
+    val state = rememberTimePickerState(initialHour = initial.hour, initialMinute = initial.minute, is24Hour = true)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { TimePicker(state = state) },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(LocalTime.of(state.hour, state.minute)) }) { Text("确定") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }

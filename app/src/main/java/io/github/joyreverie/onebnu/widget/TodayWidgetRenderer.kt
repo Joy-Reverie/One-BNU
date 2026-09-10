@@ -13,7 +13,6 @@ import androidx.core.content.ContextCompat
 import io.github.joyreverie.onebnu.MainActivity
 import io.github.joyreverie.onebnu.R
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
-import io.github.joyreverie.onebnu.core.store.Settings
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
 import java.time.LocalDate
@@ -75,7 +74,7 @@ object TodayWidgetRenderer {
         lastError = base.lastError,
         today = today,
         now = now,
-        periodTimes = Settings.PERIOD_TIMES,
+        periodTimes = ServiceLocator.settings.periodTimes,
         heightDp = heightDp,
     )
 

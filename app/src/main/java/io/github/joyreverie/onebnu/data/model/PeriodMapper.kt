@@ -30,6 +30,26 @@ object PeriodMapper {
         return runCatching { LocalTime.of(m.groupValues[1].toInt(), m.groupValues[2].toInt()) }.getOrNull()
     }
 
+    fun format(t: LocalTime): String = "%02d:%02d".format(t.hour, t.minute)
+
+    /**
+     * 自定义作息能不能用：每节都解析得出、下课晚于上课、且不早于前一节下课。
+     * 网格与提醒都假定各节按时间先后排列，顺序一乱课表就画错，所以在存之前挡住。
+     *
+     * @return 第一处问题的说明，null 表示这份作息没问题
+     */
+    fun validate(periodTimes: List<String>): String? {
+        var prevEnd: LocalTime? = null
+        for ((i, spec) in periodTimes.withIndex()) {
+            val (start, end) = parsePeriod(spec) ?: return "第 ${i + 1} 节的时间格式不对"
+            if (!end.isAfter(start)) return "第 ${i + 1} 节的下课时间要晚于上课时间"
+            val prev = prevEnd
+            if (prev != null && start.isBefore(prev)) return "第 ${i + 1} 节的上课时间不能早于第 $i 节下课"
+            prevEnd = end
+        }
+        return null
+    }
+
     /** 并入上一行的最长间隔（分钟）：课间 10 分钟、大课间 20 分钟算课间，午休与晚上开课前的空档不算。 */
     const val MAX_BREAK_MINUTES = 30L
 

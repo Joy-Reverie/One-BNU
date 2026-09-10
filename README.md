@@ -23,9 +23,10 @@
 - **学分核算**：各学期修读学分按模块归类求和，归类可手动修改
 - **校内联系方式**：北京校区 386 条各部门公开办公电话（含财经处逐窗口业务、科研院各处室分工），可搜索、分区筛选、点击拨号
 - **个人日程**：事件、时间、地点、备注，可按星期几重复；与课表一起出现在首页时间轴、课表网格和小组件里，网格中按起止时刻定位、按时长取高
-- **上课提醒**：课程与日程开始前 N 分钟提醒（日程可单独关掉；临时加的近期日程立刻提醒），可选通知提醒（响一声）或闹钟提醒（按闹钟音量持续响铃、锁屏全屏弹出，勿扰模式下只震动）
+- **上课提醒 / 日程提醒**：两类各自开关、共用一个提前时间，开始前 N 分钟提醒（临时加的近期日程立刻提醒），可选通知提醒（响一声）或闹钟提醒（按闹钟音量持续响铃、锁屏全屏弹出，勿扰模式下只震动）
 - **内嵌浏览器**：图书馆、数字京师门户、教务系统，自动带入登录态
 - **检查更新**：设置页内查询 GitHub Releases，下载并安装新版本；联网启动时自动检查一次并询问，可关闭
+- **作息时间**：默认学校统一作息，可在设置里逐节调整上下课时刻；课表刻度、日程定位、提醒与小组件都按它算
 - **深浅色**：跟随系统，或在设置里固定为浅色 / 深色
 
 ## 截图
@@ -72,7 +73,7 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 - 默认禁止明文流量，只对确实没有 HTTPS 的教务与图书馆主机放行；重定向途中的协议降级会被升回 HTTPS。
 - 关闭云备份与设备迁移（`allowBackup=false`）。内嵌浏览器不注入 JS 接口、禁用文件域访问与混合内容，站外链接交给系统浏览器。
 - 权限：`INTERNET`、`ACCESS_NETWORK_STATE`；`POST_NOTIFICATIONS`、`USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM`、
-  `RECEIVE_BOOT_COMPLETED`、`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 仅在开启上课提醒时用到；
+  `RECEIVE_BOOT_COMPLETED`、`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 仅在开启提醒时用到；
   `REQUEST_INSTALL_PACKAGES` 仅用于安装应用内下载的更新包；`WRITE_EXTERNAL_STORAGE` 限 Android 9 及以下保存校历图片时申请。
   选择闹钟提醒时还会用到 `FOREGROUND_SERVICE`(+`MEDIA_PLAYBACK`)、`USE_FULL_SCREEN_INTENT`、`VIBRATE`、`WAKE_LOCK`，只在响铃期间生效。
   拨号只唤起拨号盘，不申请通话权限。
@@ -154,7 +155,7 @@ docs/              技术说明、截图、校内联系方式的原始整理稿
   每学期补录一次：校历图放到 `res/drawable-nodpi/calendar_<学年起始年>_<autumn|spring>.jpg`，在 `OfficialCalendars` 里照现有条目加一条并加入 `ALL`，
   `AcademicCalendarTest` 会检查起点是否周一、周数与日期是否合理。
 - **校内联系方式**：`res/raw/campus_contacts.json`，每条带来源页面地址与该页面标注的发布日期；改完同步 `CampusContactsTest` 的计数。
-- **作息时间**：`core/store/Settings.kt` 的 `PERIOD_TIMES`。
+- **作息时间**：默认值是 `core/store/Settings.kt` 的 `PERIOD_TIMES`；用户在设置里改过的存在本机（`period_times`），换默认值不影响已有的自定义。
 
 ## 已知限制
 
