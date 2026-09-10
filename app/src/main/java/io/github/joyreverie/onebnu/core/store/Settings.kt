@@ -63,6 +63,12 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_REMIND, false)
         set(value) { prefs.edit().putBoolean(KEY_REMIND, value).apply() }
 
+    /** 提醒的送达方式：通知或闹钟。 */
+    var reminderStyle: ReminderStyle
+        get() = runCatching { ReminderStyle.valueOf(prefs.getString(KEY_REMIND_STYLE, null) ?: "") }
+            .getOrDefault(ReminderStyle.NOTIFICATION)
+        set(value) { prefs.edit().putString(KEY_REMIND_STYLE, value.name).apply() }
+
     /** 上课前提前多少分钟提醒，1～120。 */
     var reminderLeadMinutes: Int
         get() = prefs.getInt(KEY_REMIND_LEAD, 10).coerceIn(1, 120)
@@ -75,6 +81,7 @@ class Settings(context: Context) {
         private const val KEY_SCHEDULE_ZOOM = "schedule_zoom"
         private const val KEY_REMIND = "reminders_enabled"
         private const val KEY_REMIND_LEAD = "reminder_lead_minutes"
+        private const val KEY_REMIND_STYLE = "reminder_style"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_AUTO_UPDATE = "auto_check_updates"
 

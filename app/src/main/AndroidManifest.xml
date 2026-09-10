@@ -18,6 +18,13 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- 「允许后台运行」按钮：请求把本应用加入电池优化白名单，国产系统上提醒才不容易被清理 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 闹钟方式的上课提醒：到点用前台服务按闹钟音量响铃（媒体播放类型），锁屏上全屏弹出并震动 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- 应用内更新：下载完成后拉起系统安装器需要此权限；首次会由系统引导用户放行「安装未知应用」 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- 「常用电话」里拨号用；只发起拨号界面，不直接呼出，因此无需 CALL_PHONE -->
@@ -105,6 +112,21 @@
         <receiver
             android:name=".widget.WidgetPinReceiver"
             android:exported="false" />
+
+        <!-- 闹钟方式的响铃与锁屏全屏页 -->
+        <service
+            android:name=".core.notify.AlarmService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+        <activity
+            android:name=".ui.notify.AlarmActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.OneBNU"
+            android:turnScreenOn="true" />
 
         <!-- 上课提醒：定时到点；开机 / 更新 / 改时间后重排 -->
         <receiver

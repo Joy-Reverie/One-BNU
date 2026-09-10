@@ -70,9 +70,20 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 ## 上课提醒
 
-每次只向 AlarmManager 登记**一个**定时（下一次需要提醒的时刻，`core/notify/ClassReminder.kt`），到点发通知后再登记下一个；
-课表缓存或日程变动、开机、时区 / 时间变化、应用升级后重算。用 `setExactAndAllowWhileIdle`，Android 12 上若「闹钟和提醒」
-权限未开则退回非精确定时。提醒是普通通知，不响铃。
+每次只向 AlarmManager 登记**一个**定时（下一次需要提醒的时刻，`core/notify/ClassReminder.kt`），到点送达后再登记下一个；
+课表缓存或日程变动、开机、时区 / 时间变化、应用升级后重算。Android 12 上若「闹钟和提醒」权限未开则退回非精确定时。
+
+两种送达方式（`core/store/ReminderStyle.kt`，「我的 → 上课提醒 → 提醒方式」）：
+
+- **通知提醒**（默认）：`setExactAndAllowWhileIdle` 登记，到点发一条高优先级通知，按通知音量响一声。
+- **闹钟提醒**：改用 `setAlarmClock` 登记 —— 系统把它当作用户可见的闹钟，Doze 不延后，状态栏显示闹钟图标，
+  国产 ROM 对这一类定时的拦截也最轻。到点由 `core/notify/AlarmService`（前台服务，`mediaPlayback` 类型）以
+  `USAGE_ALARM` 循环播放系统闹铃并震动，通知带全屏意图：锁屏或灭屏时直接弹出 `ui/notify/AlarmActivity` 并点亮屏幕，
+  亮屏时是横幅加「停止」。两分钟没人理会自动停，`MediaPlayer.setWakeMode` 与服务自持的唤醒锁保证灭屏期间不被 CPU 休眠掐断。
+
+定时始终由系统 AlarmManager 保管，应用进程被清理不影响到点；精确闹钟触发时系统会给应用一段临时白名单，后台也能拉起前台服务。
+真正能挡住提醒的只有 ROM 级别的「强制停止」，所以卡片上保留了忽略电池优化的入口。前台服务万一起不来（系统拒绝后台启动），
+`ClassReminder.deliver` 会退回普通通知，不让这一条整个丢掉。
 
 ## 个人日程
 

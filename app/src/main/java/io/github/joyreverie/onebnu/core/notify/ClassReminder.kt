@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import io.github.joyreverie.onebnu.MainActivity
 import io.github.joyreverie.onebnu.R
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.store.ReminderStyle
 import io.github.joyreverie.onebnu.core.store.Settings
 import java.time.Instant
 import java.time.LocalDate
@@ -33,6 +34,9 @@ import java.time.format.DateTimeFormatter
  *  - 真正拦住提醒的是国产系统的后台限制（省电策略 / 自启动），所以「我的」页给了
  *    「允许后台运行」入口（忽略电池优化），并提示去系统设置放开自启动。
  *  - 通知只有两行：课名 + 「N 分钟后开始 · 教室」，没有多余小字；高优先级渠道保证横幅弹出。
+ *  - 两种送达方式（[ReminderStyle]）：通知提醒发一条普通通知；闹钟提醒改用 [AlarmManager.setAlarmClock]
+ *    登记 —— 系统把它当作用户可见的闹钟，Doze 不延后、状态栏显示闹钟图标、国产 ROM 对它的拦截也最轻 ——
+ *    到点由 [AlarmService] 按闹钟音量持续响铃。
  */
 object ClassReminder {
 
@@ -119,14 +123,24 @@ object ClassReminder {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         runCatching {
-            if (canScheduleExact(context)) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireMillis, pending)
-            } else {
+            when {
+                // 闹钟方式走系统的「闹钟」通道：不受 Doze 与省电策略延后，状态栏会出现闹钟图标，
+                // 点图标能回到应用（showIntent）。定时由系统保管，应用被清理也不影响。
+                settings.reminderStyle == ReminderStyle.ALARM && canScheduleExact(context) ->
+                    am.setAlarmClock(AlarmManager.AlarmClockInfo(fireMillis, openIntent(context)), pending)
+                canScheduleExact(context) ->
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireMillis, pending)
                 // 拿不到精确闹钟权限时退回非精确闹钟，可能晚几分钟
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireMillis, pending)
+                else -> am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireMillis, pending)
             }
         }
     }
+
+    private fun openIntent(context: Context): PendingIntent = PendingIntent.getActivity(
+        context, REQUEST_OPEN,
+        Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
 
     private fun alarmIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
         context, REQUEST_ALARM,
@@ -134,7 +148,7 @@ object ClassReminder {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
-    /** 闹钟响了：给这一刻开始的每个事项发一条通知，然后排下一次。 */
+    /** 到点了：把这一刻开始的事项按当前方式送达，然后排下一次。 */
     fun onAlarm(context: Context, intent: Intent) {
         val settings = ServiceLocator.settings
         if (settings.remindersEnabled) {
@@ -142,22 +156,36 @@ object ClassReminder {
             if (startMillis > 0) {
                 val start = LocalDateTime.ofInstant(Instant.ofEpochMilli(startMillis), ZoneId.systemDefault())
                 val items = ReminderPlanner.startingAt(upcoming(context, start.minusDays(1)), start)
-                items.forEachIndexed { i, item -> notify(context, item, settings.reminderLeadMinutes, NOTIFICATION_BASE_ID + i) }
+                deliver(context, items, settings.reminderLeadMinutes, settings.reminderStyle)
             }
         }
         reschedule(context)
     }
 
-    /** 给用户看一眼横幅长什么样。 */
-    fun showTest(context: Context) {
+    /** 闹钟方式起不来（系统拒绝后台启动前台服务）时退回通知：宁可安静，也不能整条丢掉。 */
+    private fun deliver(context: Context, items: List<ReminderItem>, lead: Int, style: ReminderStyle) {
+        if (items.isEmpty()) return
+        if (style == ReminderStyle.ALARM && AlarmService.start(context, alarmTitle(items), alarmText(items, lead))) return
+        items.forEachIndexed { i, item -> notify(context, item, lead, NOTIFICATION_BASE_ID + i) }
+    }
+
+    private fun alarmTitle(items: List<ReminderItem>): String = items.joinToString("、") { it.title }
+
+    private fun alarmText(items: List<ReminderItem>, lead: Int): String = listOfNotNull(
+        "$lead 分钟后开始",
+        items.firstNotNullOfOrNull { it.location.takeIf { l -> l.isNotBlank() } },
+    ).joinToString(" · ")
+
+    /** 试一下当前的提醒方式：通知就发一条横幅，闹钟就响起来。 */
+    fun showTest(context: Context, style: ReminderStyle = ServiceLocator.settings.reminderStyle) {
         val now = LocalDateTime.now()
         val lead = ServiceLocator.settings.reminderLeadMinutes
-        notify(
-            context,
-            ReminderItem(now.plusMinutes(lead.toLong()), now.plusMinutes(lead + 95L), "高等数学（一）", "教七楼 201", isEvent = false),
-            lead,
-            NOTIFICATION_BASE_ID + 99,
+        val sample = ReminderItem(
+            now.plusMinutes(lead.toLong()), now.plusMinutes(lead + 95L),
+            "高等数学（一）", "教七楼 201", isEvent = false,
         )
+        if (style == ReminderStyle.ALARM && AlarmService.start(context, sample.title, alarmText(listOf(sample), lead))) return
+        notify(context, sample, lead, NOTIFICATION_BASE_ID + 99)
     }
 
     private fun notify(context: Context, item: ReminderItem, leadMinutes: Int, id: Int) {

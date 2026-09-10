@@ -29,10 +29,14 @@ import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -55,6 +59,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.notify.ClassReminder
+import io.github.joyreverie.onebnu.core.store.ReminderStyle
 import io.github.joyreverie.onebnu.ui.components.SectionCard
 import io.github.joyreverie.onebnu.widget.MiuiShortcutPermission
 import io.github.joyreverie.onebnu.widget.TodayWidgetProvider
@@ -217,7 +222,8 @@ private fun ManualPinDialog(size: WidgetSize, onDismiss: () -> Unit) {
     )
 }
 
-/** 「我的」页：上课提醒开关、提前时间、后台运行权限。 */
+/** 「我的」页：上课提醒开关、提前时间、提醒方式、后台运行权限。 */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReminderCard() {
     val context = LocalContext.current
@@ -225,6 +231,7 @@ fun ReminderCard() {
     var enabled by remember { mutableStateOf(settings.remindersEnabled) }
     var lead by remember { mutableIntStateOf(settings.reminderLeadMinutes) }
     var editingLead by remember { mutableStateOf(false) }
+    var style by remember { mutableStateOf(settings.reminderStyle) }
     var next by remember { mutableStateOf(ClassReminder.nextDescription(context)) }
     var batteryOk by remember { mutableStateOf(ClassReminder.ignoringBatteryOptimizations(context)) }
     var exactOk by remember { mutableStateOf(ClassReminder.canScheduleExact(context)) }
@@ -265,7 +272,7 @@ fun ReminderCard() {
                 Text("上课前提醒", style = MaterialTheme.typography.bodyMedium)
                 Text(
                     when {
-                        !enabled -> "每节课和日程开始前发一条通知"
+                        !enabled -> "每节课和日程开始前提醒一次"
                         next != null -> "下一次：$next"
                         else -> "近期没有课程或日程"
                     },
@@ -297,6 +304,34 @@ fun ReminderCard() {
             Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
         }
 
+        Divider(Modifier.padding(vertical = 8.dp))
+        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("提醒方式", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = { ClassReminder.showTest(context, style) }) { Text("试一下") }
+        }
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            ReminderStyle.entries.forEachIndexed { i, s ->
+                SegmentedButton(
+                    selected = style == s,
+                    onClick = {
+                        style = s
+                        settings.reminderStyle = s
+                        // 闹钟与通知登记方式不同，改完要重排下一次
+                        ClassReminder.reschedule(context)
+                        next = ClassReminder.nextDescription(context)
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(index = i, count = ReminderStyle.entries.size),
+                    label = { Text(s.label) },
+                )
+            }
+        }
+        Text(
+            style.description,
+            Modifier.padding(top = 6.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
+
         if (enabled) {
             // 已经放行就不再占地方：这几行只在系统真的会拦截提醒时出现，授权后自动消失
             if (!batteryOk) {
@@ -305,7 +340,7 @@ fun ReminderCard() {
                     Column(Modifier.weight(1f)) {
                         Text("后台运行", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            "未忽略电池优化，通知可能不按时。建议允许，并把省电策略设为「无限制」、允许自启动",
+                            "未忽略电池优化，提醒可能被系统延后或拦截",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                         )

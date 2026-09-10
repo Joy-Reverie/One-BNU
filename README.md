@@ -23,7 +23,7 @@
 - **学分核算**：各学期修读学分按模块归类求和，归类可手动修改
 - **校内联系方式**：北京校区 337 条各部门公开办公电话，可搜索、分区筛选、点击拨号
 - **个人日程**：事件、时间、地点、备注，可按星期几重复；与课表一起出现在首页时间轴、课表网格和小组件里，网格中按起止时刻定位、按时长取高
-- **上课提醒**：课程或日程开始前 N 分钟发通知（不响铃）
+- **上课提醒**：课程或日程开始前 N 分钟提醒，可选通知提醒（响一声）或闹钟提醒（按闹钟音量持续响铃、锁屏全屏弹出）
 - **内嵌浏览器**：图书馆、数字京师门户、教务系统，自动带入登录态
 - **检查更新**：设置页内查询 GitHub Releases，下载并安装新版本；联网启动时自动检查一次并询问，可关闭
 - **深浅色**：跟随系统，或在设置里固定为浅色 / 深色
@@ -74,6 +74,7 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 - 权限：`INTERNET`、`ACCESS_NETWORK_STATE`；`POST_NOTIFICATIONS`、`USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM`、
   `RECEIVE_BOOT_COMPLETED`、`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 仅在开启上课提醒时用到；
   `REQUEST_INSTALL_PACKAGES` 仅用于安装应用内下载的更新包；`WRITE_EXTERNAL_STORAGE` 限 Android 9 及以下保存校历图片时申请。
+  选择闹钟提醒时还会用到 `FOREGROUND_SERVICE`(+`MEDIA_PLAYBACK`)、`USE_FULL_SCREEN_INTENT`、`VIBRATE`、`WAKE_LOCK`，只在响铃期间生效。
   拨号只唤起拨号盘，不申请通话权限。
 
 ## 构建
@@ -117,6 +118,7 @@ adb shell am start -n $P/.widget.WidgetPreviewActivity --es mode sample    # 小
 adb shell am start -n $P/.widget.ContactsPreviewActivity                   # 校内联系方式
 adb shell am start -n $P/.widget.CreditsPreviewActivity                    # 学分核算
 adb shell am start -n $P/.widget.ProfileCardsPreviewActivity               # 「我的」页的提醒与小组件卡
+adb shell am start -n $P/.widget.ProfileCardsPreviewActivity --ez alarm true --ei delay 8  # 延迟起铃，可先锁屏看闹钟全屏页
 adb shell am start -n $P/.widget.SettingsPreviewActivity --es version 1.0.0  # 设置页；伪装旧版本以演练更新流程
 adb shell am start -n $P/.widget.AutoUpdatePreviewActivity --es version 1.0.0  # 启动时自动检查更新的弹窗
 ```
@@ -160,7 +162,8 @@ docs/              技术说明、截图、校内联系方式的原始整理稿
 - 二次认证只支持短信方式，企业微信扫码未实现。
 - 图书馆检索为内嵌官网，未做原生解析。
 - 小组件后台刷新依赖「记住密码」；换新设备需要短信验证时后台不会自动完成。
-- 小米、华为等 ROM 需在应用信息里允许自启动并将省电策略设为「无限制」，上课提醒才可靠。
+- 小米、华为等 ROM 需在应用信息里允许自启动、将省电策略设为「无限制」并允许忽略电池优化，上课提醒才可靠；
+  闹钟提醒用系统的闹钟通道登记（状态栏会出现闹钟图标），受这类限制的影响比通知提醒小。
 - 桌面小组件由启动器渲染，深浅色跟随系统，不受应用内主题设置影响。
 - 测试账号为 2026 级新生，成绩与考试的行解析按真实表头加构造数据验证，等有真实数据后需复核。
 
