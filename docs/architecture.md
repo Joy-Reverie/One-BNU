@@ -73,6 +73,15 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 每次只向 AlarmManager 登记**一个**定时（下一次需要提醒的时刻，`core/notify/ClassReminder.kt`），到点送达后再登记下一个；
 课表缓存或日程变动、开机、时区 / 时间变化、应用升级后重算。Android 12 上若「闹钟和提醒」权限未开则退回非精确定时。
 
+提醒范围含课程与日程两类（`Settings.remindEvents` 可只留课程）。日程随时能加，所以「下一次」不是简单的
+`开始时刻 − 提前时间`（`core/notify/ReminderPlanner.next`）：
+
+- **提醒点已过、但事项还没开始**就立刻提醒。否则在开始前 5 分钟添加的日程（提前时间 10 分钟）会被整条跳过。
+- 立刻提醒会被反复算出来，所以送达前先把「已提醒到哪一刻」记进 `Settings.lastRemindedStart`（被提醒事项的开始时刻），
+  重排时一律排除不晚于它的事项 —— 少了这一步就会一直响。
+- 通知与闹钟的「N 分钟后开始」按**真实剩余时间**算（`ClassReminder.remainingLabel`），不照抄提前时间，
+  不足一分钟写「即将开始」。
+
 两种送达方式（`core/store/ReminderStyle.kt`，「我的 → 上课提醒 → 提醒方式」）：
 
 - **通知提醒**（默认）：`setExactAndAllowWhileIdle` 登记，到点发一条高优先级通知，按通知音量响一声。

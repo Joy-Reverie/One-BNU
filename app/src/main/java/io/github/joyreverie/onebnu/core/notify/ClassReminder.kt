@@ -21,6 +21,7 @@ import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.store.ReminderStyle
 import io.github.joyreverie.onebnu.core.store.Settings
 import io.github.joyreverie.onebnu.ui.notify.AlarmActivity
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -77,19 +78,27 @@ object ClassReminder {
     fun ignoringBatteryOptimizations(context: Context): Boolean =
         context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) == true
 
-    /** 所有待提醒事项（今天起 8 天）。 */
+    /** 所有待提醒事项（今天起 8 天）；关掉「日程也提醒」时只算课程。 */
     fun upcoming(context: Context, now: LocalDateTime = LocalDateTime.now()): List<ReminderItem> {
         val schedule = ServiceLocator.scheduleCache.load()?.schedule
-        val events = ServiceLocator.events.all()
+        val events = if (ServiceLocator.settings.remindEvents) ServiceLocator.events.all() else emptyList()
         return ReminderPlanner.items(schedule, events, now.toLocalDate(), LOOKAHEAD_DAYS, Settings.PERIOD_TIMES)
     }
+
+    /** 已提醒到哪一刻；没提醒过则为 null。 */
+    private fun deliveredThrough(): LocalDateTime? =
+        ServiceLocator.settings.lastRemindedStart
+            .takeIf { it > 0 }
+            ?.let { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneId.systemDefault()) }
 
     /** 下一次提醒的说明，如「周五 07:50 · 高级算法设计」；没有则为 null。 */
     fun nextDescription(context: Context): String? {
         val settings = ServiceLocator.settings
         if (!settings.remindersEnabled) return null
         val now = LocalDateTime.now()
-        val (at, items) = ReminderPlanner.next(upcoming(context, now), now, settings.reminderLeadMinutes) ?: return null
+        val (at, items) = ReminderPlanner.next(
+            upcoming(context, now), now, settings.reminderLeadMinutes, deliveredThrough(),
+        ) ?: return null
         val day = when (at.toLocalDate()) {
             now.toLocalDate() -> "今天"
             now.toLocalDate().plusDays(1) -> "明天"
@@ -108,7 +117,9 @@ object ClassReminder {
             return
         }
         val now = LocalDateTime.now()
-        val next = ReminderPlanner.next(upcoming(context, now), now, settings.reminderLeadMinutes)
+        val next = ReminderPlanner.next(
+            upcoming(context, now), now, settings.reminderLeadMinutes, deliveredThrough(),
+        )
         if (next == null) {
             am.cancel(pi)
             return
@@ -158,16 +169,18 @@ object ClassReminder {
             if (startMillis > 0) {
                 val start = LocalDateTime.ofInstant(Instant.ofEpochMilli(startMillis), ZoneId.systemDefault())
                 val items = ReminderPlanner.startingAt(upcoming(context, start.minusDays(1)), start)
-                deliver(context, items, settings.reminderLeadMinutes, settings.reminderStyle)
+                // 先记下「已提醒到这一刻」再送达：紧接着的 reschedule 才不会把同一条又算成「该立刻提醒」
+                settings.lastRemindedStart = startMillis
+                deliver(context, items, settings.reminderStyle)
             }
         }
         reschedule(context)
     }
 
     /** 闹钟方式起不来（系统拒绝后台启动前台服务）时退回通知：宁可安静，也不能整条丢掉。 */
-    private fun deliver(context: Context, items: List<ReminderItem>, lead: Int, style: ReminderStyle) {
+    private fun deliver(context: Context, items: List<ReminderItem>, style: ReminderStyle) {
         if (items.isEmpty()) return
-        if (style == ReminderStyle.ALARM && AlarmService.start(context, alarmTitle(items), alarmText(items, lead))) {
+        if (style == ReminderStyle.ALARM && AlarmService.start(context, alarmTitle(items), alarmText(items))) {
             // 亮屏且正在用应用时，系统只会把全屏意图降级成横幅；关掉通知权限的话连横幅都没有，
             // 那就没有「停止」可点了。所以前台时直接把全屏页拉起来。
             if (AppVisibility.foreground) {
@@ -180,15 +193,24 @@ object ClassReminder {
             }
             return
         }
-        items.forEachIndexed { i, item -> notify(context, item, lead, NOTIFICATION_BASE_ID + i) }
+        items.forEachIndexed { i, item -> notify(context, item, NOTIFICATION_BASE_ID + i) }
     }
 
     private fun alarmTitle(items: List<ReminderItem>): String = items.joinToString("、") { it.title }
 
-    private fun alarmText(items: List<ReminderItem>, lead: Int): String = listOfNotNull(
-        "$lead 分钟后开始",
+    private fun alarmText(items: List<ReminderItem>): String = listOfNotNull(
+        remainingLabel(items.first().start),
         items.firstNotNullOfOrNull { it.location.takeIf { l -> l.isNotBlank() } },
     ).joinToString(" · ")
+
+    /**
+     * 「N 分钟后开始」按**真实剩余时间**算，而不是照抄提前时间：
+     * 新加的近期日程是立刻提醒的，那时离开始往往已不足提前时间。
+     */
+    internal fun remainingLabel(start: LocalDateTime, now: LocalDateTime = LocalDateTime.now()): String {
+        val minutes = Math.round(Duration.between(now, start).seconds / 60.0)
+        return if (minutes >= 1) "$minutes 分钟后开始" else "即将开始"
+    }
 
     /** 试一下当前的提醒方式：通知就发一条横幅，闹钟就响起来。 */
     fun showTest(context: Context, style: ReminderStyle = ServiceLocator.settings.reminderStyle) {
@@ -198,11 +220,11 @@ object ClassReminder {
             now.plusMinutes(lead.toLong()), now.plusMinutes(lead + 95L),
             "高等数学（一）", "教七楼 201", isEvent = false,
         )
-        if (style == ReminderStyle.ALARM && AlarmService.start(context, sample.title, alarmText(listOf(sample), lead))) return
-        notify(context, sample, lead, NOTIFICATION_BASE_ID + 99)
+        if (style == ReminderStyle.ALARM && AlarmService.start(context, sample.title, alarmText(listOf(sample)))) return
+        notify(context, sample, NOTIFICATION_BASE_ID + 99)
     }
 
-    private fun notify(context: Context, item: ReminderItem, leadMinutes: Int, id: Int) {
+    private fun notify(context: Context, item: ReminderItem, id: Int) {
         if (!notificationsAllowed(context)) return
         ensureChannel(context)
         val open = PendingIntent.getActivity(
@@ -210,10 +232,10 @@ object ClassReminder {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val text = listOf(
-            "$leadMinutes 分钟后开始",
+        val text = listOfNotNull(
+            remainingLabel(item.start),
             item.location.takeIf { it.isNotBlank() },
-        ).filterNotNull().joinToString(" · ")
+        ).joinToString(" · ")
         val n = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher_monochrome)
             .setColor(0xFF1B3C6E.toInt())

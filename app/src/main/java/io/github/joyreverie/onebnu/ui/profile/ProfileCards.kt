@@ -235,6 +235,7 @@ fun ReminderCard() {
     var editingLead by remember { mutableStateOf(false) }
     var style by remember { mutableStateOf(settings.reminderStyle) }
     val ringing by AlarmService.ringing.collectAsState()
+    var remindEvents by remember { mutableStateOf(settings.remindEvents) }
     var next by remember { mutableStateOf(ClassReminder.nextDescription(context)) }
     var batteryOk by remember { mutableStateOf(ClassReminder.ignoringBatteryOptimizations(context)) }
     var exactOk by remember { mutableStateOf(ClassReminder.canScheduleExact(context)) }
@@ -275,7 +276,7 @@ fun ReminderCard() {
                 Text("上课前提醒", style = MaterialTheme.typography.bodyMedium)
                 Text(
                     when {
-                        !enabled -> "每节课和日程开始前提醒一次"
+                        !enabled -> if (remindEvents) "每节课和日程开始前提醒一次" else "每节课开始前提醒一次"
                         next != null -> "下一次：$next"
                         else -> "近期没有课程或日程"
                     },
@@ -305,6 +306,21 @@ fun ReminderCard() {
             Text("提前时间", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Text("$lead 分钟", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
             Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
+        }
+
+        Divider(Modifier.padding(vertical = 8.dp))
+        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("日程也提醒", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Switch(
+                checked = remindEvents,
+                onCheckedChange = { on ->
+                    remindEvents = on
+                    settings.remindEvents = on
+                    // 提醒范围变了，下一次是谁也就变了
+                    ClassReminder.reschedule(context)
+                    next = ClassReminder.nextDescription(context)
+                },
+            )
         }
 
         Divider(Modifier.padding(vertical = 8.dp))

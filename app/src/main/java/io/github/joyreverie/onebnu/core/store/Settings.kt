@@ -63,6 +63,19 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_REMIND, false)
         set(value) { prefs.edit().putBoolean(KEY_REMIND, value).apply() }
 
+    /** 日程是否一起提醒（关掉就只提醒课程）。 */
+    var remindEvents: Boolean
+        get() = prefs.getBoolean(KEY_REMIND_EVENTS, true)
+        set(value) { prefs.edit().putBoolean(KEY_REMIND_EVENTS, value).apply() }
+
+    /**
+     * 已经提醒到哪一刻（被提醒事项的开始时刻，epoch 毫秒；0 表示还没提醒过）。
+     * 用来防止「提醒时刻已过、立刻提醒」的事项在每次重排时被反复提醒。
+     */
+    var lastRemindedStart: Long
+        get() = prefs.getLong(KEY_REMIND_DONE, 0L)
+        set(value) { prefs.edit().putLong(KEY_REMIND_DONE, value).apply() }
+
     /** 提醒的送达方式：通知或闹钟。 */
     var reminderStyle: ReminderStyle
         get() = runCatching { ReminderStyle.valueOf(prefs.getString(KEY_REMIND_STYLE, null) ?: "") }
@@ -82,6 +95,8 @@ class Settings(context: Context) {
         private const val KEY_REMIND = "reminders_enabled"
         private const val KEY_REMIND_LEAD = "reminder_lead_minutes"
         private const val KEY_REMIND_STYLE = "reminder_style"
+        private const val KEY_REMIND_EVENTS = "reminder_events"
+        private const val KEY_REMIND_DONE = "reminder_last_start"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_AUTO_UPDATE = "auto_check_updates"
 
