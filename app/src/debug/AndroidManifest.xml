@@ -28,6 +28,11 @@
             android:label="Profile cards preview"
             android:theme="@style/Theme.OneBNU" />
         <activity
+            android:name=".widget.AutoUpdatePreviewActivity"
+            android:exported="true"
+            android:label="Auto update preview"
+            android:theme="@style/Theme.OneBNU" />
+        <activity
             android:name=".widget.SettingsPreviewActivity"
             android:exported="true"
             android:label="Settings preview"

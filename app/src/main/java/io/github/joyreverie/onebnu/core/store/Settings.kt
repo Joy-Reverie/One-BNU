@@ -43,6 +43,11 @@ class Settings(context: Context) {
         _themeMode.value = mode
     }
 
+    /** 联网启动时自动检查更新。 */
+    var autoCheckUpdates: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_UPDATE, true)
+        set(value) { prefs.edit().putBoolean(KEY_AUTO_UPDATE, value).apply() }
+
     /** 是否在进入应用时要求生物识别 / 设备锁验证。 */
     var requireUnlock: Boolean
         get() = prefs.getBoolean(KEY_LOCK, false)
@@ -71,6 +76,7 @@ class Settings(context: Context) {
         private const val KEY_REMIND = "reminders_enabled"
         private const val KEY_REMIND_LEAD = "reminder_lead_minutes"
         private const val KEY_THEME = "theme_mode"
+        private const val KEY_AUTO_UPDATE = "auto_check_updates"
 
         /**
          * 2026-2027 学年秋季学期第一周周一，取自学校校历。

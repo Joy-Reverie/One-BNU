@@ -99,6 +99,10 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 DownloadManager，文件落在应用私有外部目录，经 FileProvider 授权给系统安装器；系统安装时校验签名与已装版本一致。
 应用在后台时下载完成改为发通知，回到设置页也能继续安装。
 
+启动时的自动检查（`core/update/AutoUpdate.kt`，挂在界面根部的 `AutoUpdatePrompt`）：有网络、用户没关掉、进程内没查过、
+距上次成功检查不少于 6 小时才发请求；查到的新版本若用户点过「以后再说」，同一版本不再弹，正在下载或已下载的版本也不再弹。
+对话框与下载提示都注明安装包由 GitHub 提供、请注意网络环境。判断「有网络」只看 `NET_CAPABILITY_INTERNET`，不要求系统的联网校验通过。
+
 ## 混淆与崩溃栈
 
 release 开启 R8 混淆、包层级打平与资源收缩，规则见 `app/proguard-rules.pro`。源文件名统一替换、只保留行号，

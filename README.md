@@ -25,7 +25,7 @@
 - **个人日程**：事件、时间、地点、备注，可按星期几重复；与课表一起出现在首页时间轴、课表网格和小组件里
 - **上课提醒**：课程或日程开始前 N 分钟发通知（不响铃）
 - **内嵌浏览器**：图书馆、数字京师门户、教务系统，自动带入登录态
-- **检查更新**：设置页内查询 GitHub Releases，下载并安装新版本
+- **检查更新**：设置页内查询 GitHub Releases，下载并安装新版本；联网启动时自动检查一次并询问，可关闭
 - **深浅色**：跟随系统，或在设置里固定为浅色 / 深色
 
 ## 截图
@@ -63,7 +63,7 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 
 ## 隐私与安全
 
-- 不设服务器。所有请求直接发往学校域名，只有「检查更新」会访问 GitHub 的公开接口。
+- 不设服务器。所有请求直接发往学校域名，只有「检查更新」（手动，或联网启动时自动，可在设置里关闭）会访问 GitHub 的公开接口，请求不带任何身份信息。
 - 账号密码经 `EncryptedSharedPreferences`（AES256-GCM，密钥由 Android Keystore 持有且不可导出）加密后仅存本机；
   Keystore 不可用时拒绝保存，而不是降级为明文。
 - 会话 Cookie 只在内存，退出应用即失效。唯一跨会话留存的是认证服务用来认设备的 `devInfo`，它不是凭据，
@@ -118,6 +118,7 @@ adb shell am start -n $P/.widget.ContactsPreviewActivity                   # 校
 adb shell am start -n $P/.widget.CreditsPreviewActivity                    # 学分核算
 adb shell am start -n $P/.widget.ProfileCardsPreviewActivity               # 「我的」页的提醒与小组件卡
 adb shell am start -n $P/.widget.SettingsPreviewActivity --es version 1.0.0  # 设置页；伪装旧版本以演练更新流程
+adb shell am start -n $P/.widget.AutoUpdatePreviewActivity --es version 1.0.0  # 启动时自动检查更新的弹窗
 ```
 
 ## 项目结构

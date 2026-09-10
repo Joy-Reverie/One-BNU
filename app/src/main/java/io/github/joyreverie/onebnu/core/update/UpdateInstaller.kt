@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.FileProvider
 import io.github.joyreverie.onebnu.AppVisibility
+import io.github.joyreverie.onebnu.BuildConfig
 import io.github.joyreverie.onebnu.R
 import io.github.joyreverie.onebnu.core.notify.ClassReminder
 import java.io.File
@@ -87,6 +88,15 @@ object UpdateInstaller {
         if (id < 0) return DownloadState.None
         val version = p.getString(KEY_VERSION, null).orEmpty()
         val file = p.getString(KEY_FILE, null)?.let { targetFile(context, it) }
+
+        // 记录里的版本不高于当前运行的版本，说明已经装上了（或装了更新的）：
+        // 遗留的下载记录、通知与安装包都没有意义，顺手清掉，不再提示「点击安装」
+        if (version.isBlank() || UpdateChecker.compare(version, BuildConfig.VERSION_NAME) <= 0) {
+            cancel(context)
+            file?.delete()
+            return DownloadState.None
+        }
+
         val dm = context.getSystemService(DownloadManager::class.java) ?: return DownloadState.None
 
         val cursor = runCatching { dm.query(DownloadManager.Query().setFilterById(id)) }.getOrNull()
