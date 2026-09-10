@@ -1,0 +1,20 @@
+name: 功能建议
+description: 想要新的功能，或者现有功能可以做得更好
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: 想解决什么问题
+      description: 说明场景，而不只是方案。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的做法
+  - type: textarea
+    id: source
+    attributes:
+      label: 数据来源
+      description: 如果需要学校系统的新数据，请给出对应页面的地址或入口。

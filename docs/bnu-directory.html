@@ -1,0 +1,910 @@
+<title>京师通讯录</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+:root{
+  --ground:#F5F7FA; --surface:#FFFFFF; --surface-2:#EDF1F6;
+  --ink:#131A24; --ink-2:#4A5665; --ink-3:#788494;
+  --line:#DCE3EC; --line-2:#C6D0DC;
+  --blue:#1B3A6B; --blue-ink:#1B3A6B; --blue-soft:#E7EDF6;
+  --bronze:#8F6329; --bronze-soft:#F3EADC;
+  --alert:#9E2A22; --alert-soft:#FBECEA; --alert-line:#E8C4BF;
+  --warn:#7E5B0C; --warn-soft:#FAF1D9;
+  --shadow:0 1px 2px rgba(19,26,36,.05), 0 8px 24px -12px rgba(19,26,36,.18);
+  --display:"Noto Serif SC",Songti SC,Georgia,serif;
+  --body:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,"Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E131A; --surface:#161D27; --surface-2:#1D2631;
+    --ink:#E5EAF1; --ink-2:#A9B4C2; --ink-3:#7C8898;
+    --line:#28313D; --line-2:#3A4553;
+    --blue:#8FB3E0; --blue-ink:#A9C6EA; --blue-soft:#1A2740;
+    --bronze:#CFA469; --bronze-soft:#2B2317;
+    --alert:#EF9189; --alert-soft:#301A19; --alert-line:#5A2F2B;
+    --warn:#DFB85F; --warn-soft:#2A2313;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E131A; --surface:#161D27; --surface-2:#1D2631;
+  --ink:#E5EAF1; --ink-2:#A9B4C2; --ink-3:#7C8898;
+  --line:#28313D; --line-2:#3A4553;
+  --blue:#8FB3E0; --blue-ink:#A9C6EA; --blue-soft:#1A2740;
+  --bronze:#CFA469; --bronze-soft:#2B2317;
+  --alert:#EF9189; --alert-soft:#301A19; --alert-line:#5A2F2B;
+  --warn:#DFB85F; --warn-soft:#2A2313;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--body); font-size:15px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1120px; margin:0 auto; padding:0 20px 96px}
+
+/* ---------- masthead ---------- */
+.masthead{border-bottom:1px solid var(--line); background:var(--surface)}
+.masthead .wrap{padding-top:36px; padding-bottom:28px}
+.bell{
+  display:inline-flex; align-items:center; gap:9px;
+  font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--bronze); margin-bottom:14px;
+}
+.bell::before{
+  content:""; width:22px; height:22px; flex:none; border-radius:50%;
+  background:var(--bronze-soft); border:1.5px solid var(--bronze);
+  box-shadow:inset 0 -5px 0 -2px var(--bronze);
+}
+h1{
+  font-family:var(--display); font-weight:700; font-size:clamp(30px,5vw,42px);
+  letter-spacing:.02em; margin:0 0 8px; text-wrap:balance; color:var(--blue-ink);
+}
+.sub{margin:0 0 20px; color:var(--ink-2); font-size:15px; max-width:62ch}
+.facts{
+  display:flex; flex-wrap:wrap; gap:8px 10px; margin:0; padding:0; list-style:none;
+  font-size:12.5px; color:var(--ink-2);
+}
+.facts li{
+  background:var(--surface-2); border:1px solid var(--line);
+  border-radius:5px; padding:4px 9px;
+}
+.facts b{font-family:var(--mono); font-weight:600; color:var(--ink); letter-spacing:.01em}
+
+/* ---------- controls ---------- */
+.controls{
+  position:sticky; top:0; z-index:20; background:var(--ground);
+  border-bottom:1px solid var(--line);
+  padding-top:12px; padding-bottom:12px;
+  box-shadow:0 6px 16px -14px rgba(19,26,36,.5);
+}
+.searchrow{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+.field{position:relative; flex:1 1 300px; min-width:0}
+.field input{
+  width:100%; font-family:var(--body); font-size:15px; color:var(--ink);
+  background:var(--surface); border:1.5px solid var(--line-2); border-radius:8px;
+  padding:10px 14px 10px 38px; outline:none;
+}
+.field input::placeholder{color:var(--ink-3)}
+.field input:focus{border-color:var(--blue); box-shadow:0 0 0 3px var(--blue-soft)}
+.field svg{position:absolute; left:13px; top:50%; transform:translateY(-50%); color:var(--ink-3)}
+#count{font-family:var(--mono); font-size:12.5px; color:var(--ink-2); white-space:nowrap; font-variant-numeric:tabular-nums}
+.jump{display:flex; gap:6px; flex-wrap:wrap; margin-top:10px}
+.jump a{
+  font-size:12.5px; color:var(--ink-2); text-decoration:none;
+  border:1px solid var(--line); background:var(--surface);
+  border-radius:999px; padding:3px 11px;
+}
+.jump a:hover{border-color:var(--blue); color:var(--blue-ink); background:var(--blue-soft)}
+.jump a:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+
+/* ---------- emergency ---------- */
+.sos{
+  margin-top:26px; background:var(--alert-soft); border:1.5px solid var(--alert-line);
+  border-radius:12px; padding:18px 20px; box-shadow:var(--shadow);
+}
+.sos h2{
+  font-family:var(--display); font-size:17px; font-weight:700; margin:0 0 4px; color:var(--alert);
+}
+.sos p{margin:0 0 14px; font-size:13px; color:var(--ink-2)}
+.sosgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px}
+.sosgrid a{
+  display:block; text-decoration:none; background:var(--surface);
+  border:1px solid var(--alert-line); border-radius:9px; padding:11px 13px;
+}
+.sosgrid a:hover{border-color:var(--alert)}
+.sosgrid a:focus-visible{outline:2px solid var(--alert); outline-offset:2px}
+.sosgrid .n{
+  display:block; font-family:var(--mono); font-weight:600; font-size:19px;
+  color:var(--alert); letter-spacing:.01em;
+}
+.sosgrid .l{display:block; font-size:12.5px; color:var(--ink-2); margin-top:2px}
+
+/* ---------- sections ---------- */
+section{margin-top:30px; scroll-margin-top:130px}
+.shead{display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:10px}
+.shead h2{
+  font-family:var(--display); font-weight:700; font-size:20px; margin:0;
+  color:var(--ink); letter-spacing:.01em;
+}
+.shead h2 .en{
+  font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--bronze); margin-left:10px;
+}
+.src{font-size:12px; color:var(--ink-3); text-decoration:none; border-bottom:1px dotted var(--line-2)}
+.src:hover{color:var(--blue-ink); border-bottom-color:var(--blue)}
+.src:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+.note{
+  font-size:13px; color:var(--ink-2); background:var(--surface-2);
+  border-left:2.5px solid var(--bronze); border-radius:0 6px 6px 0;
+  padding:9px 13px; margin:0 0 10px;
+}
+.panel{
+  background:var(--surface); border:1px solid var(--line);
+  border-radius:10px; overflow:hidden;
+}
+.grouphead{
+  font-size:11.5px; font-family:var(--mono); letter-spacing:.11em; text-transform:uppercase;
+  color:var(--ink-3); background:var(--surface-2);
+  padding:7px 16px; border-bottom:1px solid var(--line); border-top:1px solid var(--line);
+}
+.panel > .grouphead:first-child{border-top:none}
+
+.row{
+  display:grid; gap:4px 16px; padding:11px 16px; border-top:1px solid var(--line);
+  grid-template-columns:minmax(0,1.5fr) 118px minmax(0,1fr) minmax(0,1.2fr);
+  align-items:baseline;
+}
+.panel > .row:first-child, .grouphead + .row{border-top:none}
+.row:hover{background:var(--surface-2)}
+.what{font-size:14px; color:var(--ink); min-width:0; overflow-wrap:anywhere}
+.who{font-size:12.5px; color:var(--ink-3); margin-left:7px}
+.tels{display:flex; flex-direction:column; gap:2px; align-items:flex-start}
+.tel{
+  font-family:var(--mono); font-size:14.5px; font-weight:600; letter-spacing:.005em;
+  color:var(--blue-ink); text-decoration:none; font-variant-numeric:tabular-nums;
+  border-bottom:1px solid transparent;
+}
+.tel:hover{border-bottom-color:var(--blue)}
+.tel:focus-visible{outline:2px solid var(--blue); outline-offset:2px; border-radius:2px}
+.ext{font-family:var(--mono); font-size:13px; color:var(--ink-2)}
+.where,.extra{font-size:12.5px; color:var(--ink-2); min-width:0; overflow-wrap:anywhere}
+.extra a{color:var(--ink-2); text-decoration:none; border-bottom:1px dotted var(--line-2)}
+.extra a:hover{color:var(--blue-ink)}
+.chip{
+  display:inline-block; font-size:10.5px; font-family:var(--mono); letter-spacing:.06em;
+  padding:1px 6px; border-radius:4px; vertical-align:1px; margin-left:6px; white-space:nowrap;
+  background:var(--warn-soft); color:var(--warn); border:1px solid currentColor;
+}
+.chip.h24{background:var(--blue-soft); color:var(--blue-ink)}
+.empty{padding:26px 16px; text-align:center; color:var(--ink-3); font-size:14px}
+
+/* ---------- hours ---------- */
+.hours{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:1px;
+  background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden;
+}
+.hours div{background:var(--surface); padding:12px 15px}
+.hours dt{font-size:13px; color:var(--ink); font-weight:600; margin:0 0 3px}
+.hours dd{margin:0; font-family:var(--mono); font-size:12.5px; color:var(--ink-2); line-height:1.7}
+
+footer{
+  margin-top:44px; padding-top:20px; border-top:1px solid var(--line);
+  font-size:12.5px; color:var(--ink-3);
+}
+footer p{margin:0 0 7px; max-width:78ch}
+footer a{color:var(--ink-2)}
+
+@media (max-width:860px){
+  .row{grid-template-columns:minmax(0,1fr) 118px}
+  .where,.extra{grid-column:1 / -1; color:var(--ink-3)}
+}
+@media (max-width:520px){
+  .row{grid-template-columns:1fr}
+  .tels{margin:2px 0}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="bell">木铎金声 · 北京校区</div>
+    <h1>京师通讯录</h1>
+    <p class="sub">北京师范大学北京校区各职能部门、教辅单位与院系的公开办公联系方式。全部逐条抄自各单位官网，每一区块标注来源；官网未刊载、仅见于二手转载的号码单独标为「待核实」。</p>
+    <ul class="facts">
+      <li>北京市海淀区新街口外大街 <b>19</b> 号</li>
+      <li>邮编 <b>100875</b></li>
+      <li>校外拨打请加 <b>010</b></li>
+      <li>校内号码统一为 <b>5880</b> 号段</li>
+      <li>学校总机 <b>58807960</b></li>
+    </ul>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="wrap">
+    <div class="searchrow">
+      <div class="field">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+        <input id="q" type="search" placeholder="搜部门、业务、老师、楼号或号码，如「学籍」「英东楼」「维修」" aria-label="搜索联系方式" autocomplete="off">
+      </div>
+      <span id="count"></span>
+    </div>
+    <nav class="jump" aria-label="分区跳转">
+      <a href="#safety">安全与户籍</a>
+      <a href="#health">医疗</a>
+      <a href="#mind">心理</a>
+      <a href="#life">住宿与后勤</a>
+      <a href="#net">网络与校园卡</a>
+      <a href="#academic">教务·学籍·成绩</a>
+      <a href="#student">学生工作</a>
+      <a href="#money">财务与缴费</a>
+      <a href="#library">图书馆</a>
+      <a href="#archive">档案</a>
+      <a href="#admission">招生与学位</a>
+      <a href="#intl">国际交流</a>
+      <a href="#hr">人事</a>
+      <a href="#depts">院系</a>
+      <a href="#misc">其他机关</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap" id="doc">
+
+  <div class="sos">
+    <h2>紧急求助</h2>
+    <p>校内突发情况优先拨打 110 / 119 / 120，再联系保卫处；保卫处两条号码 24 小时值班。</p>
+    <div class="sosgrid">
+      <a href="tel:01058806110"><span class="n">58806110</span><span class="l">保卫处 24 小时报警求助</span></a>
+      <a href="tel:01058808051"><span class="n">58808051</span><span class="l">保卫处 24 小时报警求助（备用）</span></a>
+      <a href="tel:01058805581"><span class="n">58805581</span><span class="l">校医院 医生值班室</span></a>
+      <a href="tel:01082588100"><span class="n">82588100</span><span class="l">北太平庄派出所</span></a>
+    </div>
+  </div>
+
+  <!-- ══════════ 安全 ══════════ -->
+  <section id="safety">
+    <div class="shead">
+      <h2>安全与户籍<span class="en">保卫处</span></h2>
+      <a class="src" href="https://bwc.bnu.edu.cn/lxwm/index.html" target="_blank" rel="noopener">来源：保卫处「联系我们」</a>
+    </div>
+    <div class="panel">
+      <div class="row"><div class="what">24 小时报警求助<span class="chip h24">24H</span></div><div class="tels"><a class="tel" href="tel:01058806110">58806110</a><a class="tel" href="tel:01058808051">58808051</a></div><div class="where">—</div><div class="extra">bwc@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">户籍管理办公室<span class="who">户口迁入迁出、在学证明</span></div><div class="tels"><a class="tel" href="tel:01058808055">58808055</a></div><div class="where">—</div><div class="extra">sdhj@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">治安管理<span class="who">校园治安综合治理委员会办公室</span></div><div class="tels"><a class="tel" href="tel:01058808054">58808054</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">交通管理<span class="who">交通安全委员会办公室 · 机动车通行证</span></div><div class="tels"><a class="tel" href="tel:01058808045">58808045</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">消防管理<span class="who">消防安全委员会办公室</span></div><div class="tels"><a class="tel" href="tel:01058807822">58807822</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">维稳办公室</div><div class="tels"><a class="tel" href="tel:01058806189">58806189</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">技防管理办公室<span class="who">监控、门禁</span></div><div class="tels"><a class="tel" href="tel:01058806721">58806721</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">行政办公室<span class="who">同为传真号</span></div><div class="tels"><a class="tel" href="tel:01058806978">58806978</a></div><div class="where">—</div><div class="extra">bwc@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">北太平庄派出所<span class="who">属地公安</span></div><div class="tels"><a class="tel" href="tel:01082588100">82588100</a></div><div class="where">校外</div><div class="extra">—</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 医疗 ══════════ -->
+  <section id="health">
+    <div class="shead">
+      <h2>医疗<span class="en">校医院 / 社区卫生服务中心</span></h2>
+      <a class="src" href="https://xyy.bnu.edu.cn/lxwm/" target="_blank" rel="noopener">来源：校医院「联系我们」</a>
+    </div>
+    <p class="note">校医院联系页的落款发布日期为 2018-10-31，是官网现行页面但年代较久；就诊前建议先拨挂号室 58805128 确认当日出诊安排。地址：新街口外大街 19 号，邮箱 xyysqb@bnu.edu.cn。</p>
+    <div class="panel">
+      <div class="grouphead">值班与挂号</div>
+      <div class="row"><div class="what">医生值班室</div><div class="tels"><a class="tel" href="tel:01058805581">58805581</a></div><div class="where">—</div><div class="extra">急事首选</div></div>
+      <div class="row"><div class="what">护士值班室</div><div class="tels"><a class="tel" href="tel:01058808223">58808223</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">挂号室<span class="who">医生出诊咨询</span></div><div class="tels"><a class="tel" href="tel:01058805128">58805128</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">药房<span class="who">药品咨询</span></div><div class="tels"><a class="tel" href="tel:01058805129">58805129</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="grouphead">临床科室</div>
+      <div class="row"><div class="what">内科 / 102 门诊</div><div class="tels"><a class="tel" href="tel:01058805125">58805125</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">外科</div><div class="tels"><a class="tel" href="tel:01058807151">58807151</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">中医科</div><div class="tels"><a class="tel" href="tel:01058806783">58806783</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">针灸理疗科</div><div class="tels"><a class="tel" href="tel:01058802100">58802100</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">口腔科</div><div class="tels"><a class="tel" href="tel:01058808221">58808221</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">眼科 / 耳鼻喉科</div><div class="tels"><a class="tel" href="tel:01058806597">58806597</a></div><div class="where">—</div><div class="extra">两科共用一号</div></div>
+      <div class="row"><div class="what">儿科<span class="who">儿童保健</span></div><div class="tels"><a class="tel" href="tel:01058806771">58806771</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">妇产科<span class="who">母子健康档案、领取叶酸</span></div><div class="tels"><a class="tel" href="tel:01058805194">58805194</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="grouphead">医技与检查</div>
+      <div class="row"><div class="what">化验室</div><div class="tels"><a class="tel" href="tel:01058805203">58805203</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">放射科</div><div class="tels"><a class="tel" href="tel:01058805593">58805593</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">B 超室</div><div class="tels"><a class="tel" href="tel:01058804001">58804001</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">心电图室</div><div class="tels"><a class="tel" href="tel:01058807746">58807746</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">注射室</div><div class="tels"><a class="tel" href="tel:01058805204">58805204</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="grouphead">行政与报销</div>
+      <div class="row"><div class="what">公共卫生科<span class="who">疫苗接种</span></div><div class="tels"><a class="tel" href="tel:01058808219">58808219</a><a class="tel" href="tel:01058802998">58802998</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">财务室<span class="who">公费医疗、医药费与住院费报销</span></div><div class="tels"><a class="tel" href="tel:01058809878">58809878</a><a class="tel" href="tel:01058807016">58807016</a></div><div class="where">—</div><div class="extra">财经处指明报销归校医院办</div></div>
+      <div class="row"><div class="what">医院办公室 / 计生办</div><div class="tels"><a class="tel" href="tel:01058808227">58808227</a></div><div class="where">—</div><div class="extra">xyysqb@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">院长办公室</div><div class="tels"><a class="tel" href="tel:01058807679">58807679</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">书记办公室</div><div class="tels"><a class="tel" href="tel:01058802033">58802033</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">投诉监督</div><div class="tels"><a class="tel" href="tel:01058804983">58804983</a></div><div class="where">—</div><div class="extra">总务部页列出</div></div>
+      <div class="grouphead">校外定点</div>
+      <div class="row"><div class="what">北京大学第三医院</div><div class="tels"><a class="tel" href="tel:01082266699">82266699</a></div><div class="where">海淀区花园北路 49 号</div><div class="extra">留学生办公室页列为就近综合医院</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 心理 ══════════ -->
+  <section id="mind">
+    <div class="shead">
+      <h2>心理咨询<span class="en">雪绒花 / 心理健康教育与咨询中心</span></h2>
+      <a class="src" href="https://xueronghua.bnu.edu.cn/" target="_blank" rel="noopener">来源：雪绒花中心官网 + 学工部机构页</a>
+    </div>
+    <p class="note">两个来源给出的地点不一致：雪绒花中心官网写「学四楼辅楼二层」，学工部机构设置页写「研究生公寓 B 座二层（学三、学四楼之间）」。可能是同一处的不同叫法，也可能其中一处已搬迁，去之前建议先电话确认。</p>
+    <div class="panel">
+      <div class="row"><div class="what">学生咨询预约<span class="who">校内学生</span></div><div class="tels"><a class="tel" href="tel:01058805852">58805852</a></div><div class="where">学四楼辅楼二层</div><div class="extra">xlzx@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">中心主任<span class="who">乔志宏</span></div><div class="tels"><a class="tel" href="tel:01058808136">58808136</a></div><div class="where">研究生公寓 B 座二层</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">常务副主任<span class="who">宋振韶</span></div><div class="tels"><a class="tel" href="tel:01058801824">58801824</a></div><div class="where">研究生公寓 B 座二层</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">咨询师 王东升</div><div class="tels"><a class="tel" href="tel:01058807648">58807648</a><span class="ext">转 8001</span></div><div class="where">研究生公寓 B 座二层</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">咨询师 马清清</div><div class="tels"><a class="tel" href="tel:01058807648">58807648</a><span class="ext">转 8002</span></div><div class="where">研究生公寓 B 座二层</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">咨询师 夏翠翠</div><div class="tels"><a class="tel" href="tel:01058807648">58807648</a><span class="ext">转 8004</span></div><div class="where">研究生公寓 B 座二层</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">咨询师 张鹏</div><div class="tels"><a class="tel" href="tel:01058807648">58807648</a><span class="ext">转 8005</span></div><div class="where">研究生公寓 B 座二层</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">副主任 申子姣 / 张继明 / 罗晓路</div><div class="tels"><a class="tel" href="tel:01058807648">58807648</a><span class="ext">转 8006</span></div><div class="where">研究生公寓 B 座二层</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">咨询师 张英俊</div><div class="tels"><a class="tel" href="tel:01058807648">58807648</a><span class="ext">转 8007</span></div><div class="where">研究生公寓 B 座二层</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">雪绒花学生心理帮助热线<span class="chip">待核实</span><span class="who">称每日 17:30–21:30</span></div><div class="tels"><a class="tel" href="tel:01058800764">58800764</a><a class="tel" href="tel:01058800525">58800525</a></div><div class="where">—</div><div class="extra">仅见于二手转载，雪绒花官网当前未列出</div></div>
+      <div class="row"><div class="what">北京市心理援助热线<span class="who">校外公共资源</span></div><div class="tels"><a class="tel" href="tel:01082951332">82951332</a></div><div class="where">校外</div><div class="extra">固话可拨 800-810-1117</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 后勤 ══════════ -->
+  <section id="life">
+    <div class="shead">
+      <h2>住宿与后勤<span class="en">总务部</span></h2>
+      <a class="src" href="https://zwb.bnu.edu.cn/lxwm/index.htm" target="_blank" rel="noopener">来源：总务部「联系我们」</a>
+    </div>
+    <p class="note">总务部办公地点在二号院，综合邮箱 zwb@bnu.edu.cn。维修类四条标 24H 的号码是官网明确写「24 小时」的。</p>
+    <div class="panel">
+      <div class="grouphead">宿舍与物业</div>
+      <div class="row"><div class="what">学 1–学 18 楼 监督与投诉<span class="who">海淀校园本科生宿舍</span></div><div class="tels"><a class="tel" href="tel:01058808291">58808291</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">学 19 楼 监督与投诉</div><div class="tels"><a class="tel" href="tel:01058806983">58806983</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">物业管理中心<span class="who">服务监督、意见反馈</span></div><div class="tels"><a class="tel" href="tel:01058806981">58806981</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">特约服务<span class="who">桶装水、横幅海报</span></div><div class="tels"><a class="tel" href="tel:01058808266">58808266</a><a class="tel" href="tel:01058808299">58808299</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">临时家政</div><div class="tels"><a class="tel" href="tel:01062207742">62207742</a></div><div class="where">—</div><div class="extra">非 5880 号段</div></div>
+      <div class="row"><div class="what">昌平校园公寓部<span class="chip">待核实</span><span class="who">昌平住宿</span></div><div class="tels"><a class="tel" href="tel:01058802158">58802158</a></div><div class="where">昌平校园</div><div class="extra">见于新生入学须知，总务部页未列</div></div>
+      <div class="grouphead">维修报修</div>
+      <div class="row"><div class="what">上下水维修<span class="chip h24">24H</span></div><div class="tels"><a class="tel" href="tel:01058809960">58809960</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">电气、电梯维修<span class="chip h24">24H</span></div><div class="tels"><a class="tel" href="tel:01058808257">58808257</a><a class="tel" href="tel:01058808259">58808259</a></div><div class="where">—</div><div class="extra">与通信保障同号</div></div>
+      <div class="row"><div class="what">通信保障<span class="chip h24">24H</span></div><div class="tels"><a class="tel" href="tel:01058808257">58808257</a><a class="tel" href="tel:01058808259">58808259</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">暖气维修<span class="chip h24">24H</span></div><div class="tels"><a class="tel" href="tel:01058808270">58808270</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">开水房、浴室维修</div><div class="tels"><a class="tel" href="tel:01058807603">58807603</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">公共设施维修</div><div class="tels"><a class="tel" href="tel:01058807539">58807539</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">能源缴费咨询<span class="who">水电费</span></div><div class="tels"><a class="tel" href="tel:01058808265">58808265</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">修缮、施工管理</div><div class="tels"><a class="tel" href="tel:01058807815">58807815</a><a class="tel" href="tel:01058802978">58802978</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">修缮管理处<span class="who">服务监督、意见反馈</span></div><div class="tels"><a class="tel" href="tel:01058808263">58808263</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="grouphead">昌平校园</div>
+      <div class="row"><div class="what">昌平校园物业报修</div><div class="tels"><a class="tel" href="tel:01058802234">58802234</a></div><div class="where">昌平校园</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">通勤车咨询<span class="who">昌平班车</span></div><div class="tels"><a class="tel" href="tel:01058804900">58804900</a></div><div class="where">昌平校园</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">昌平校园综合管理办公室</div><div class="tels"><a class="tel" href="tel:01058804599">58804599</a></div><div class="where">昌平校园</div><div class="extra">—</div></div>
+      <div class="grouphead">餐饮与生活服务</div>
+      <div class="row"><div class="what">餐饮服务中心<span class="who">食堂</span></div><div class="tels"><a class="tel" href="tel:01058802109">58802109</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">接待服务中心</div><div class="tels"><a class="tel" href="tel:01058802174">58802174</a></div><div class="where">—</div><div class="extra">监督反馈 58806341</div></div>
+      <div class="row"><div class="what">办公用品采购 / 助农超市</div><div class="tels"><a class="tel" href="tel:01058802194">58802194</a><a class="tel" href="tel:01058802184">58802184</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">誊印厂<span class="who">印刷</span></div><div class="tels"><a class="tel" href="tel:01058807738">58807738</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">车辆服务</div><div class="tels"><a class="tel" href="tel:01062205839">62205839</a></div><div class="where">—</div><div class="extra">非 5880 号段</div></div>
+      <div class="grouphead">总务部机关</div>
+      <div class="row"><div class="what">总务部综合办公室</div><div class="tels"><a class="tel" href="tel:01058802758">58802758</a></div><div class="where">二号院</div><div class="extra">zwb@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">总务部党委办</div><div class="tels"><a class="tel" href="tel:01058805600">58805600</a></div><div class="where">二号院</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">总务部纪检办</div><div class="tels"><a class="tel" href="tel:01058802058">58802058</a></div><div class="where">二号院</div><div class="extra">—</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 网络 ══════════ -->
+  <section id="net">
+    <div class="shead">
+      <h2>网络与校园卡<span class="en">信息网络中心</span></h2>
+      <a class="src" href="https://info.bnu.edu.cn/lxwm" target="_blank" rel="noopener">来源：信息网络中心「联系我们」</a>
+    </div>
+    <div class="panel">
+      <div class="row"><div class="what">综合服务大厅<span class="who">校园卡、校园网、账号</span></div><div class="tels"><a class="tel" href="tel:01058808113">58808113</a></div><div class="where">学 16 楼南侧一层 139 室</div><div class="extra">info@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">网络部</div><div class="tels"><a class="tel" href="tel:01058806905">58806905</a></div><div class="where">主楼 C 区 111B</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">信息系统部</div><div class="tels"><a class="tel" href="tel:01058806907">58806907</a></div><div class="where">—</div><div class="extra">info@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">规划与项目管理部</div><div class="tels"><a class="tel" href="tel:01058806001">58806001</a><span class="ext">转 611</span></div><div class="where">主楼 C 区 111A</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">校务数据管理中心</div><div class="tels"><a class="tel" href="tel:01058806906">58806906</a><span class="ext">转 8016</span></div><div class="where">—</div><div class="extra">xwsj@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">办公室 / 服务监督</div><div class="tels"><a class="tel" href="tel:01058806001">58806001</a><span class="ext">转 601</span></div><div class="where">主楼 C 区 111 室</div><div class="extra">投诉 xwts@bnu.edu.cn</div></div>
+    </div>
+    <div class="shead" style="margin-top:14px"><h2 style="font-size:15px">服务大厅办公时间</h2></div>
+    <dl class="hours">
+      <div><dt>北太平庄校园 · 工作日</dt><dd>8:00–11:30<br>14:00–17:00</dd></div>
+      <div><dt>北太平庄校园 · 周末及节假日</dt><dd>9:00–11:30<br>14:30–17:00</dd></div>
+      <div><dt>沙河校园 · 工作日</dt><dd>8:00–11:30<br>14:00–17:30<br><span style="font-family:var(--body)">2 号教学服务楼 104</span></dd></div>
+      <div><dt>校园卡自助补办机</dt><dd>6:00–22:30</dd></div>
+    </dl>
+  </section>
+
+  <!-- ══════════ 教务 ══════════ -->
+  <section id="academic">
+    <div class="shead">
+      <h2>教务 · 学籍 · 成绩<span class="en">教务部（研究生院）综合处</span></h2>
+      <a class="src" href="https://jwb.bnu.edu.cn/jgsz/zhbgs/index.htm" target="_blank" rel="noopener">来源：教务部各科室页</a>
+    </div>
+    <p class="note">教务部公共邮箱 jwb@bnu.edu.cn；成绩单业务 jwbcjd@bnu.edu.cn；本科教学运行 jwc@bnu.edu.cn。办公室集中在主楼 A 区。</p>
+    <div class="panel">
+      <div class="grouphead">学籍</div>
+      <div class="row"><div class="what">本科生学籍<span class="who">纪东明</span></div><div class="tels"><a class="tel" href="tel:01058804642">58804642</a></div><div class="where">主楼 A207</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">本科生学籍<span class="who">陈林</span></div><div class="tels"><a class="tel" href="tel:01058808884">58808884</a></div><div class="where">主楼 A210</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">研究生学籍<span class="who">白海玲</span></div><div class="tels"><a class="tel" href="tel:01058804188">58804188</a></div><div class="where">主楼 A207</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">研究生学籍<span class="who">李玥</span></div><div class="tels"><a class="tel" href="tel:01058808883">58808883</a></div><div class="where">主楼 A210</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">学籍系统开发与维护<span class="who">李晓雯</span></div><div class="tels"><a class="tel" href="tel:01058806411">58806411</a></div><div class="where">主楼 A209</div><div class="extra">—</div></div>
+      <div class="grouphead">成绩与成绩单</div>
+      <div class="row"><div class="what">本科生成绩管理、认定、减免<span class="who">黄珺</span></div><div class="tels"><a class="tel" href="tel:01058801850">58801850</a></div><div class="where">主楼 A111</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">研究生成绩管理与存档<span class="who">王涵</span></div><div class="tels"><a class="tel" href="tel:01058806131">58806131</a></div><div class="where">主楼 A112</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">成绩单相关服务岗<span class="who">戴森源</span></div><div class="tels"><a class="tel" href="tel:01058803091">58803091</a></div><div class="where">主楼 A112</div><div class="extra">jwbcjd@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">日常成绩单打印<span class="who">姜麒</span></div><div class="tels"><a class="tel" href="tel:01058803691">58803691</a></div><div class="where">主楼 A210</div><div class="extra">—</div></div>
+      <div class="grouphead">转专业与学业</div>
+      <div class="row"><div class="what">专业分流、转专业、学业预警<span class="who">戚培德</span></div><div class="tels"><a class="tel" href="tel:01058807991">58807991</a></div><div class="where">主楼 A111</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">协助成绩与转专业<span class="who">蔡畅</span></div><div class="tels"><a class="tel" href="tel:01058809264">58809264</a></div><div class="where">主楼 A111</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">学业考评管理<span class="who">鹿琦</span></div><div class="tels"><a class="tel" href="tel:01058804960">58804960</a></div><div class="where">主楼 A112</div><div class="extra">—</div></div>
+      <div class="grouphead">排课、选课与考试</div>
+      <div class="row"><div class="what">本科生排课、调课、选课<span class="who">翟丽</span></div><div class="tels"><a class="tel" href="tel:01058807964">58807964</a></div><div class="where">主楼 A102</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">研究生排课、调课、选课<span class="who">杨若欣</span></div><div class="tels"><a class="tel" href="tel:01058807964">58807964</a></div><div class="where">主楼 A104</div><div class="extra">与本科排课同号</div></div>
+      <div class="row"><div class="what">期末考试安排<span class="who">郑勖</span></div><div class="tels"><a class="tel" href="tel:01058807892">58807892</a></div><div class="where">主楼 A102</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">大型考试组考<span class="who">陈茜</span></div><div class="tels"><a class="tel" href="tel:01058803684">58803684</a></div><div class="where">主楼 A104</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">会议预定、大型考试调停课<span class="who">席晶</span></div><div class="tels"><a class="tel" href="tel:01058803681">58803681</a></div><div class="where">主楼 A102</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">普通话测试<span class="who">毕增祥 / 曹爽</span></div><div class="tels"><a class="tel" href="tel:01058803690">58803690</a></div><div class="where">教四楼 413</div><div class="extra">—</div></div>
+      <div class="grouphead">教室与设备</div>
+      <div class="row"><div class="what">教室建设与运维、智慧教室<span class="who">李霞 / 王潇炜</span></div><div class="tels"><a class="tel" href="tel:01058805107">58805107</a></div><div class="where">教九楼 504</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">电教设备、桌椅空调<span class="who">武仁敬 / 吴岗</span></div><div class="tels"><a class="tel" href="tel:01058805097">58805097</a></div><div class="where">教九楼 504</div><div class="extra">—</div></div>
+      <div class="grouphead">综合处领导</div>
+      <div class="row"><div class="what">处长<span class="who">夏敏</span></div><div class="tels"><a class="tel" href="tel:01058802409">58802409</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">副处长 · 学籍与大型考试<span class="who">李娟</span></div><div class="tels"><a class="tel" href="tel:01058803686">58803686</a></div><div class="where">主楼 A105</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">副处长 · 教学运行<span class="who">王秀丽</span></div><div class="tels"><a class="tel" href="tel:01058803098">58803098</a></div><div class="where">主楼 A101</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">副处长 · 教学资源与信息化<span class="who">程学竹</span></div><div class="tels"><a class="tel" href="tel:01058802238">58802238</a></div><div class="where">主楼 A209</div><div class="extra">—</div></div>
+    </div>
+
+    <div class="shead" style="margin-top:24px">
+      <h2 style="font-size:17px">培养处<span class="en">培养方案 · 课程 · 实习 · 教师教育</span></h2>
+      <a class="src" href="https://jwb.bnu.edu.cn/jgsz/pybgs/index.htm" target="_blank" rel="noopener">来源：培养处</a>
+    </div>
+    <div class="panel">
+      <div class="row"><div class="what">处长<span class="who">窦非</span></div><div class="tels"><a class="tel" href="tel:01058803027">58803027</a></div><div class="where">—</div><div class="extra">douf@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">副处长 · 教师教育<span class="who">李艳玲</span></div><div class="tels"><a class="tel" href="tel:01058801806">58801806</a></div><div class="where">主楼 A207</div><div class="extra">bell@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">副处长 · 培养方案、课程、教材<span class="who">赵宏</span></div><div class="tels"><a class="tel" href="tel:01058806738">58806738</a></div><div class="where">主楼 A207</div><div class="extra">zhaohong@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">副处长 · 实践教学<span class="who">赵志鸿</span></div><div class="tels"><a class="tel" href="tel:01058806042">58806042</a></div><div class="where">主楼 A208</div><div class="extra">zhaozhihong@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">通识课、基地、教改项目<span class="who">符佳佳</span></div><div class="tels"><a class="tel" href="tel:01058801851">58801851</a></div><div class="where">主楼 A207</div><div class="extra">fujiajia@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">思政课与课程思政<span class="who">刘秋丽</span></div><div class="tels"><a class="tel" href="tel:01058803016">58803016</a></div><div class="where">主楼 A208</div><div class="extra">liuqiuli@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">专业建设、本科培养方案<span class="who">钟锦</span></div><div class="tels"><a class="tel" href="tel:01058802042">58802042</a></div><div class="where">主楼 A207</div><div class="extra">zhongjin0712@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">教材建设与管理<span class="who">柳明新</span></div><div class="tels"><a class="tel" href="tel:01058803015">58803015</a></div><div class="where">主楼 A207</div><div class="extra">Liumx@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">研究生公共课、教改项目<span class="who">李美萱</span></div><div class="tels"><a class="tel" href="tel:01058807155">58807155</a></div><div class="where">主楼 A207</div><div class="extra">limeixuan@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">研究生培养方案与专业课程<span class="who">黄靖</span></div><div class="tels"><a class="tel" href="tel:01058807954">58807954</a></div><div class="where">主楼 A212</div><div class="extra">huangjing@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">全英文课程、国际研究生项目<span class="who">郑真</span></div><div class="tels"><a class="tel" href="tel:01058804162">58804162</a></div><div class="where">主楼 A207</div><div class="extra">zhengzhen@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">励耘书院管理<span class="who">黄玉琦</span></div><div class="tels"><a class="tel" href="tel:01058804401">58804401</a></div><div class="where">主楼 A207</div><div class="extra">huangyuqi@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">在线课程、国内合作培养<span class="who">范海蓉</span></div><div class="tels"><a class="tel" href="tel:01058806731">58806731</a></div><div class="where">主楼 A207</div><div class="extra">fanhairong@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">师范生培养综合改革<span class="who">杜春光</span></div><div class="tels"><a class="tel" href="tel:01058802413">58802413</a></div><div class="where">主楼 A207</div><div class="extra">ducg@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">教资国考面试、教学能力考核<span class="who">李烨</span></div><div class="tels"><a class="tel" href="tel:01058802854">58802854</a></div><div class="where">主楼 A207</div><div class="extra">liye09@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">教师教育综合改革、国优计划<span class="who">允寒琦</span></div><div class="tels"><a class="tel" href="tel:01058806791">58806791</a></div><div class="where">主楼 A207</div><div class="extra">yunhanqi@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">教育实习、见习、实践基地<span class="who">李夏怡</span></div><div class="tels"><a class="tel" href="tel:01058806559">58806559</a></div><div class="where">主楼 A207</div><div class="extra">lixiayi@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">教学实验室、劳动教育<span class="who">董佳</span></div><div class="tels"><a class="tel" href="tel:01058802410">58802410</a></div><div class="where">主楼 A208</div><div class="extra">dongjia11618@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">本研专业实习<span class="who">徐霖</span></div><div class="tels"><a class="tel" href="tel:01058800041">58800041</a></div><div class="where">主楼 A208</div><div class="extra">xl@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">大创、实培、本科毕业论文<span class="who">赵莉萍</span></div><div class="tels"><a class="tel" href="tel:01058802016">58802016</a></div><div class="where">主楼 A208</div><div class="extra">zhaoliping@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">本研学科竞赛<span class="who">王椰果</span></div><div class="tels"><a class="tel" href="tel:01058807949">58807949</a></div><div class="where">主楼 A208</div><div class="extra">wangyeguo@bnu.edu.cn</div></div>
+    </div>
+
+    <div class="shead" style="margin-top:24px">
+      <h2 style="font-size:17px">质量处（学位办）<span class="en">学位授予 · 导师 · 教学质量</span></h2>
+      <a class="src" href="https://jwb.bnu.edu.cn/jgsz/jxzlbgsxwb/index.htm" target="_blank" rel="noopener">来源：质量处（学位办）</a>
+    </div>
+    <div class="panel">
+      <div class="row"><div class="what">处长<span class="who">魏浩</span></div><div class="tels"><a class="tel" href="tel:01058805005">58805005</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">副处长 · 质量管理<span class="who">刘一楠</span></div><div class="tels"><a class="tel" href="tel:01058801801">58801801</a></div><div class="where">主楼 A211</div><div class="extra">liuyn@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">副处长 · 导师、学科评估、学位授予<span class="who">黄欣</span></div><div class="tels"><a class="tel" href="tel:01058804070">58804070</a></div><div class="where">主楼 A212</div><div class="extra">huangxin@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">博士学位授予管理<span class="who">王丹</span></div><div class="tels"><a class="tel" href="tel:01058801852">58801852</a></div><div class="where">主楼 A213</div><div class="extra">wangdan@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学术硕士学位授予、信息化<span class="who">刘蓁蓁</span></div><div class="tels"><a class="tel" href="tel:01058808155">58808155</a></div><div class="where">主楼 A213</div><div class="extra">liuzz@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">专业硕士学位授予管理<span class="who">王嘉琪</span></div><div class="tels"><a class="tel" href="tel:01058804289">58804289</a></div><div class="where">主楼 A211</div><div class="extra">wangjiaqi1114@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学位信息化及数据管理<span class="who">杨宇辰</span></div><div class="tels"><a class="tel" href="tel:01058807820">58807820</a></div><div class="where">主楼 A213</div><div class="extra">xwb@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学位授权点审核、学科评估<span class="who">张雨青</span></div><div class="tels"><a class="tel" href="tel:01058803734">58803734</a></div><div class="where">主楼 A212</div><div class="extra">zyuqing@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">本研导师队伍服务与管理<span class="who">张光楠</span></div><div class="tels"><a class="tel" href="tel:01058804006">58804006</a></div><div class="where">主楼 A212</div><div class="extra">zhangguangnan@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学位授权点核验<span class="who">王丽莉</span></div><div class="tels"><a class="tel" href="tel:01058803025">58803025</a></div><div class="where">主楼 A212</div><div class="extra">wanglili@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">教学奖励、教学督导秘书处<span class="who">吴强</span></div><div class="tels"><a class="tel" href="tel:01058802408">58802408</a></div><div class="where">主楼 A211</div><div class="extra">wuqiang@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学生评教、教学事故认定<span class="who">谭军华</span></div><div class="tels"><a class="tel" href="tel:01058802450">58802450</a></div><div class="where">主楼 A211</div><div class="extra">tjh@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">教学专项检查、督导报告<span class="who">苏莎娜</span></div><div class="tels"><a class="tel" href="tel:01058801800">58801800</a></div><div class="where">主楼 A211</div><div class="extra">sushana@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">质量监测数据、满意度调查<span class="who">孙筱涵</span></div><div class="tels"><a class="tel" href="tel:01058804478">58804478</a></div><div class="where">主楼 A211</div><div class="extra">sunxiaohanbnu@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">协助质量评估与监测<span class="who">刘佳慧</span></div><div class="tels"><a class="tel" href="tel:01058804471">58804471</a></div><div class="where">主楼 A211</div><div class="extra">—</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 学工 ══════════ -->
+  <section id="student">
+    <div class="shead">
+      <h2>学生工作<span class="en">党委学生工作部</span></h2>
+      <a class="src" href="https://dwxgb.bnu.edu.cn/bmjs/55036bfa8fa447a3bf5adc7c67da61f8.html" target="_blank" rel="noopener">来源：学工部「机构设置」</a>
+    </div>
+    <p class="note">学工部总机 010-58805182，总邮箱 xgb@bnu.edu.cn。多数科室在学 16 楼（南侧）二层。</p>
+    <div class="panel">
+      <div class="grouphead">管理处（党委武装部）· 学 16 楼南侧二层 210 室 · xsglc@bnu.edu.cn</div>
+      <div class="row"><div class="what">处长 / 武装部部长<span class="who">陈金波</span></div><div class="tels"><a class="tel" href="tel:01058805075">58805075</a></div><div class="where">学 16 楼 210</div><div class="extra">分管学生管理、心理、资助</div></div>
+      <div class="row"><div class="what">副处长<span class="who">杜德健</span></div><div class="tels"><a class="tel" href="tel:01058807165">58807165</a></div><div class="where">学 16 楼 210</div><div class="extra">wzb@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">日常管理<span class="who">茹赛娜·努尔</span></div><div class="tels"><a class="tel" href="tel:01058806033">58806033</a></div><div class="where">学 16 楼 210</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">日常管理<span class="who">丁凌</span></div><div class="tels"><a class="tel" href="tel:01058804251">58804251</a></div><div class="where">学 16 楼 210</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">日常管理<span class="who">刘维伊</span></div><div class="tels"><a class="tel" href="tel:01058802916">58802916</a></div><div class="where">学 16 楼 210</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">日常管理<span class="who">许楠楠</span></div><div class="tels"><a class="tel" href="tel:01058807051">58807051</a></div><div class="where">学 16 楼 210</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">日常管理<span class="who">李若峰</span></div><div class="tels"><a class="tel" href="tel:01058806679">58806679</a></div><div class="where">学 16 楼 210</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">派驻育荣园区<span class="who">刘梦然</span></div><div class="tels"><a class="tel" href="tel:01058802909">58802909</a></div><div class="where">育荣园区</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">派驻育荣园区<span class="who">陈胜浩</span></div><div class="tels"><a class="tel" href="tel:01058820506">58820506</a></div><div class="where">育荣园区</div><div class="extra">—</div></div>
+
+      <div class="grouphead">思想政治教育处 · 学 16 楼南侧二层 204 室 · xssz@bnu.edu.cn</div>
+      <div class="row"><div class="what">处长<span class="who">于小雷</span></div><div class="tels"><a class="tel" href="tel:01058807980">58807980</a></div><div class="where">学 16 楼 204</div><div class="extra">兼学工部部长</div></div>
+      <div class="row"><div class="what">副处长<span class="who">任雅才</span></div><div class="tels"><a class="tel" href="tel:01058808152">58808152</a></div><div class="where">学 16 楼 204</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">学生党建<span class="who">欧阳漫</span></div><div class="tels"><a class="tel" href="tel:01058800860">58800860</a></div><div class="where">学 16 楼 204</div><div class="extra">xsdj@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">思政教育<span class="who">刘璐 / 朱倩倩</span></div><div class="tels"><a class="tel" href="tel:01058807996">58807996</a></div><div class="where">学 16 楼 204</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">思政教育<span class="who">陶楚歌</span></div><div class="tels"><a class="tel" href="tel:01058808235">58808235</a></div><div class="where">学 16 楼 204</div><div class="extra">—</div></div>
+
+      <div class="grouphead">职业发展与就业指导中心 · 京师大厦一层 9105、9102 室 · jiuyezhongxin@bnu.edu.cn</div>
+      <div class="row"><div class="what">主任<span class="who">张新颖</span></div><div class="tels"><a class="tel" href="tel:01058809378">58809378</a></div><div class="where">京师大厦 9105</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">就业指导<span class="who">李悦池</span></div><div class="tels"><a class="tel" href="tel:01058806938">58806938</a></div><div class="where">京师大厦 9105</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">就业指导<span class="who">郭学茹</span></div><div class="tels"><a class="tel" href="tel:01058808120">58808120</a></div><div class="where">京师大厦 9105</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">就业指导<span class="who">李强</span></div><div class="tels"><a class="tel" href="tel:01058809397">58809397</a></div><div class="where">京师大厦 9105</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">就业指导<span class="who">张恒瑞</span></div><div class="tels"><a class="tel" href="tel:01058808153">58808153</a></div><div class="where">京师大厦 9105</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">就业指导<span class="who">尚晓燕 / 崔晶晶</span></div><div class="tels"><a class="tel" href="tel:01058804372">58804372</a></div><div class="where">京师大厦 9105</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">就业指导<span class="who">胡欣</span></div><div class="tels"><a class="tel" href="tel:01058804347">58804347</a></div><div class="where">京师大厦 9105</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">就业指导<span class="who">莫雁麟</span></div><div class="tels"><a class="tel" href="tel:01058807665">58807665</a></div><div class="where">京师大厦 9105</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">就业指导<span class="who">王兴龙</span></div><div class="tels"><a class="tel" href="tel:01058802095">58802095</a></div><div class="where">京师大厦 9105</div><div class="extra">—</div></div>
+
+      <div class="grouphead">资助管理中心 · 学 16 楼南侧二层 213 室 · xszz@bnu.edu.cn</div>
+      <div class="row"><div class="what">中心总机<span class="who">国家助学贷款</span></div><div class="tels"><a class="tel" href="tel:01058800205">58800205</a></div><div class="where">学 16 楼 213</div><div class="extra">阿米娜·艾海提</div></div>
+      <div class="row"><div class="what">主任<span class="who">周彩云</span></div><div class="tels"><a class="tel" href="tel:01058800985">58800985</a></div><div class="where">学 16 楼 213</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">资助业务<span class="who">张白玉</span></div><div class="tels"><a class="tel" href="tel:01058807801">58807801</a></div><div class="where">学 16 楼 213</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">资助业务<span class="who">张冉</span></div><div class="tels"><a class="tel" href="tel:01058802142">58802142</a></div><div class="where">学 16 楼 213</div><div class="extra">—</div></div>
+
+      <div class="grouphead">综合办公室 · 学 16 楼南侧二层 211 室 · xgbgs@bnu.edu.cn</div>
+      <div class="row"><div class="what">学工部总机<span class="who">徐娜 / 彭晨曦 / 包永川</span></div><div class="tels"><a class="tel" href="tel:01058805182">58805182</a></div><div class="where">学 16 楼 211</div><div class="extra">xgb@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">主任<span class="who">王颖</span></div><div class="tels"><a class="tel" href="tel:01058804707">58804707</a></div><div class="where">学 16 楼 211</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">综合事务<span class="who">刘奕彤</span></div><div class="tels"><a class="tel" href="tel:01058806730">58806730</a></div><div class="where">学 16 楼 211</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">副部长 · 分管综合与就业<span class="who">吕晓慧</span></div><div class="tels"><a class="tel" href="tel:01058806136">58806136</a></div><div class="where">学 16 楼</div><div class="extra">—</div></div>
+
+      <div class="grouphead">辅导员发展中心 · 学 16 楼南侧二层 203 室 · fdy@bnu.edu.cn</div>
+      <div class="row"><div class="what">副主任<span class="who">牛小游</span></div><div class="tels"><a class="tel" href="tel:01058805164">58805164</a></div><div class="where">学 16 楼 203</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">辅导员队伍建设<span class="who">赵曾臻</span></div><div class="tels"><a class="tel" href="tel:01058806455">58806455</a></div><div class="where">学 16 楼 203</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">「形势与政策」教学管理<span class="who">刘洋</span></div><div class="tels"><a class="tel" href="tel:01058804126">58804126</a></div><div class="where">学 16 楼 203</div><div class="extra">—</div></div>
+
+      <div class="grouphead">博济书院 · 昌平校园 1 号教学服务楼 617 室 · bjsy@bnu.edu.cn</div>
+      <div class="row"><div class="what">副院长<span class="who">陈卿庆</span></div><div class="tels"><a class="tel" href="tel:01058802928">58802928</a></div><div class="where">昌平 1 号楼 617</div><div class="extra">杜静、张翼飞同号</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 财务 ══════════ -->
+  <section id="money">
+    <div class="shead">
+      <h2>财务与缴费<span class="en">财经处 / 内控办</span></h2>
+      <a class="src" href="https://cjc.bnu.edu.cn/lxwm/index.htm" target="_blank" rel="noopener">来源：财经处「联系我们」</a>
+    </div>
+    <p class="note">财经业务服务大厅在<b>一号院</b>（新街口外大街 19 号）。学生最常用的是 13 号窗口 <b>58807714</b>（学宿费收取、学生劳务与奖助补发放）。综合办公室 58801101，邮箱 cjcbgs@bnu.edu.cn。</p>
+    <dl class="hours" style="margin-bottom:12px">
+      <div><dt>周一至周五 上午</dt><dd>8:00–11:45</dd></div>
+      <div><dt>周一至周四 下午</dt><dd>14:00–17:15</dd></div>
+      <div><dt>周五 下午</dt><dd>不对外办公</dd></div>
+      <div><dt>寒暑假</dt><dd>另行通知</dd></div>
+    </dl>
+    <div class="panel">
+      <div class="grouphead">学生相关</div>
+      <div class="row"><div class="what">学宿费收取及咨询、学生劳务与奖助补发放<span class="who">13 号窗口 · 薪酬及学生事务科</span></div><div class="tels"><a class="tel" href="tel:01058807714">58807714</a></div><div class="where">一号院 大厅</div><div class="extra">缴费平台 wszf.bnu.edu.cn</div></div>
+      <div class="row"><div class="what">财经综合服务平台使用咨询<span class="who">09–10 号窗口 · 技术支持</span></div><div class="tels"><a class="tel" href="tel:01058808112">58808112</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">财经综合服务平台问题咨询<span class="who">内部控制建设办公室</span></div><div class="tels"><a class="tel" href="tel:01058808289">58808289</a></div><div class="where">一号院 103 室</div><div class="extra">—</div></div>
+      <div class="grouphead">报销与结算 · 支出核算与结算科</div>
+      <div class="row"><div class="what">报销派单<span class="who">大厅前台</span></div><div class="tels"><a class="tel" href="tel:01058806168">58806168</a></div><div class="where">一号院 大厅前台</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">报销业务核算及咨询<span class="who">25–26 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058806583">58806583</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">报销业务核算及咨询<span class="who">27–28 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058806685">58806685</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">报销业务核算及咨询<span class="who">30 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058806829">58806829</a></div><div class="where">一号院 大厅</div><div class="extra">单次外专劳务申报先联系此号</div></div>
+      <div class="row"><div class="what">报销业务核算及咨询<span class="who">33–34 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058803083">58803083</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">报销业务核算及咨询<span class="who">35–36 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058806206">58806206</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">政策咨询、酬金劳务无纸化申报<span class="who">31–32 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058808114">58808114</a></div><div class="where">一号院 大厅</div><div class="extra">每月 5–20 号办理酬金申报</div></div>
+      <div class="row"><div class="what">劳务报销款银行退回重发、住院费医药费发放<span class="who">29 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058806839">58806839</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">外汇业务、公务卡开卡、资信证明<span class="who">37–38 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058806027">58806027</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">现金收付、POS 刷卡、网银支票<span class="who">39–40 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058808116">58808116</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">教育学部、认知神经科学与学习国重报销<span class="who">驻点窗口</span></div><div class="tels"><a class="tel" href="tel:01058804526">58804526</a></div><div class="where">英东楼 B127 室</div><div class="extra">—</div></div>
+      <div class="grouphead">薪酬与税务 · 薪酬及学生事务科</div>
+      <div class="row"><div class="what">薪酬、年终奖、校外劳务与稿酬；税务咨询<span class="who">11–12 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058806372">58806372</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="grouphead">预算、会计与收入</div>
+      <div class="row"><div class="what">年度报表、纳税社保证明、新设财务项目号<span class="who">02–03 号窗口 · 会计管理科</span></div><div class="tels"><a class="tel" href="tel:01058800135">58800135</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">人才专项经费、科研启动费<span class="who">04 号窗口 · 预算管理科</span></div><div class="tels"><a class="tel" href="tel:01058806165">58806165</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">校内预算评审与拨款<span class="who">05–08 号窗口 · 预算管理科</span></div><div class="tels"><a class="tel" href="tel:01058806561">58806561</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">科研项目预算审核、结题材料盖章<span class="who">14–15 号窗口 · 收入与科研管理科</span></div><div class="tels"><a class="tel" href="tel:01058806328">58806328</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">银行来款查询、外币结汇、收费标准审核<span class="who">16–17 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058802104">58802104</a></div><div class="where">一号院 大厅</div><div class="extra">境外汇入款需先电话登记</div></div>
+      <div class="row"><div class="what">开票业务、入账、校内转账<span class="who">18–20 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058804168">58804168</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="grouphead">附属机构与其他</div>
+      <div class="row"><div class="what">基金会、工会、校友会 报销<span class="who">21–22 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058806582">58806582</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">基金会、工会、校友会 开票与咨询<span class="who">23–24 号窗口</span></div><div class="tels"><a class="tel" href="tel:01058806865">58806865</a></div><div class="where">一号院 大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">总务财务科</div><div class="tels"><a class="tel" href="tel:01058808838">58808838</a><a class="tel" href="tel:01058807813">58807813</a></div><div class="where">二号院 207 室西</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">基建与条件建设科<span class="who">修缮、设备用款审批</span></div><div class="tels"><a class="tel" href="tel:01058801866">58801866</a></div><div class="where">一号院 110 室</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">信息化办公室</div><div class="tels"><a class="tel" href="tel:01058806373">58806373</a></div><div class="where">一号院 112 室</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">印章管理<span class="who">加盖财经处公章、财务专用章</span></div><div class="tels"><a class="tel" href="tel:01058801101">58801101</a></div><div class="where">一号院 101 室</div><div class="extra">cjcbgs@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">档案管理、会计凭证影像化<span class="who">会计档案查询</span></div><div class="tels"><a class="tel" href="tel:01058801100">58801100</a></div><div class="where">二号院 220 室</div><div class="extra">—</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 图书馆 ══════════ -->
+  <section id="library">
+    <div class="shead">
+      <h2>图书馆<span class="en">木铎搜索 · 主馆与分馆</span></h2>
+      <a class="src" href="https://cms2022-1.bnu.edu.cn/publish/tsg/bz/lxwm/bmfwxmlx/index.htm" target="_blank" rel="noopener">来源：图书馆「部门/服务项目联系」</a>
+    </div>
+    <p class="note">找不到人时打总咨询台 <b>58806113</b>（主馆一层大厅，8:00–22:00 全周有人）。行政办公邮箱 bnulib@bnu.edu.cn。</p>
+    <div class="panel">
+      <div class="grouphead">文献服务部 · 借阅与咨询</div>
+      <div class="row"><div class="what">总咨询台<span class="who">值班人员</span></div><div class="tels"><a class="tel" href="tel:01058806113">58806113</a></div><div class="where">主馆一层大厅</div><div class="extra">周一至周日 8:00–22:00</div></div>
+      <div class="row"><div class="what">总借还处、证卡管理、离校手续<span class="who">王老师</span></div><div class="tels"><a class="tel" href="tel:01058808097">58808097</a></div><div class="where">主馆一层大厅</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">中文图书第一借阅区<span class="who">A–H 类</span></div><div class="tels"><a class="tel" href="tel:01058808100">58808100</a></div><div class="where">主馆四层</div><div class="extra">周一至周日 8:00–22:00</div></div>
+      <div class="row"><div class="what">中文图书第二借阅区<span class="who">I–Z 类</span></div><div class="tels"><a class="tel" href="tel:01058808102">58808102</a></div><div class="where">主馆五层</div><div class="extra">周一至周日 8:00–22:00</div></div>
+      <div class="row"><div class="what">中文库本第一阅览区<span class="who">A–H 类</span></div><div class="tels"><a class="tel" href="tel:01058805424">58805424</a></div><div class="where">主馆六层</div><div class="extra">周五 8:00–11:30、18:30–22:00</div></div>
+      <div class="row"><div class="what">中文库本第二阅览区<span class="who">IJKZ 类、大型书</span></div><div class="tels"><a class="tel" href="tel:01058803144">58803144</a></div><div class="where">主馆七层</div><div class="extra">周五 8:00–11:30、18:30–22:00</div></div>
+      <div class="row"><div class="what">外文图书第一借阅区</div><div class="tels"><a class="tel" href="tel:01058808162">58808162</a></div><div class="where">主馆八层</div><div class="extra">周一至周日 8:00–22:00</div></div>
+      <div class="row"><div class="what">外文图书第二借阅区、报刊与工具书<span class="who">张老师</span></div><div class="tels"><a class="tel" href="tel:01058802180">58802180</a></div><div class="where">主馆南区三层 A、D 区</div><div class="extra">周五 8:00–11:30、18:30–22:00</div></div>
+      <div class="row"><div class="what">学位论文阅览区、数学资料室、捐赠区<span class="who">王老师</span></div><div class="tels"><a class="tel" href="tel:01058808023">58808023</a></div><div class="where">主馆南区三层 B、C 区</div><div class="extra">周一至周四 8:00–11:30、13:30–17:00</div></div>
+      <div class="row"><div class="what">多媒体学习中心</div><div class="tels"><a class="tel" href="tel:01058806113">58806113</a></div><div class="where">主馆三层 A、D 区</div><div class="extra">周一至周日 8:00–23:00</div></div>
+      <div class="row"><div class="what">馆际互借 / 文献传递<span class="who">刘老师</span></div><div class="tels"><a class="tel" href="tel:01058805086">58805086</a></div><div class="where">主馆二层 C 区 209</div><div class="extra">馆藏宣推 孙老师 同号</div></div>
+      <div class="row"><div class="what">文献服务部<span class="who">杨老师</span></div><div class="tels"><a class="tel" href="tel:01058808095">58808095</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="grouphead">分馆与学科资料室</div>
+      <div class="row"><div class="what">教育学分馆 第一借阅室<span class="who">贾老师 · 外文 B84、G4–G8 类</span></div><div class="tels"><a class="tel" href="tel:01058802997">58802997</a></div><div class="where">英东楼 A 区 103 室</div><div class="extra">周五 8:00–11:30、18:30–22:00</div></div>
+      <div class="row"><div class="what">教育学分馆 第二借阅室<span class="who">中文 G6 类</span></div><div class="tels"><a class="tel" href="tel:01058808164">58808164</a></div><div class="where">英东楼 A 区 108 室</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">教育学分馆 第三借阅室<span class="who">中文 A–G48、G5、G7 类及工具书</span></div><div class="tels"><a class="tel" href="tel:01058806045">58806045</a></div><div class="where">英东楼 C 区 149 室</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">历史学资料室<span class="who">刘老师</span></div><div class="tels"><a class="tel" href="tel:01058808355">58808355</a></div><div class="where">主楼 A 区 602、608 室</div><div class="extra">周一至周四 8:00–11:30、13:30–17:00</div></div>
+      <div class="row"><div class="what">昌平校园 G 区分馆<span class="who">值班人员</span></div><div class="tels"><a class="tel" href="tel:01058802892">58802892</a></div><div class="where">昌平校园 G 区一、二层</div><div class="extra">一层多媒体区至 23:00</div></div>
+      <div class="grouphead">资源、特藏与技术</div>
+      <div class="row"><div class="what">资源建设部<span class="who">吴老师 · 电子资源推荐</span></div><div class="tels"><a class="tel" href="tel:01058802106">58802106</a></div><div class="where">主馆一层 C 区 109</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">纸质资源推荐</div><div class="tels"><a class="tel" href="tel:01058808088">58808088</a></div><div class="where">主馆一层 B 区 103</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">文献捐赠<span class="who">黄老师</span></div><div class="tels"><a class="tel" href="tel:01058801893">58801893</a></div><div class="where">主馆一层 C 区 109</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">学位论文管理<span class="who">李老师</span></div><div class="tels"><a class="tel" href="tel:01058809922">58809922</a></div><div class="where">主馆一层 C 区 109</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">古籍特藏部<span class="who">程老师</span></div><div class="tels"><a class="tel" href="tel:01058805108">58805108</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">特藏阅览室<span class="who">黄老师</span></div><div class="tels"><a class="tel" href="tel:01058807620">58807620</a></div><div class="where">主馆二层 AD 区</div><div class="extra">周一至周四 8:00–11:30、13:30–17:00</div></div>
+      <div class="row"><div class="what">科技查新 / 查收查引 / 科研分析<span class="who">刘老师 · 信息服务部</span></div><div class="tels"><a class="tel" href="tel:01058801776">58801776</a></div><div class="where">主馆三层 B 区 312</div><div class="extra">部门负责人 韩老师同号</div></div>
+      <div class="row"><div class="what">信息素养培训、专家讲座<span class="who">仝老师 / 雷老师</span></div><div class="tels"><a class="tel" href="tel:01058802934">58802934</a></div><div class="where">主馆三层 B 区 312</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">系统技术部 · 技术支持<span class="who">郭老师</span></div><div class="tels"><a class="tel" href="tel:01058805391">58805391</a></div><div class="where">主馆南区一层 118</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">办公室 / 行政办公<span class="who">刘老师</span></div><div class="tels"><a class="tel" href="tel:01058809911">58809911</a></div><div class="where">主馆二层 C 区 211</div><div class="extra">bnulib@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">综合保障</div><div class="tels"><a class="tel" href="tel:01058805287">58805287</a></div><div class="where">主馆二层 C 区 208</div><div class="extra">—</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 档案 ══════════ -->
+  <section id="archive">
+    <div class="shead">
+      <h2>档案<span class="en">档案馆</span></h2>
+      <a class="src" href="https://dangan.bnu.edu.cn/" target="_blank" rel="noopener">来源：档案馆官网</a>
+    </div>
+    <p class="note">档案馆在<b>主楼 C 区（旧图书馆）二层</b>：文书档案、学籍档案及成绩、证书翻译在<b>二层东北角</b>；学生与教职工人事档案在<b>二层东南角人事档案室</b>。邮箱 dag@bnu.edu.cn。官网未公布办公时间。</p>
+    <div class="panel">
+      <div class="row"><div class="what">综合档案、成绩、学历<span class="who">成绩单翻译、学历证明</span></div><div class="tels"><a class="tel" href="tel:01058807881">58807881</a><a class="tel" href="tel:01058806881">58806881</a></div><div class="where">主楼 C 区二层东北角</div><div class="extra">可在线预约开具证明</div></div>
+      <div class="row"><div class="what">学生人事档案</div><div class="tels"><a class="tel" href="tel:01058802284">58802284</a><a class="tel" href="tel:01058807266">58807266</a></div><div class="where">主楼 C 区二层东南角</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">档案收集指导</div><div class="tels"><a class="tel" href="tel:01058806320">58806320</a></div><div class="where">主楼 C 区二层</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">去世教工人事档案</div><div class="tels"><a class="tel" href="tel:01058807284">58807284</a></div><div class="where">主楼 C 区二层东南角</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">信息技术咨询</div><div class="tels"><a class="tel" href="tel:01058806558">58806558</a></div><div class="where">主楼 C 区二层</div><div class="extra">—</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 招生 ══════════ -->
+  <section id="admission">
+    <div class="shead">
+      <h2>招生与学位<span class="en">教务部招生处</span></h2>
+      <a class="src" href="https://jwb.bnu.edu.cn/jgsz/zsbgs/index.htm" target="_blank" rel="noopener">来源：招生处 + 本科/研究生招生网</a>
+    </div>
+    <p class="note">招生处集中在<b>主楼 A103</b>（研招网写作「前主楼 A 区 103 室」，同一处）。本科招生传真 58800562，研究生招生传真 58800519。</p>
+    <div class="panel">
+      <div class="row"><div class="what">本科生招生咨询</div><div class="tels"><a class="tel" href="tel:01058807962">58807962</a></div><div class="where">主楼 A103</div><div class="extra">zsb@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">研究生招生咨询</div><div class="tels"><a class="tel" href="tel:01058808156">58808156</a></div><div class="where">主楼 A103</div><div class="extra">yanzh@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学位授予管理</div><div class="tels"><a class="tel" href="tel:01058807820">58807820</a></div><div class="where">主楼 A213</div><div class="extra">xwb@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">招生纪检监督</div><div class="tels"><a class="tel" href="tel:01058807862">58807862</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">招生处处长<span class="who">刘春荣</span></div><div class="tels"><a class="tel" href="tel:01058808156">58808156</a></div><div class="where">主楼 A103</div><div class="extra">liucr@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">副处长 · 本科生招生<span class="who">牛小游</span></div><div class="tels"><a class="tel" href="tel:01058801805">58801805</a></div><div class="where">主楼 A103</div><div class="extra">niuxiaoyou@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">副处长 · 留学生招生<span class="who">陈娟</span></div><div class="tels"><a class="tel" href="tel:01058800338">58800338</a></div><div class="where">主楼 A103</div><div class="extra">chenj@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">本科招生计划与录取<span class="who">向家钰</span></div><div class="tels"><a class="tel" href="tel:01058801802">58801802</a></div><div class="where">主楼 A103</div><div class="extra">xiangjy@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">本科招生宣传<span class="who">曹玉卿</span></div><div class="tels"><a class="tel" href="tel:01058802860">58802860</a></div><div class="where">主楼 A103</div><div class="extra">caoyuqing@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">本科特殊类型招生<span class="who">毛雨欣</span></div><div class="tels"><a class="tel" href="tel:01058809414">58809414</a></div><div class="where">主楼 A103</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">咨询接待、档案管理<span class="who">潘月慧</span></div><div class="tels"><a class="tel" href="tel:01058807962">58807962</a></div><div class="where">主楼 A103</div><div class="extra">panyh@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">留学生招生<span class="who">刘昊月</span></div><div class="tels"><a class="tel" href="tel:01058802944">58802944</a></div><div class="where">主楼 A103</div><div class="extra">lhy@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">留学生招生<span class="who">王晓萱</span></div><div class="tels"><a class="tel" href="tel:01058804345">58804345</a></div><div class="where">主楼 A103</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">留学生招生<span class="who">孙之晴</span></div><div class="tels"><a class="tel" href="tel:01058805563">58805563</a></div><div class="where">主楼 A103</div><div class="extra">—</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 国际 ══════════ -->
+  <section id="intl">
+    <div class="shead">
+      <h2>国际交流与港澳台<span class="en">国际交流与合作处</span></h2>
+      <a class="src" href="https://oiec.bnu.edu.cn/gywm/lxwm/index.htm" target="_blank" rel="noopener">来源：国际处「联系我们」</a>
+    </div>
+    <p class="note">单位地址：京师大厦 9908，总机 010-58808285。</p>
+    <div class="panel">
+      <div class="row"><div class="what">总机 / 办公室<span class="who">穆森、温景霞、杜学武、张欣</span></div><div class="tels"><a class="tel" href="tel:01058808285">58808285</a></div><div class="where">京师大厦 9908</div><div class="extra">museng@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">处长 / 港澳台办主任<span class="who">滕珺</span></div><div class="tels"><a class="tel" href="tel:01058806998">58806998</a></div><div class="where">京师大厦 9908</div><div class="extra">tengjun1983@bnu.edu.cn</div></div>
+      <div class="grouphead">港澳台事务办公室 · 京师大厦 9706 / 9107</div>
+      <div class="row"><div class="what">分管领导<span class="who">刘涛</span></div><div class="tels"><a class="tel" href="tel:01058808908">58808908</a></div><div class="where">京师大厦 9706</div><div class="extra">liutao@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">港澳台事务<span class="who">范民</span></div><div class="tels"><a class="tel" href="tel:01058802958">58802958</a></div><div class="where">京师大厦 9706</div><div class="extra">fanmin@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">港澳台事务<span class="who">解毅</span></div><div class="tels"><a class="tel" href="tel:01058800312">58800312</a></div><div class="where">京师大厦 9706</div><div class="extra">ipo2@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">港澳台事务<span class="who">杜思璇 / 雷蕾</span></div><div class="tels"><a class="tel" href="tel:01058800306">58800306</a></div><div class="where">京师大厦 9706</div><div class="extra">leilei@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">港澳台事务<span class="who">洪思慧</span></div><div class="tels"><a class="tel" href="tel:01058808907">58808907</a></div><div class="where">京师大厦 9706</div><div class="extra">hongsihui@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">港澳台事务<span class="who">朱海茹</span></div><div class="tels"><a class="tel" href="tel:01058804735">58804735</a></div><div class="where">京师大厦 9107</div><div class="extra">zhuhairu@bnu.edu.cn</div></div>
+      <div class="grouphead">全球交流与拓展办公室 · 专家楼 1101 / 1103</div>
+      <div class="row"><div class="what">分管领导<span class="who">刘敏</span></div><div class="tels"><a class="tel" href="tel:01058808108">58808108</a></div><div class="where">专家楼 1103</div><div class="extra">liumin@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">全球交流<span class="who">单力真 / 郭瑞</span></div><div class="tels"><a class="tel" href="tel:01058801883">58801883</a></div><div class="where">专家楼 1103</div><div class="extra">shanlz@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">全球交流<span class="who">王晓川</span></div><div class="tels"><a class="tel" href="tel:01058800577">58800577</a></div><div class="where">专家楼 1101</div><div class="extra">wangxc@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">全球交流<span class="who">乔杨 / 王琇琨</span></div><div class="tels"><a class="tel" href="tel:01058800235">58800235</a></div><div class="where">专家楼 1101</div><div class="extra">qiaoyang@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">全球交流<span class="who">张瀚元</span></div><div class="tels"><a class="tel" href="tel:01058800304">58800304</a></div><div class="where">专家楼 1101</div><div class="extra">—</div></div>
+      <div class="grouphead">留学生与学生交流 · 京师大厦 9107</div>
+      <div class="row"><div class="what">分管领导<span class="who">李中山</span></div><div class="tels"><a class="tel" href="tel:01058800038">58800038</a></div><div class="where">京师大厦 9107</div><div class="extra">lzs@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学生交流<span class="who">黄若然</span></div><div class="tels"><a class="tel" href="tel:01058800309">58800309</a></div><div class="where">京师大厦 9107</div><div class="extra">huangruoran@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学生交流<span class="who">栗佩然</span></div><div class="tels"><a class="tel" href="tel:01058808364">58808364</a></div><div class="where">京师大厦 9107</div><div class="extra">lipeiran@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学生交流<span class="who">朴英爱</span></div><div class="tels"><a class="tel" href="tel:01058800310">58800310</a></div><div class="where">京师大厦 9107</div><div class="extra">piao@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学生交流<span class="who">司梦</span></div><div class="tels"><a class="tel" href="tel:01058800308">58800308</a></div><div class="where">京师大厦 9107</div><div class="extra">simeng@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学生交流<span class="who">王文瑞</span></div><div class="tels"><a class="tel" href="tel:01058800307">58800307</a></div><div class="where">京师大厦 9107</div><div class="extra">wenrui_wang@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学生交流<span class="who">刘欣雨</span></div><div class="tels"><a class="tel" href="tel:01058807986">58807986</a></div><div class="where">京师大厦 9107</div><div class="extra">barryliu@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学生交流<span class="who">方顺姬</span></div><div class="tels"><a class="tel" href="tel:01058800301">58800301</a></div><div class="where">京师大厦 9107</div><div class="extra">oiec3@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学生交流<span class="who">于晓宇</span></div><div class="tels"><a class="tel" href="tel:01058800305">58800305</a></div><div class="where">京师大厦 9107</div><div class="extra">xy_y@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">学生交流<span class="who">何希</span></div><div class="tels"><a class="tel" href="tel:01058800325">58800325</a></div><div class="where">京师大厦 9107</div><div class="extra">hexi@bnu.edu.cn</div></div>
+      <div class="grouphead">因公派出与综合 · 京师大厦 9912A</div>
+      <div class="row"><div class="what">分管领导<span class="who">戴淑君</span></div><div class="tels"><a class="tel" href="tel:01058808106">58808106</a></div><div class="where">京师大厦 9912A</div><div class="extra">daisj@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">因公派出<span class="who">王军玲</span></div><div class="tels"><a class="tel" href="tel:01058800089">58800089</a></div><div class="where">京师大厦 9912A</div><div class="extra">wangjl@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">因公派出<span class="who">陈琛</span></div><div class="tels"><a class="tel" href="tel:01058804135">58804135</a></div><div class="where">京师大厦 9912A</div><div class="extra">chenc@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">因公派出<span class="who">李宁 / 张心蔚</span></div><div class="tels"><a class="tel" href="tel:01058808363">58808363</a></div><div class="where">京师大厦 9912A</div><div class="extra">ning@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">因公派出<span class="who">韩瑞莲</span></div><div class="tels"><a class="tel" href="tel:01058800262">58800262</a></div><div class="where">京师大厦 9912A</div><div class="extra">hanruilian@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">因公派出<span class="who">郭一萌</span></div><div class="tels"><a class="tel" href="tel:01058807170">58807170</a></div><div class="where">京师大厦 9912A</div><div class="extra">guoym@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">因公派出<span class="who">陈泠予</span></div><div class="tels"><a class="tel" href="tel:01058800016">58800016</a></div><div class="where">京师大厦 9912A</div><div class="extra">chenlingyu@bnu.edu.cn</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 人事 ══════════ -->
+  <section id="hr">
+    <div class="shead">
+      <h2>人事<span class="en">人才人事部</span></h2>
+      <a class="src" href="http://hr.bnu.edu.cn/jgjs/jgsz/52452.htm" target="_blank" rel="noopener">来源：人才人事部「机构设置」</a>
+    </div>
+    <p class="note">总机 010-58800819，传真 010-58806820。2025 年 5 月在原人才人事处基础上成立，下设人才工作办公室、人事处、综合办公室。办公室多在前主楼 A303 / A305 / B106 / B210。</p>
+    <div class="panel">
+      <div class="grouphead">人事处领导</div>
+      <div class="row"><div class="what">处长 / 人力资源服务中心主任<span class="who">周亚</span></div><div class="tels"><a class="tel" href="tel:01058807969">58807969</a></div><div class="where">前主楼 A304(1)</div><div class="extra">zhouya@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">副处长 · 教师办公室<span class="who">林小群</span></div><div class="tels"><a class="tel" href="tel:01058807632">58807632</a></div><div class="where">前主楼 A305</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">副处长 · 劳资办公室<span class="who">陈绍峰</span></div><div class="tels"><a class="tel" href="tel:01058805059">58805059</a></div><div class="where">前主楼 A303</div><div class="extra">rlzy@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">副处长 / 人力资源服务中心副主任<span class="who">李林</span></div><div class="tels"><a class="tel" href="tel:01058805872">58805872</a></div><div class="where">前主楼 B106</div><div class="extra">lilin@bnu.edu.cn</div></div>
+      <div class="grouphead">教师办公室 · 前主楼 A305 / A303</div>
+      <div class="row"><div class="what">岗位晋升聘用<span class="who">叶伟萍</span></div><div class="tels"><a class="tel" href="tel:01058802830">58802830</a></div><div class="where">前主楼 A305</div><div class="extra">yewp@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">岗位晋升、外单位评审材料<span class="who">谢言</span></div><div class="tels"><a class="tel" href="tel:01058803099">58803099</a></div><div class="where">前主楼 A305</div><div class="extra">xieyan20@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">考核、在职攻读学位、兼职教授<span class="who">陈艳</span></div><div class="tels"><a class="tel" href="tel:01058802821">58802821</a></div><div class="where">前主楼 A305</div><div class="extra">chenyan2013@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">博士后队伍管理<span class="who">夏凡</span></div><div class="tels"><a class="tel" href="tel:01058805375">58805375</a></div><div class="where">前主楼 A303</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">京师特聘岗位、博士后基金<span class="who">付峥</span></div><div class="tels"><a class="tel" href="tel:01058803055">58803055</a></div><div class="where">前主楼 A303</div><div class="extra">fuzheng@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">教师公派出国、辅导员定岗<span class="who">张富丽</span></div><div class="tels"><a class="tel" href="tel:01058807250">58807250</a></div><div class="where">前主楼 A305</div><div class="extra">lilyzhang@bnu.edu.cn</div></div>
+      <div class="grouphead">劳资办公室 · 前主楼 A303 / 京师大厦 9412A</div>
+      <div class="row"><div class="what">人才引进全流程管理<span class="who">朱磊</span></div><div class="tels"><a class="tel" href="tel:01058805406">58805406</a></div><div class="where">前主楼 A303</div><div class="extra">zhulei@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">涉密岗位、管理岗设岗引进<span class="who">任和和</span></div><div class="tels"><a class="tel" href="tel:01058806511">58806511</a></div><div class="where">前主楼 A303</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">入职报到、调动、就业落户、请假<span class="who">孙伟</span></div><div class="tels"><a class="tel" href="tel:01058802217">58802217</a></div><div class="where">前主楼 A303</div><div class="extra">sunwei2019@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">退休延聘、社保对接、自助打印<span class="who">王晏</span></div><div class="tels"><a class="tel" href="tel:01058806169">58806169</a></div><div class="where">前主楼 A303</div><div class="extra">wyan@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">薪酬核算、绩效与福利<span class="who">曾好</span></div><div class="tels"><a class="tel" href="tel:01058808043">58808043</a></div><div class="where">前主楼 A303</div><div class="extra">zenghao@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">薪酬变动审核、批量调薪<span class="who">薄明悦</span></div><div class="tels"><a class="tel" href="tel:01058802829">58802829</a></div><div class="where">前主楼 A303</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">校外兼职、档案审核、毕业生落户<span class="who">王雨舟 / 杨朔</span></div><div class="tels"><a class="tel" href="tel:01058804657">58804657</a></div><div class="where">京师大厦 9412A</div><div class="extra">yangshuo@bnu.edu.cn</div></div>
+      <div class="grouphead">人力资源服务中心 · 前主楼 B106</div>
+      <div class="row"><div class="what">合同制人员续签、收入证明<span class="who">高子晴</span></div><div class="tels"><a class="tel" href="tel:01058802168">58802168</a></div><div class="where">前主楼 B106</div><div class="extra">ziqing@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">社保、失业与工伤保险<span class="who">张永环</span></div><div class="tels"><a class="tel" href="tel:01058800021">58800021</a></div><div class="where">前主楼 B106</div><div class="extra">zyh@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">养老保险、合同制人员入离职<span class="who">常新</span></div><div class="tels"><a class="tel" href="tel:01058806605">58806605</a></div><div class="where">前主楼 B106</div><div class="extra">changxin628@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">合同制人员招聘、职称评审、落户<span class="who">杨碧涵</span></div><div class="tels"><a class="tel" href="tel:01058804680">58804680</a></div><div class="where">前主楼 B106</div><div class="extra">—</div></div>
+      <div class="grouphead">人才工作办公室 / 综合办公室 · 前主楼 B210 / A304(2)</div>
+      <div class="row"><div class="what">人才工作办公室主任<span class="who">霍守亮</span></div><div class="tels"><a class="tel" href="tel:01058802261">58802261</a></div><div class="where">前主楼 A304(2)</div><div class="extra">huoshouliang@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">副主任 / 综合办公室主任<span class="who">陈丽</span></div><div class="tels"><a class="tel" href="tel:01058807924">58807924</a></div><div class="where">前主楼 B210</div><div class="extra">chenli301@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">高层次人才项目申报<span class="who">孟雅琴</span></div><div class="tels"><a class="tel" href="tel:01058804755">58804755</a></div><div class="where">前主楼 B210</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">高层次人才引进与待遇<span class="who">程思雨</span></div><div class="tels"><a class="tel" href="tel:01058807971">58807971</a></div><div class="where">前主楼 B210</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">高层次人才引进培育<span class="who">左小磊</span></div><div class="tels"><a class="tel" href="tel:01058807965">58807965</a></div><div class="where">前主楼 B210</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">财务、资产、综合事务<span class="who">曹越</span></div><div class="tels"><a class="tel" href="tel:01058800819">58800819</a></div><div class="where">前主楼 A304(2)</div><div class="extra">同人事部总机</div></div>
+      <div class="row"><div class="what">财务、资产、综合事务<span class="who">满哲</span></div><div class="tels"><a class="tel" href="tel:01058802124">58802124</a></div><div class="where">前主楼 A304(2)</div><div class="extra">manz@bnu.edu.cn</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 院系 ══════════ -->
+  <section id="depts">
+    <div class="shead">
+      <h2>各学部院系<span class="en">北京校区</span></h2>
+      <a class="src" href="https://admission.bnu.edu.cn/lxwm/index.html" target="_blank" rel="noopener">来源：本科生招生网「联系我们」</a>
+    </div>
+    <p class="note">下列号码是本科招生网公布的<b>各院系咨询电话</b>，通常即院系办公室/教务办对外号。院系内部还有分设的本科教务、研究生教务分机，需到各院系官网单独查；这里只收录学校统一公布、已核对的一层。</p>
+    <div class="panel">
+      <div class="grouphead">文科</div>
+      <div class="row"><div class="what">教育学部</div><div class="tels"><a class="tel" href="tel:01058804093">58804093</a></div><div class="where">英东楼</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">哲学学院</div><div class="tels"><a class="tel" href="tel:01058807792">58807792</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">经济与工商管理学院</div><div class="tels"><a class="tel" href="tel:01058806890">58806890</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">法学院</div><div class="tels"><a class="tel" href="tel:01058805082">58805082</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">社会学院</div><div class="tels"><a class="tel" href="tel:01058804020">58804020</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">文学院</div><div class="tels"><a class="tel" href="tel:01058807785">58807785</a><a class="tel" href="tel:01058807993">58807993</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">外国语言文学学院</div><div class="tels"><a class="tel" href="tel:01058809371">58809371</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">新闻传播学院</div><div class="tels"><a class="tel" href="tel:01058803978">58803978</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">历史学院</div><div class="tels"><a class="tel" href="tel:01058807995">58807995</a><a class="tel" href="tel:01058806085">58806085</a><a class="tel" href="tel:01058808002">58808002</a></div><div class="where">主楼 A 区</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">政府管理学院</div><div class="tels"><a class="tel" href="tel:01058805543">58805543</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">艺术与传媒学院</div><div class="tels"><a class="tel" href="tel:01058809248">58809248</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">马克思主义学院</div><div class="tels"><a class="tel" href="tel:01058808292">58808292</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="grouphead">理工科</div>
+      <div class="row"><div class="what">心理学部</div><div class="tels"><a class="tel" href="tel:01058808866">58808866</a></div><div class="where">新主楼</div><div class="extra">办公室另有 58808187 / psyoffice@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">数学科学学院</div><div class="tels"><a class="tel" href="tel:01058807760">58807760</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">物理与天文学院</div><div class="tels"><a class="tel" href="tel:01058808135">58808135</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">化学学院</div><div class="tels"><a class="tel" href="tel:01058805393">58805393</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">地理科学学部</div><div class="tels"><a class="tel" href="tel:01058805813">58805813</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">统计学院</div><div class="tels"><a class="tel" href="tel:01058800285">58800285</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">环境学院</div><div class="tels"><a class="tel" href="tel:01058805835">58805835</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">生命科学学院</div><div class="tels"><a class="tel" href="tel:01058809898">58809898</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">人工智能学院</div><div class="tels"><a class="tel" href="tel:01058804331">58804331</a></div><div class="where">—</div><div class="extra">—</div></div>
+      <div class="row"><div class="what">体育与运动学院</div><div class="tels"><a class="tel" href="tel:01058807842">58807842</a></div><div class="where">—</div><div class="extra">—</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 其他 ══════════ -->
+  <section id="misc">
+    <div class="shead">
+      <h2>其他机关与直属单位<span class="en">总机 · 科研 · 工会</span></h2>
+      <a class="src" href="https://www.bnu.edu.cn/zzjg/" target="_blank" rel="noopener">来源：各单位官网页脚</a>
+    </div>
+    <div class="panel">
+      <div class="row"><div class="what">学校总机<span class="who">党委办公室 / 校长办公室</span></div><div class="tels"><a class="tel" href="tel:01058807960">58807960</a></div><div class="where">—</div><div class="extra">传真 58800074</div></div>
+      <div class="row"><div class="what">电话查号台<span class="chip">待核实</span></div><div class="tels"><a class="tel" href="tel:01058806183">58806183</a></div><div class="where">—</div><div class="extra">见于二手转载，信息公开网页面未列</div></div>
+      <div class="row"><div class="what">科研院<span class="who">服务大厅</span></div><div class="tels"><a class="tel" href="tel:01058803020">58803020</a></div><div class="where">京师大厦 1103 室</div><div class="extra">kyy@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">实验室安全与设备管理处</div><div class="tels"><a class="tel" href="tel:01058803080">58803080</a></div><div class="where">—</div><div class="extra">ssc@bnu.edu.cn · 设备平台 yqys@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">校工会</div><div class="tels"><a class="tel" href="tel:01058807869">58807869</a></div><div class="where">—</div><div class="extra">xgh@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">校团委<span class="chip">待核实</span><span class="who">团组织关系</span></div><div class="tels"><a class="tel" href="tel:01058802178">58802178</a></div><div class="where">—</div><div class="extra">见于新生入学须知，团委官网无静态联系页</div></div>
+      <div class="row"><div class="what">党委组织部<span class="chip">待核实</span><span class="who">党组织关系</span></div><div class="tels"><a class="tel" href="tel:01058803143">58803143</a><a class="tel" href="tel:01058806798">58806798</a></div><div class="where">—</div><div class="extra">见于新生入学须知</div></div>
+      <div class="row"><div class="what">审计处</div><div class="tels"><span class="ext">官网未公布电话</span></div><div class="where">—</div><div class="extra">sjc@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">国有资产管理处</div><div class="tels"><span class="ext">官网未公布电话</span></div><div class="where">—</div><div class="extra">zccbgs@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">发展规划部</div><div class="tels"><span class="ext">官网未公布电话</span></div><div class="where">—</div><div class="extra">ghc@bnu.edu.cn</div></div>
+      <div class="row"><div class="what">信息公开意见箱</div><div class="tels"><span class="ext">邮箱受理</span></div><div class="where">—</div><div class="extra">xxgk@bnu.edu.cn</div></div>
+    </div>
+  </section>
+
+  <div class="empty" id="noresult" hidden>没有匹配的联系方式，换个词试试。</div>
+
+  <footer>
+    <p><b>核实状态</b>　除标注「待核实」的 5 条外，本页每一条都取自该单位官网当前在线页面，逐字抄录，未做推断或补全。标「待核实」的号码只在新生入学须知、二手转载中出现，官网未刊载，使用前请自行确认。</p>
+    <p><b>已知不一致</b>　心理咨询中心地点在雪绒花官网与学工部机构页上写法不同；校医院联系页落款为 2018-10-31；招生处地点「主楼 A103」与研招网「前主楼 A 区 103 室」为同一处的两种写法。</p>
+    <p><b>范围</b>　仅北京校区（北太平庄校园、昌平/沙河校园、育荣园区）。珠海校区号码以 0756 开头，未收录。</p>
+    <p>抓取日期 2026-09-10。号码与人员会变动，长期使用建议定期回源核对。</p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  var q = document.getElementById('q');
+  var countEl = document.getElementById('count');
+  var noresult = document.getElementById('noresult');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('#doc section'));
+  var rows = Array.prototype.slice.call(document.querySelectorAll('.row'));
+  var total = rows.length;
+
+  rows.forEach(function (r) {
+    r._hay = r.textContent.replace(/\s+/g, '').toLowerCase();
+  });
+
+  function setCount(n) {
+    countEl.textContent = n === total ? total + ' 条' : n + ' / ' + total + ' 条';
+  }
+
+  function apply() {
+    var term = q.value.replace(/\s+/g, '').toLowerCase();
+    if (!term) {
+      rows.forEach(function (r) { r.hidden = false; });
+      sections.forEach(function (s) { s.hidden = false; });
+      document.querySelectorAll('.grouphead').forEach(function (g) { g.hidden = false; });
+      noresult.hidden = true;
+      setCount(total);
+      return;
+    }
+    var shown = 0;
+    rows.forEach(function (r) {
+      var hit = r._hay.indexOf(term) !== -1;
+      r.hidden = !hit;
+      if (hit) shown++;
+    });
+    // hide group headers with no visible rows beneath them, and empty sections
+    document.querySelectorAll('.panel').forEach(function (p) {
+      var kids = Array.prototype.slice.call(p.children);
+      kids.forEach(function (el, i) {
+        if (!el.classList.contains('grouphead')) return;
+        var any = false;
+        for (var j = i + 1; j < kids.length; j++) {
+          if (kids[j].classList.contains('grouphead')) break;
+          if (!kids[j].hidden) { any = true; break; }
+        }
+        el.hidden = !any;
+      });
+    });
+    sections.forEach(function (s) {
+      s.hidden = !s.querySelector('.row:not([hidden])');
+    });
+    noresult.hidden = shown > 0;
+    setCount(shown);
+  }
+
+  q.addEventListener('input', apply);
+  setCount(total);
+})();
+</script>

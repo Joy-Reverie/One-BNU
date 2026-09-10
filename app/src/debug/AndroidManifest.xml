@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 仅 debug 包：小组件布局预览，用 adb 直接拉起，不进 release -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".widget.WidgetPreviewActivity"
+            android:exported="true"
+            android:label="Widget preview"
+            android:theme="@style/Theme.OneBNU" />
+        <activity
+            android:name=".widget.CreditsPreviewActivity"
+            android:exported="true"
+            android:label="Credits preview"
+            android:theme="@style/Theme.OneBNU" />
+        <activity
+            android:name=".widget.ContactsPreviewActivity"
+            android:exported="true"
+            android:label="Contacts preview"
+            android:theme="@style/Theme.OneBNU" />
+        <activity
+            android:name=".widget.HomePreviewActivity"
+            android:exported="true"
+            android:label="Home preview"
+            android:theme="@style/Theme.OneBNU" />
+        <activity
+            android:name=".widget.ProfileCardsPreviewActivity"
+            android:exported="true"
+            android:label="Profile cards preview"
+            android:theme="@style/Theme.OneBNU" />
+        <activity
+            android:name=".widget.SettingsPreviewActivity"
+            android:exported="true"
+            android:label="Settings preview"
+            android:theme="@style/Theme.OneBNU" />
+        <activity
+            android:name=".widget.SchedulePreviewActivity"
+            android:exported="true"
+            android:label="Schedule preview"
+            android:theme="@style/Theme.OneBNU" />
+    </application>
+</manifest>

@@ -1,0 +1,176 @@
+
+
+
+
+
+
+
+
+<script>var _webRootPath = '/';</script>
+
+
+<!DOCTYPE html>
+<html>
+<head>
+	<title>数据列表</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=GBK">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge,Chrome=1" />
+	<meta http-equiv="X-UA-Compatible" content="IE=9" />
+	<meta name="renderer" content="webkit">
+	<meta http-equiv="pragma" content="no-cache"/>
+	<meta http-equiv="cache-control" content="no-cache"/>
+	<meta http-equiv="expires" content="0"/>
+	<link rel="stylesheet" type="text/css" media="screen" href="../custom/bootstrap/css/bootstrap.min.css">
+	<!--[if lte IE 6]>
+	<link rel="stylesheet" type="text/css" media="screen" href="../custom/bootstrap/v2/css/bootstrap-responsive.min.css">
+	<link rel="stylesheet" type="text/css" media="screen" href="../custom/bootstrap/v2/css/bootstrap-ie6.min.css">
+	<link rel="stylesheet" type="text/css" media="screen" href="../custom/bootstrap/v2/css/ie.css">
+	<![endif]-->
+	<link rel="stylesheet" type="text/css" media="screen" href="../custom/bootstrap/css/common.css?v=20230415">
+	<link rel="stylesheet" type="text/css" media="screen" href="../custom/icons/iconfont.css?v=20250326">
+	<style>
+		td a:hover{
+			cursor:pointer;
+			text-decoration:underline;
+		}
+		@-ms-viewport { width: device-width; }
+		@-webkit-viewport { width: device-width; }
+		@-moz-viewport { width: device-width; }
+		@-ms-viewport { width: device-width; }
+		@-o-viewport { width: device-width; }
+		@viewport { width: device-width; }
+
+		.icon {
+			width: 20px;
+			height: 20px;
+			vertical-align: -0.15em;
+			fill: currentColor;
+			overflow: hidden;
+		}
+	</style>
+	<script type="text/javascript">
+		var _stylePathPrefix = "blue";
+		var isVersion20 = true;
+		var showPageSize = undefined;
+	</script>
+	<script type="text/javascript" src="../custom/js/jquery-1.12.3.min.js"></script>
+	<script type="text/javascript" src="./js/ind_DataTable.js?v=1.06"></script>
+	<script type="text/javascript" src="../custom/js/stopExecutionOnTimeout.js"></script>
+	<script type="text/javascript" src="../custom/js/jquery.tablesorter.min.js"></script>
+	<script type="text/javascript" src="../custom/icons/iconfont.js"></script>
+
+
+</head>
+
+
+<body leftmargin="0" topmargin="0">
+<div class="table_outer">
+	
+	<div class='datalist' style='OVERFLOW: auto; height:100%;width:100%;'><table style='width:100%;' id='keywords'  class='table table-striped table-bordered table-hover'><thead><tr class='H' style='POSITION: relative'><td width='42px' align=center nowrap >序号</td><td width='18%' id='head_kslcmc' >考试轮次名称</td><td width='22%' id='head_kc' >课程</td><td width='4%' id='head_xf' >学分</td><td width='11%' id='head_lb' >类别</td><td width='4%' id='head_khfs' >考核<br>方式</td><td width='22%' id='head_kssj' >考试时间</td><td width='15%' id='head_ksdd' >考试地点</td><td width='4%' id='head_zwh' >座位号</td></tr></thead><tbody><tr><td>1</td><td>2025-2026学年春季学期期末考试（8-15周）</td><td>[AIS21158302]机器学习</td><td>2.0</td><td>学位必修课</td><td>考试</td><td>2026-06-18 08:00-10:00</td><td>教七201</td><td>23</td></tr>
+<tr><td>2</td><td>2025-2026学年春季学期期末考试（8-15周）</td><td>[AIS21197082]高级算法设计</td><td>3.0</td><td>专业选修课</td><td>考查</td><td>2026-06-20 14:00-16:00</td><td>四117</td><td>7</td></tr></tbody><script language='javascript' >try{parent.showTotalRecord('2538','0');}catch(e){}</script></table></div>
+
+	
+	<div class="fixedTable">
+	</div>
+</div>
+</body>
+
+<script type="text/javascript" src="../custom/bootstrap/js/bootstrap.min.js"></script>
+<!--[if lt IE 9]>
+<script type="text/javascript" src="../common/js/respond.min.js"></script>
+<script type="text/javascript" src="../common/js/html5shiv.min.js"></script>
+<![endif]-->
+<script type="text/JavaScript">
+
+	// 父窗口缩放事件(窗口大小变化多次执行问题)
+	var resizeTimer = null;
+	// 数据列表横向和纵向滚动事件
+	var datalistTimer = null;
+	// 数据列表是否横向(水平)滚动条
+	var scrollHorizontal = false;
+
+	// 是否点击了配置显示的checkbox
+	var is_kind_checkbox = false;
+
+	jQuery(document).ready(function(){
+
+		// 数据列表是否横向(水平)滚动条: 数据区大于显示区设为true
+		var divwidth = jQuery(".datalist").outerWidth();
+		var tablewidth = jQuery(".datalist table").outerWidth();
+		if (tablewidth > divwidth){
+			scrollHorizontal = true;
+		}
+		//alert("divwidth="+divwidth+"/tablewidth="+tablewidth+"/scrollHorizontal="+scrollHorizontal);
+
+		calcParentFrameHeight();
+		autoResizeFrmreport();
+		calTableHead();
+		//calTableHeadBgColor();
+		initShowAllContent();
+
+		// 窗口缩放事件(需要避免resize多次触发执行的问题)
+		//jQuery(parent.window).wresize(resizeMe);  jquery.wresize.js
+		jQuery(parent.window).bind('resize', function () {
+			if (isIE()){
+				// IE兼容模式会多次触发window.resize导致问题，此处屏蔽IE兼容模式的resize事件
+				return ;
+			}
+			if (resizeTimer) {
+				clearTimeout(resizeTimer);
+			}
+			resizeTimer =
+					setTimeout(function(){
+						//calcParentFrameHeight();
+						autoResizeFrmreport();
+						calTableHead();
+						//calTableHeadBgColor();
+					}, 100);
+		});
+
+		// 数据列表滚动条事件(横向和纵向)
+		jQuery(".datalist").scroll(function(){
+			if (!scrollHorizontal) {
+				return ;
+			}
+			if (datalistTimer) {
+				clearTimeout(datalistTimer);
+			}
+			datalistTimer =
+					setTimeout(function(){
+						calTableHead();
+						//calTableHeadBgColor();
+					}, 100);
+		});
+
+		// 用于注册td.checkbox的checkClick事件
+		//jQuery("td").click(function(event){
+		//console.log("第"+(jQuery(this).index()+1)+ "个td");
+		//console.log(jQuery(this).children().attr("kind"));
+		//if (jQuery(this).children().attr("kind") == "checkbox"){
+		//is_kind_checkbox = true;
+		//event.stopPropagation();
+		//try{
+		//parent.checkClick(this, "2538");
+		//}catch(e){
+		//}
+		//} else {
+		//is_kind_checkbox = false;
+		//}
+		//console.log("is_kind_checkbox="+is_kind_checkbox);
+		//});
+
+		/**
+		 jQuery("td>input").click(function(){
+		 console.log("type:"+jQuery(this).attr("type")+"/"+"kind:"+jQuery(this).attr("kind"));
+		 });
+		 */
+
+		document.oncontextmenu = function () {
+			//return false;
+		}
+
+	});
+
+</script>
+</html>

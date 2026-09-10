@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 仅 Android 9 及以下「保存校历图片到相册」时需要；Android 10+ 走 MediaStore，不申请该权限 -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <!-- 上课提醒：发通知（Android 13+ 需用户同意）、开机后重排闹钟、精确闹钟 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Android 12 用 SCHEDULE_EXACT_ALARM（默认授予）；13 起改用面向日历类应用的 USE_EXACT_ALARM，自动授予 -->
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- 「允许后台运行」按钮：请求把本应用加入电池优化白名单，国产系统上提醒才不容易被清理 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 应用内更新：下载完成后拉起系统安装器需要此权限；首次会由系统引导用户放行「安装未知应用」 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 「常用电话」里拨号用；只发起拨号界面，不直接呼出，因此无需 CALL_PHONE -->
+
+    <application
+        android:name=".OneBnuApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.OneBNU">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.OneBNU"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 今日课表桌面小组件。系统要能给它发 APPWIDGET_UPDATE，所以必须 exported -->
+        <receiver
+            android:name=".widget.TodayWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_today_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_widget_info" />
+        </receiver>
+
+        <!-- 同一小组件的其他默认尺寸：4×3、4×4、2×2。启动器要求每个尺寸是独立的 receiver 类 -->
+        <receiver
+            android:name=".widget.TodayWidgetTallProvider"
+            android:exported="true"
+            android:label="@string/widget_today_label_4x3">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_widget_4x3_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.TodayWidgetFullProvider"
+            android:exported="true"
+            android:label="@string/widget_today_label_4x4">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_widget_4x4_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.TodayWidgetSmallProvider"
+            android:exported="true"
+            android:label="@string/widget_today_label_2x2">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_widget_2x2_info" />
+        </receiver>
+
+        <!-- 后台刷新小组件课表的 JobService -->
+        <service
+            android:name=".widget.WidgetRefreshJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- 「添加到桌面」成功后的系统回调 -->
+        <receiver
+            android:name=".widget.WidgetPinReceiver"
+            android:exported="false" />
+
+        <!-- 上课提醒：定时到点；开机 / 更新 / 改时间后重排 -->
+        <receiver
+            android:name=".core.notify.ReminderReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".core.notify.ReminderBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 应用内更新：接系统下载服务的「下载完成」广播，只处理自己登记过的任务 -->
+        <receiver
+            android:name=".core.update.UpdateDownloadReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 把下载好的 APK 授权给系统安装器读取 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
+</manifest>

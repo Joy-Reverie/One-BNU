@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">One BNU</string>
+    <string name="widget_today_label">今日课表 4×2</string>
+    <string name="widget_today_label_4x3">今日课表 4×3</string>
+    <string name="widget_today_label_4x4">今日课表 4×4</string>
+    <string name="widget_today_label_2x2">今日课表 2×2</string>
+    <string name="widget_today_description">今天的课程、教室、教师与上课时间，可拉伸为 2～4 行高</string>
+    <string name="widget_today_small_description">当前或下一节课的时间、课名与教室</string>
+    <string name="widget_refresh">刷新课表</string>
+    <string name="widget_loading">正在加载…</string>
+</resources>

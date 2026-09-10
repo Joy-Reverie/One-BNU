@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 浅色。夜间版见 values-night/themes.xml：窗口底色必须跟着深浅色走，
+         否则 Compose 没铺到的地方（以及启动瞬间）会露出白底 -->
+    <style name="Theme.OneBNU" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

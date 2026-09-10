@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 凭据与会话一律不参与云备份 / 设备迁移 -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" />
+        <exclude domain="database" />
+        <exclude domain="file" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" />
+        <exclude domain="database" />
+        <exclude domain="file" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 今日课表小组件。尺寸常量（色带 46dp、列表上内边距 6dp、底部 6dp、行高 38dp）与 TodayWidgetModel 对应，改一处要改另一处。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:paddingBottom="6dp">
+
+    <!-- 色带：日期 / 星期 / 周次 / 课程数 / 刷新 -->
+    <LinearLayout
+        android:id="@+id/widget_header"
+        android:layout_width="match_parent"
+        android:layout_height="46dp"
+        android:background="@drawable/widget_hero"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingEnd="6dp">
+
+        <TextView
+            android:id="@+id/widget_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:text="@string/widget_today_label"
+            android:textColor="@color/widget_on_hero"
+            android:textSize="15sp" />
+
+        <!-- 星期 / 周次药丸：初始布局里先隐藏，渲染时再显示，避免首次渲染前出现两个空药丸 -->
+        <TextView
+            android:id="@+id/widget_weekday"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/widget_pill"
+            android:includeFontPadding="false"
+            android:paddingStart="8dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="3dp"
+            android:singleLine="true"
+            android:textColor="@color/widget_on_hero"
+            android:textSize="11sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/widget_week"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/widget_pill"
+            android:includeFontPadding="false"
+            android:paddingStart="8dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="3dp"
+            android:singleLine="true"
+            android:textColor="@color/widget_on_hero"
+            android:textSize="11sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/widget_count"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:gravity="end"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:textColor="@color/widget_on_hero_dim"
+            android:textSize="11.5sp" />
+
+        <ImageView
+            android:id="@+id/widget_refresh"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:contentDescription="@string/widget_refresh"
+            android:padding="6dp"
+            android:src="@drawable/ic_widget_refresh" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_rows"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="12dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_empty"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:maxLines="2"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:text="@string/widget_loading"
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="12.5sp" />
+
+    <TextView
+        android:id="@+id/widget_footer"
+        android:layout_width="match_parent"
+        android:layout_height="14dp"
+        android:gravity="center_horizontal|top"
+        android:includeFontPadding="false"
+        android:singleLine="true"
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="10.5sp"
+        android:visibility="gone" />
+</LinearLayout>

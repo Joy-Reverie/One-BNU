@@ -1,0 +1,39 @@
+name: 问题反馈
+description: 功能异常、崩溃、数据显示不对
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本
+      description: 「我的 → 设置 → 版本」里显示的版本号
+      placeholder: 1.8.0
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: 设备与系统
+      placeholder: 例如 Xiaomi 14 / HyperOS 2.0 / Android 15
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 发生了什么，期望是什么。涉及具体页面的话请说明入口（例如「课表 → 第 3 周」）。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: extra
+    attributes:
+      label: 截图或日志
+      description: 请先遮掉学号、姓名等个人信息。「我的 → 设置 → 网络诊断」的报告可以直接粘贴。

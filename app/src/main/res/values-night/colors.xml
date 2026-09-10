@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 深色模式下的配色，与 Theme.kt 的 DarkColors / DarkAccents 一致 -->
+<resources>
+    <color name="window_bg">#FF0E1116</color>
+
+    <color name="widget_bg">#FF161A21</color>
+    <color name="widget_text_primary">#FFE3E6ED</color>
+    <color name="widget_text_secondary">#FF8A909D</color>
+    <color name="widget_accent">#FF7FA0DA</color>
+
+    <color name="widget_hero_start">#FF16305C</color>
+    <color name="widget_hero_center">#FF1D4A78</color>
+    <color name="widget_hero_end">#FF0F5F6C</color>
+    <color name="widget_on_hero">#FFFFFFFF</color>
+    <color name="widget_on_hero_dim">#D6FFFFFF</color>
+    <color name="widget_pill">#2EFFFFFF</color>
+
+    <color name="widget_course_1">#FF8FAEEA</color>
+    <color name="widget_course_2">#FF5FC9A5</color>
+    <color name="widget_course_3">#FFE0A468</color>
+    <color name="widget_course_4">#FFB68DE0</color>
+    <color name="widget_course_5">#FFE68CAB</color>
+    <color name="widget_course_6">#FF8FC873</color>
+    <color name="widget_course_7">#FF63BFD8</color>
+    <color name="widget_course_8">#FFE0C263</color>
+</resources>

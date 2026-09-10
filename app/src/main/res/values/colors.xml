@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面小组件专用配色。RemoteViews 拿不到 Compose 主题，这里按 Theme.kt 的浅色方案抄一份；
+     深色见 values-night/colors.xml。 -->
+<resources>
+    <!-- 窗口底色，与 Theme.kt 的 background 一致，避免 Compose 还没画出来时闪一下别的颜色 -->
+    <color name="window_bg">#FFF4F6FB</color>
+
+    <color name="widget_bg">#FFFFFFFF</color>
+    <color name="widget_text_primary">#FF14181F</color>
+    <color name="widget_text_secondary">#FF767C89</color>
+    <color name="widget_accent">#FF1B3C6E</color>
+
+    <!-- 顶部色带：与首页 Hero 卡同一组渐变（Indigo700 → Indigo500 → Teal600） -->
+    <color name="widget_hero_start">#FF1B3C6E</color>
+    <color name="widget_hero_center">#FF2F5CA8</color>
+    <color name="widget_hero_end">#FF0E7C8C</color>
+    <color name="widget_on_hero">#FFFFFFFF</color>
+    <color name="widget_on_hero_dim">#D6FFFFFF</color>
+    <color name="widget_pill">#33FFFFFF</color>
+
+    <!-- 课程色条，与 Theme.kt 的 LightAccents.courseAccents 一致 -->
+    <color name="widget_course_1">#FF3A63B8</color>
+    <color name="widget_course_2">#FF1E8A6B</color>
+    <color name="widget_course_3">#FFC2702A</color>
+    <color name="widget_course_4">#FF7A4CA8</color>
+    <color name="widget_course_5">#FFBC4A72</color>
+    <color name="widget_course_6">#FF4E8B36</color>
+    <color name="widget_course_7">#FF2483A0</color>
+    <color name="widget_course_8">#FFB5901F</color>
+
+    <array name="widget_course_colors">
+        <item>@color/widget_course_1</item>
+        <item>@color/widget_course_2</item>
+        <item>@color/widget_course_3</item>
+        <item>@color/widget_course_4</item>
+        <item>@color/widget_course_5</item>
+        <item>@color/widget_course_6</item>
+        <item>@color/widget_course_7</item>
+        <item>@color/widget_course_8</item>
+    </array>
+</resources>

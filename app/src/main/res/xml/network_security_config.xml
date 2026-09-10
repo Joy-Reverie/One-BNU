@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  默认全局禁止明文流量，只对确实没有 HTTPS 的北师大主机逐个放行。
+
+  zyfw.bnu.edu.cn      教务系统，443 端口不监听，只有 HTTP
+  www.lib.bnu.edu.cn   图书馆官网，同样只有 HTTP（内嵌浏览器也受本策略约束，
+                       之前没放行导致图书馆页面直接空白）
+  lib.bnu.edu.cn       图书馆的另一个入口
+  libone.bnu.edu.cn    图书馆开馆时间等子站
+
+  其余一律强制 TLS。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">zyfw.bnu.edu.cn</domain>
+        <domain includeSubdomains="false">www.lib.bnu.edu.cn</domain>
+        <domain includeSubdomains="false">lib.bnu.edu.cn</domain>
+        <domain includeSubdomains="false">libone.bnu.edu.cn</domain>
+    </domain-config>
+</network-security-config>

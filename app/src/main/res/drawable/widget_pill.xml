@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 色带上的半透明白色药丸（星期、周次），对应首页 Hero 卡里的 HeroChip -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/widget_pill" />
+    <corners android:radius="50dp" />
+</shape>

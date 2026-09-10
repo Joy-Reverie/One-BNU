@@ -1,0 +1,173 @@
+# One BNU
+
+北京师范大学非官方校园助手，Android 应用。用数字京师统一身份认证登录，直接访问学校的教务、图书馆等系统；
+没有中间服务器，账号和数据只留在本机。
+
+[![Release](https://img.shields.io/github/v/release/Joy-Reverie/One-BNU?label=release)](https://github.com/Joy-Reverie/One-BNU/releases/latest)
+[![CI](https://github.com/Joy-Reverie/One-BNU/actions/workflows/ci.yml/badge.svg)](https://github.com/Joy-Reverie/One-BNU/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/Joy-Reverie/One-BNU)](LICENSE)
+![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)
+
+> 个人开发，与北京师范大学官方无关。使用者需对自己账号的使用行为负责。
+
+## 功能
+
+- **课表**：周视图、课程详情、多学期切换、双指缩放行高；表头标注日期，当天整列高亮
+- **今日课表桌面小组件**：2×2 / 4×2 / 4×3 / 4×4 四种尺寸，跟随系统深浅色，后台按需刷新
+- **成绩与 GPA**：官方 / 4.0 / 4.3 等多种绩点口径换算，按学期统计
+- **考试安排**：含倒计时
+- **空闲教室**：按周次或具体日期查询北京校区各楼空闲教室
+- **校历与周次**：内置官方校历原图，可放大、保存到相册；周次 — 日期对照与假期要点
+- **校园平面图**与楼宇索引
+- **学籍信息**：原生展示，身份证号等敏感字段不显示
+- **学分核算**：各学期修读学分按模块归类求和，归类可手动修改
+- **校内联系方式**：北京校区 337 条各部门公开办公电话，可搜索、分区筛选、点击拨号
+- **个人日程**：事件、时间、地点、备注，可按星期几重复；与课表一起出现在首页时间轴、课表网格和小组件里
+- **上课提醒**：课程或日程开始前 N 分钟发通知（不响铃）
+- **内嵌浏览器**：图书馆、数字京师门户、教务系统，自动带入登录态
+- **检查更新**：设置页内查询 GitHub Releases，下载并安装新版本
+
+## 截图
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/login.png" width="200" alt="登录"></td>
+    <td><img src="docs/screenshots/home.png" width="200" alt="首页"></td>
+    <td><img src="docs/screenshots/schedule.png" width="200" alt="课表"></td>
+    <td><img src="docs/screenshots/contacts.png" width="200" alt="校内联系方式"></td>
+  </tr>
+  <tr align="center">
+    <td>登录</td><td>首页</td><td>课表</td><td>校内联系方式</td>
+  </tr>
+</table>
+
+## 下载安装
+
+在 [Releases](https://github.com/Joy-Reverie/One-BNU/releases/latest) 下载 `One-BNU-<版本>.apk` 安装，需要 Android 8.0 及以上。
+每个版本附带 `.sha256` 校验文件：
+
+```bash
+shasum -a 256 -c One-BNU-1.8.0.apk.sha256
+```
+
+之后的版本可以在应用内「我的 → 设置 → 版本 → 检查更新」直接下载安装。
+
+所有发布包由同一把密钥签名，证书 SHA-256：
+
+```
+6E:DB:A4:54:AC:9D:F9:30:9C:BB:B3:0E:64:81:E0:0B:80:6A:50:E9:1B:9E:E3:08:0A:1B:95:F5:98:9D:CD:D7
+```
+
+可用 `apksigner verify --print-certs One-BNU-1.8.0.apk` 核对。
+
+## 隐私与安全
+
+- 不设服务器。所有请求直接发往学校域名，只有「检查更新」会访问 GitHub 的公开接口。
+- 账号密码经 `EncryptedSharedPreferences`（AES256-GCM，密钥由 Android Keystore 持有且不可导出）加密后仅存本机；
+  Keystore 不可用时拒绝保存，而不是降级为明文。
+- 会话 Cookie 只在内存，退出应用即失效。唯一跨会话留存的是认证服务用来认设备的 `devInfo`，它不是凭据，
+  可在「网络诊断」里重置。登录表单中的设备标识是安装时生成的随机值，不采集硬件信息。
+- 课表缓存与个人日程存在应用私有目录，退出登录即清除课表缓存。
+- 默认禁止明文流量，只对确实没有 HTTPS 的教务与图书馆主机放行；重定向途中的协议降级会被升回 HTTPS。
+- 关闭云备份与设备迁移（`allowBackup=false`）。内嵌浏览器不注入 JS 接口、禁用文件域访问与混合内容，站外链接交给系统浏览器。
+- 权限：`INTERNET`、`ACCESS_NETWORK_STATE`；`POST_NOTIFICATIONS`、`USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM`、
+  `RECEIVE_BOOT_COMPLETED`、`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 仅在开启上课提醒时用到；
+  `REQUEST_INSTALL_PACKAGES` 仅用于安装应用内下载的更新包；`WRITE_EXTERNAL_STORAGE` 限 Android 9 及以下保存校历图片时申请。
+  拨号只唤起拨号盘，不申请通话权限。
+
+## 构建
+
+环境：JDK 17、Android SDK 34。`local.properties` 需指向本机 SDK（该文件不入库）。
+
+```bash
+./gradlew :app:testDebugUnitTest   # 单元测试
+./gradlew :app:assembleDebug        # 调试包 → app/build/outputs/apk/debug/
+./gradlew :app:assembleRelease      # 正式包（R8 混淆 + 资源收缩）
+```
+
+依赖仓库默认先走阿里云镜像；设置了 `CI` 环境变量的环境（如 GitHub Actions）直连官方源。Gradle wrapper 使用腾讯云镜像，
+可自行改回 `services.gradle.org`。
+
+### release 签名
+
+在项目根目录放一个 `keystore.properties`（已被 `.gitignore` 排除）：
+
+```properties
+storeFile=/absolute/path/to/your.jks
+storePassword=…
+keyAlias=…
+keyPassword=…
+```
+
+缺少该文件时 release 包不签名，构建时会打印一行提醒。发版时请归档 `app/build/outputs/mapping/release/mapping.txt`，
+否则用户反馈的崩溃栈无法还原。
+
+fork 后若要让「检查更新」指向自己的仓库，改 `app/build.gradle.kts` 里的 `GITHUB_REPO`。
+
+### 调试预览
+
+debug 包内置了几个不登录就能打开的页面，用 adb 直接拉起：
+
+```bash
+P=io.github.joyreverie.onebnu
+adb shell am start -n $P/.widget.HomePreviewActivity                       # 首页时间轴（--es mode empty 看空态）
+adb shell am start -n $P/.widget.SchedulePreviewActivity                   # 课表网格与日程编辑
+adb shell am start -n $P/.widget.WidgetPreviewActivity --es mode sample    # 小组件各尺寸（mode: sample|empty|loggedout|error）
+adb shell am start -n $P/.widget.ContactsPreviewActivity                   # 校内联系方式
+adb shell am start -n $P/.widget.CreditsPreviewActivity                    # 学分核算
+adb shell am start -n $P/.widget.ProfileCardsPreviewActivity               # 「我的」页的提醒与小组件卡
+adb shell am start -n $P/.widget.SettingsPreviewActivity --es version 1.0.0  # 设置页；伪装旧版本以演练更新流程
+```
+
+## 项目结构
+
+```
+app/src/main/java/io/github/joyreverie/onebnu/
+├── core/
+│   ├── crypto/    统一认证使用的非标准三重 DES
+│   ├── net/       CAS 登录、HTTP 封装（GBK 判定、重定向协议升级）、Cookie、网络诊断
+│   ├── notify/    上课提醒的定时与通知
+│   ├── store/     凭据、设置、课表缓存、个人日程、设备标识
+│   └── update/    应用内检查更新与下载安装
+├── data/
+│   ├── model/     数据模型、校历、学分归类、校内联系方式
+│   ├── parse/     教务页面解析（Jsoup）
+│   ├── remote/    教务接口
+│   └── repo/      会话与学业数据仓库
+├── ui/            Jetpack Compose 界面，按功能分包
+└── widget/        今日课表桌面小组件
+app/src/debug/     不登录即可预览各页面的调试入口
+app/src/test/      单元测试与脱敏后的页面样本
+docs/              技术说明、截图、校内联系方式的原始整理稿
+```
+
+技术栈：Kotlin、Jetpack Compose（Material 3）、OkHttp、Jsoup，minSdk 26 / targetSdk 34。
+与学校系统对接的细节见 [docs/architecture.md](docs/architecture.md)。
+
+## 数据维护
+
+- **校历**：教务没有校历接口，周次依据手工录入的官方校历（`data/model/OfficialCalendar.kt`），未录入的学期按学校惯例推算并在界面上标注。
+  每学期补录一次：校历图放到 `res/drawable-nodpi/calendar_<学年起始年>_<autumn|spring>.jpg`，在 `OfficialCalendars` 里照现有条目加一条并加入 `ALL`，
+  `AcademicCalendarTest` 会检查起点是否周一、周数与日期是否合理。
+- **校内联系方式**：`res/raw/campus_contacts.json`，每条带来源页面地址与该页面标注的发布日期；改完同步 `CampusContactsTest` 的计数。
+- **作息时间**：`core/store/Settings.kt` 的 `PERIOD_TIMES`。
+
+## 已知限制
+
+- 只面向北京校区；空闲教室只反映排课占用，不含临时借用。
+- 二次认证只支持短信方式，企业微信扫码未实现。
+- 图书馆检索为内嵌官网，未做原生解析。
+- 小组件后台刷新依赖「记住密码」；换新设备需要短信验证时后台不会自动完成。
+- 小米、华为等 ROM 需在应用信息里允许自启动并将省电策略设为「无限制」，上课提醒才可靠。
+- 测试账号为 2026 级新生，成绩与考试的行解析按真实表头加构造数据验证，等有真实数据后需复核。
+
+## 参与贡献
+
+见 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
+
+## 许可证
+
+代码以 [GNU GPL v3](LICENSE) 发布。
+
+以下内容不属于本许可证范围：`res/drawable-nodpi/` 下的官方校历图与校园平面图版权归北京师范大学，仅为方便学生查阅而内置；
+校内联系方式数据抄录自各单位公开网页；收款码图片为开发者个人所有。

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 小组件圆角；Android 12 起改用系统统一的小组件圆角，见 values-v31 -->
+    <dimen name="widget_corner">20dp</dimen>
+</resources>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    今日课表小组件。宽 4 格，高 2～4 格可拉伸（默认 2 格）。
+    minWidth / minHeight 按 70 × n − 30 dp 的官方约定：4 格宽 = 250dp，2 格高 = 110dp。
+    曾试过把最小高度抬到 150dp 以杜绝 1 格，结果在实机（小米）和 Pixel 启动器上都被算成最少 3 格、2×4 反而不可用——
+    各家启动器一格的高度差异太大，没有一个值能两边兼顾，所以回到官方约定值，保证 2×4 一定存在；
+    个别一格很高的启动器可能允许缩到 1 格，此时只显示一节课，布局已按最矮情况处理。
+    不设最大高度，启动器格子偏小时多拉一格也无妨（只是多显示几行）。
+    updatePeriodMillis 取系统允许的最小值 30 分钟：跨零点后能翻到新一天，进行中 / 已结束的标记也能跟着走。
+    targetCell*、previewLayout、description 是 Android 12 的属性，旧系统忽略；previewImage 给不渲染 previewLayout 的启动器（多数国产桌面）看。
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:description="@string/widget_today_description"
+    android:initialLayout="@layout/widget_today"
+    android:minHeight="110dp"
+    android:minResizeHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minWidth="250dp"
+    android:previewImage="@drawable/widget_preview_image"
+    android:previewLayout="@layout/widget_preview"
+    android:resizeMode="vertical|horizontal"
+    android:targetCellHeight="2"
+    android:targetCellWidth="4"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen"
+    tools:targetApi="s" />

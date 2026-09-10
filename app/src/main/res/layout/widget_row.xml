@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 一节课：左侧起止时间，中间课程色条，右侧课名 / 教室·教师·节次。高 38dp。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="38dp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <LinearLayout
+        android:layout_width="46dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/row_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="12.5sp" />
+
+        <TextView
+            android:id="@+id/row_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="10.5sp" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/row_bar"
+        android:layout_width="3dp"
+        android:layout_height="28dp"
+        android:layout_marginEnd="9dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/widget_accent_bar" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/row_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/row_detail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="10.5sp" />
+    </LinearLayout>
+</LinearLayout>

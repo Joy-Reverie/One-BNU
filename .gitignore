@@ -1,0 +1,30 @@
+# 构建产物（匹配任意层级的 build 目录）
+build/
+.gradle/
+.cxx/
+.externalNativeBuild/
+/captures
+
+# IDE
+*.iml
+.idea/
+.vscode/
+
+# 本机配置
+local.properties
+.DS_Store
+
+# 签名与密钥，绝不入库
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# 任何本地调试用的账号文件
+credentials*
+secrets*
+*.env
+
+# Kotlin 2.x 编译器缓存、Android Studio「Generate Signed Bundle」的默认输出目录
+.kotlin/
+/app/release/
