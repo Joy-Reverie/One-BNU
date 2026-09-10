@@ -101,8 +101,9 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 ## 校内联系方式
 
-数据是 `app/src/main/res/raw/campus_contacts.json`：15 个分区、337 条、349 个号码，逐条抄自各单位官网「联系我们」页，
-每个分区带来源链接和来源页面自己标注的发布日期。`docs/bnu-directory.html` 是检索时的原始整理稿。校内 5880 号段用手机拨必须
+数据是 `app/src/main/res/raw/campus_contacts.json`：16 个分区、386 条、399 个号码，逐条抄自各单位官网「联系我们」页，
+每个分区带来源链接和来源页面自己标注的发布日期；一个分区的数据抄自多张页面时（科研院的五个处室页各有各的发布日期），
+来源标在小节上（`ContactSection.sourceUrl` / `sourceDate`）而不是分区上。`docs/bnu-directory.html` 是检索时的原始整理稿。校内 5880 号段用手机拨必须
 加区号，界面上一律显示完整的「010 5880 xxxx」。`CampusContactsTest` 校验分区数、条数与号码格式。
 
 ## 应用内更新

@@ -389,30 +389,21 @@ private fun GroupCard(
                         if (i > 0) Divider(Modifier.padding(horizontal = 16.dp), color = LocalAccents.current.hairline)
                         ContactRowView(r, onDial)
                     }
+                    // 一个分区里各小节抄自不同页面时，来源与日期标在小节上
+                    if (s.sourceUrl.isNotBlank()) {
+                        SourceLine(
+                            text = "${s.sourceLabel.ifBlank { "来源页" }} · ${s.sourceDateLabel}",
+                            url = s.sourceUrl,
+                            modifier = Modifier.padding(start = 16.dp),
+                        )
+                    }
                 }
                 if (group.sourceUrl.isNotBlank()) {
                     Divider(color = LocalAccents.current.hairline)
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { openUrl(context, group.sourceUrl) }
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "${group.sourceLabel.ifBlank { "来源页" }} · ${group.sourceDateLabel}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Icon(
-                            Icons.AutoMirrored.Outlined.OpenInNew, "打开来源",
-                            Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.outline,
-                        )
-                    }
+                    SourceLine(
+                        text = "${group.sourceLabel.ifBlank { "来源页" }} · ${group.sourceDateLabel}",
+                        url = group.sourceUrl,
+                    )
                 }
             }
         }
@@ -439,6 +430,33 @@ private fun HoursTable(hours: List<ContactHours>) {
 }
 
 /** 一条联系方式：事项 + 标签，找谁 · 在哪，号码药丸（可拨），邮箱与补充。 */
+/** 一行可点的来源页链接，分区底部与小节底部共用。 */
+@Composable
+private fun SourceLine(text: String, url: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clickable { openUrl(context, url) }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Icon(
+            Icons.AutoMirrored.Outlined.OpenInNew, "打开来源",
+            Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.outline,
+        )
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ContactRowView(row: ContactRow, onDial: (String) -> Unit, overline: String? = null) {

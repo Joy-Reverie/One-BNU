@@ -46,7 +46,19 @@ data class ContactRow(
     }
 }
 
-data class ContactSection(val title: String, val rows: List<ContactRow>)
+/**
+ * 分区下的一个小节。[sourceUrl] 只在小节自己有来源时才有值 —— 像科研院那样一个分区的数据
+ * 抄自多张页面、每张页面各有各的发布日期时，来源标在小节上而不是分区上。
+ */
+data class ContactSection(
+    val title: String,
+    val rows: List<ContactRow>,
+    val sourceLabel: String = "",
+    val sourceUrl: String = "",
+    val sourceDate: String = "",
+) {
+    val sourceDateLabel: String get() = sourceDateLabel(sourceDate)
+}
 
 data class ContactHours(val label: String, val value: String)
 
@@ -65,12 +77,14 @@ data class ContactGroup(
     val rowCount: Int get() = sections.sumOf { it.rows.size }
 
     /** 「页面发布于 2024年4月2日」或「页面未标注发布日期」。 */
-    val sourceDateLabel: String
-        get() {
-            val parts = sourceDate.split("-")
-            if (parts.size != 3) return "页面未标注发布日期"
-            return "页面发布于 ${parts[0]}年${parts[1].toInt()}月${parts[2].toInt()}日"
-        }
+    val sourceDateLabel: String get() = sourceDateLabel(sourceDate)
+}
+
+/** 把 ISO 日期写成「页面发布于 2024年4月2日」；没标日期的说明没标，不猜。 */
+internal fun sourceDateLabel(date: String): String {
+    val parts = date.split("-")
+    if (parts.size != 3) return "页面未标注发布日期"
+    return "页面发布于 ${parts[0]}年${parts[1].toInt()}月${parts[2].toInt()}日"
 }
 
 data class EmergencyContact(val number: String, val dial: String, val label: String) {
@@ -130,6 +144,9 @@ object CampusContactsJson {
                 sections = g.getJSONArray("sections").map { s ->
                     ContactSection(
                         title = s.optString("title"),
+                        sourceLabel = s.optString("sourceLabel"),
+                        sourceUrl = s.optString("sourceUrl"),
+                        sourceDate = s.optString("sourceDate"),
                         rows = s.getJSONArray("rows").map { r ->
                             ContactRow(
                                 what = r.getString("what"),
