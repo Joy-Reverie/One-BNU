@@ -298,18 +298,18 @@ fun ReminderCard() {
         }
 
         if (enabled) {
-            Divider(Modifier.padding(vertical = 8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("后台运行", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        if (batteryOk) "已忽略电池优化。建议把省电策略设为「无限制」并允许自启动"
-                        else "未忽略电池优化，通知可能不按时。建议允许，并把省电策略设为「无限制」、允许自启动",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (batteryOk) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.error,
-                    )
-                }
-                if (!batteryOk) {
+            // 已经放行就不再占地方：这几行只在系统真的会拦截提醒时出现，授权后自动消失
+            if (!batteryOk) {
+                Divider(Modifier.padding(vertical = 8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("后台运行", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "未忽略电池优化，通知可能不按时。建议允许，并把省电策略设为「无限制」、允许自启动",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                     TextButton(onClick = {
                         runCatching {
                             context.startActivity(

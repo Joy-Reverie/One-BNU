@@ -84,24 +84,16 @@ fun ProfileScreen(
 
         item {
             MenuGroup {
-                MenuItem(Icons.Outlined.Badge, "学籍信息", "姓名、院系、专业、班级等") {
-                    nav.navigate(Routes.STUDENT_INFO)
-                }
-                MenuItem(Icons.Outlined.School, "学分核算", "各学期修读学分与模块归类") {
-                    nav.navigate(Routes.CREDITS)
-                }
-                MenuItem(Icons.Outlined.Settings, "设置", "外观、绩点口径、作息时间、网络与更新") {
-                    nav.navigate(Routes.SETTINGS)
-                }
-                MenuItem(Icons.Outlined.Info, "关于与支持", "联系开发者 · 反馈 · 打赏") {
-                    nav.navigate(Routes.INFO)
-                }
+                MenuItem(Icons.Outlined.Badge, "学籍信息") { nav.navigate(Routes.STUDENT_INFO) }
+                MenuItem(Icons.Outlined.School, "学分核算") { nav.navigate(Routes.CREDITS) }
+                MenuItem(Icons.Outlined.Settings, "设置") { nav.navigate(Routes.SETTINGS) }
+                MenuItem(Icons.Outlined.Info, "关于与支持") { nav.navigate(Routes.INFO) }
             }
         }
 
         item {
             MenuGroup {
-                MenuItem(Icons.AutoMirrored.Outlined.Logout, "退出登录", null, danger = true) {
+                MenuItem(Icons.AutoMirrored.Outlined.Logout, "退出登录", danger = true) {
                     showSignOut = true
                 }
             }
@@ -277,7 +269,6 @@ private fun MenuGroup(content: @Composable () -> Unit) {
 private fun MenuItem(
     icon: ImageVector,
     title: String,
-    subtitle: String?,
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
@@ -288,20 +279,12 @@ private fun MenuItem(
     ) {
         Icon(icon, null, Modifier.size(22.dp), tint = tint)
         Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-            )
-            if (subtitle != null) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-            }
-        }
+        Text(
+            title,
+            Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+        )
         if (!danger) {
             Icon(
                 Icons.Filled.ChevronRight, null,
