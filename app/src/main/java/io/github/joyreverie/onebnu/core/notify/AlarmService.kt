@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -30,10 +31,16 @@ import kotlinx.coroutines.flow.StateFlow
  * 闹钟提醒的响铃。
  *
  * 到点由 [ReminderReceiver] 拉起（精确闹钟会给应用一段临时白名单，后台也能启动前台服务）。
- * 声音走**闹钟音量**而不是通知音量，循环播放并震动，直到用户停止或 [AUTO_STOP_MILLIS] 到期；
- * 前台服务的通知带全屏意图，锁屏时直接弹出 [AlarmActivity]，亮屏时是横幅加「停止」。
+ * 声音走**闹钟音量**而不是通知音量，循环播放并震动，直到停止或 [AUTO_STOP_MILLIS] 到期。
  *
- * 响铃本身不依赖应用进程常驻 —— 定时由系统 AlarmManager 保管，进程被清理后仍会把这个服务拉起来。
+ * 用户随时能停下来，一共四条路，任何一条失效都还有别的：
+ *  1. 通知上的「停止」（亮屏时是横幅，锁屏时在通知里）；
+ *  2. 锁屏 / 灭屏时弹出的 [AlarmActivity] 上的大按钮；
+ *  3. 应用内「我的 → 上课提醒」卡片上的「停止」；
+ *  4. 两分钟自动停。
+ *
+ * 重复调用 [start] 不会叠加：每次都先把上一次的播放器与震动收掉，全程只有一个 MediaPlayer。
+ * 勿扰模式下不出声，只震动。
  */
 class AlarmService : Service() {
 
@@ -46,44 +53,54 @@ class AlarmService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
         val title = intent?.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "上课提醒" }
         val text = intent?.getStringExtra(EXTRA_TEXT).orEmpty()
 
         ensureChannel(this)
+        // 无论如何先满足前台服务的契约，否则系统会判定「起了前台服务却没 startForeground」
         ServiceCompat.startForeground(
             this, NOTIFICATION_ID, notification(title, text),
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0,
         )
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         current = title to text
         _ringing.value = true
 
-        // 屏幕灭着时也要能出声：MediaPlayer 自己持一个 CPU 唤醒锁，服务再兜一层，两分钟后一定释放
+        // 再响一次之前先把上一次收干净：否则每点一次就多一个播放器，旧的再也停不掉
+        stopPlayback()
         acquireWakeLock()
-        startSound()
+        if (!silencedByDnd(this)) startSound()
         startVibration()
         handler.removeCallbacks(autoStop)
         handler.postDelayed(autoStop, AUTO_STOP_MILLIS)
         // 万一响铃期间进程被 ROM 杀掉，系统重启服务时把原来的 intent 带回来，
-        // course 名与地点不会退化成通用标题
+        // 课名与地点不会退化成通用标题
         return START_REDELIVER_INTENT
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(autoStop)
-        runCatching { player?.stop() }
-        runCatching { player?.release() }
-        player = null
-        runCatching { vibrator?.cancel() }
-        vibrator = null
+        stopPlayback()
         runCatching { if (wakeLock?.isHeld == true) wakeLock?.release() }
         wakeLock = null
         _ringing.value = false
         current = null
         super.onDestroy()
+    }
+
+    /** 停掉声音与震动；可重复调用。 */
+    private fun stopPlayback() {
+        player?.let { p ->
+            runCatching { if (p.isPlaying) p.stop() }
+            runCatching { p.release() }
+        }
+        player = null
+        runCatching { vibrator?.cancel() }
+        vibrator = null
     }
 
     private fun startSound() {
@@ -96,7 +113,7 @@ class AlarmService : Service() {
                 setDataSource(this@AlarmService, uri)
                 setAudioAttributes(
                     AudioAttributes.Builder()
-                        // USAGE_ALARM：走闹钟音量，静音 / 勿扰下也照常响
+                        // USAGE_ALARM：走闹钟音量，静音与响铃模式都照常响
                         .setUsage(AudioAttributes.USAGE_ALARM)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build(),
@@ -106,7 +123,7 @@ class AlarmService : Service() {
                 prepare()
                 start()
             }
-        }
+        }.onFailure { player = null }
     }
 
     private fun startVibration() {
@@ -117,10 +134,9 @@ class AlarmService : Service() {
             getSystemService(Vibrator::class.java)
         } ?: return
         vibrator = v
-        val pattern = longArrayOf(0, 700, 600)
         runCatching {
             v.vibrate(
-                VibrationEffect.createWaveform(pattern, 0),
+                VibrationEffect.createWaveform(longArrayOf(0, 700, 600), 0),
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -146,16 +162,23 @@ class AlarmService : Service() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val stop = PendingIntent.getService(
+        // 「停止」走广播而不是 startService：应用在后台时给服务发 startService 会受后台启动限制，
+        // 广播接收器里再 stopService 则不受限。
+        val stop = PendingIntent.getBroadcast(
             this, REQUEST_STOP,
-            Intent(this, AlarmService::class.java).setAction(ACTION_STOP),
+            Intent(this, AlarmStopReceiver::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val body = if (silencedByDnd(this)) {
+            listOf(text, "勿扰模式已开，只震动").filter { it.isNotBlank() }.joinToString(" · ")
+        } else {
+            text
+        }
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher_monochrome)
             .setColor(0xFF1B3C6E.toInt())
             .setContentTitle(title)
-            .setContentText(text)
+            .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setOngoing(true)
@@ -169,7 +192,7 @@ class AlarmService : Service() {
 
     companion object {
         const val CHANNEL_ID = "class_alarm"
-        private const val ACTION_STOP = "io.github.joyreverie.onebnu.alarm.STOP"
+        internal const val ACTION_STOP = "io.github.joyreverie.onebnu.alarm.STOP"
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_TEXT = "text"
         private const val NOTIFICATION_ID = 3100
@@ -181,13 +204,25 @@ class AlarmService : Service() {
 
         private val _ringing = MutableStateFlow(false)
 
-        /** 是否正在响铃，[AlarmActivity] 据此在停止后自动关闭。 */
+        /** 是否正在响铃；界面据此把「试一下」换成「停止」，[AlarmActivity] 据此自动关闭。 */
         val ringing: StateFlow<Boolean> get() = _ringing
 
         /** 正在响的这一条的标题与副标题。 */
         @Volatile
         var current: Pair<String, String>? = null
             private set
+
+        /**
+         * 勿扰模式下是否静音。开着勿扰（含「仅闹钟」「完全静音」）就只震动不出声 ——
+         * 闹钟音量本来能穿透勿扰，这里主动让步，免得在图书馆、会议里炸响。
+         */
+        fun silencedByDnd(context: Context): Boolean {
+            val nm = context.getSystemService(NotificationManager::class.java) ?: return false
+            return runCatching {
+                nm.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL &&
+                    nm.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+            }.getOrDefault(false)
+        }
 
         /** 拉起响铃；系统不允许后台启动前台服务时返回 false，调用方退回普通通知。 */
         fun start(context: Context, title: String, text: String): Boolean = runCatching {
@@ -199,8 +234,10 @@ class AlarmService : Service() {
             true
         }.getOrDefault(false)
 
+        /** 停止响铃。stopService 不受后台启动限制，任何入口都能调。 */
         fun stop(context: Context) {
-            runCatching { context.startService(Intent(context, AlarmService::class.java).setAction(ACTION_STOP)) }
+            runCatching { context.stopService(Intent(context, AlarmService::class.java)) }
+            _ringing.value = false
         }
 
         fun ensureChannel(context: Context) {
@@ -217,5 +254,12 @@ class AlarmService : Service() {
                 },
             )
         }
+    }
+}
+
+/** 通知上的「停止」。用广播而不是直接 startService，后台也能停。 */
+class AlarmStopReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == AlarmService.ACTION_STOP) AlarmService.stop(context)
     }
 }

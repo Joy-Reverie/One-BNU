@@ -46,6 +46,8 @@ private val Indigo700 = Color(0xFF1B3C6E)
 private val Indigo500 = Color(0xFF2F5CA8)
 private val Indigo300 = Color(0xFF7FA0DA)
 private val Indigo100 = Color(0xFFDDE6F8)
+/** 选中态的浅蓝：比 Indigo100 深一档，放在白卡片上一眼看出「选中」，又与主色同源。 */
+private val Indigo150 = Color(0xFFCBDCF7)
 
 private val Teal600 = Color(0xFF0E7C8C)
 private val Teal300 = Color(0xFF63C6D4)
@@ -67,8 +69,10 @@ private val LightColors = lightColorScheme(
 
     secondary = Teal600,
     onSecondary = Color.White,
-    secondaryContainer = Teal100,
-    onSecondaryContainer = Color(0xFF04333B),
+    // 选中容器（底部导航选中指示、分段选择器选中项）走浅蓝而不是青绿：
+    // 青绿在白底上偏「绿」，与品牌蓝不像一套。
+    secondaryContainer = Indigo150,
+    onSecondaryContainer = Indigo900,
 
     tertiary = Gold600,
     onTertiary = Color.White,
@@ -106,8 +110,8 @@ private val DarkColors = darkColorScheme(
 
     secondary = Teal300,
     onSecondary = Color(0xFF04333B),
-    secondaryContainer = Color(0xFF0D5966),
-    onSecondaryContainer = Teal100,
+    secondaryContainer = Color(0xFF2A4C7D),
+    onSecondaryContainer = Indigo100,
 
     tertiary = Gold300,
     onTertiary = Color(0xFF3C2A00),

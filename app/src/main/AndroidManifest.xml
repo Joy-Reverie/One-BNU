@@ -118,6 +118,9 @@
             android:name=".core.notify.AlarmService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+        <receiver
+            android:name=".core.notify.AlarmStopReceiver"
+            android:exported="false" />
         <activity
             android:name=".ui.notify.AlarmActivity"
             android:excludeFromRecents="true"

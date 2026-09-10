@@ -14,11 +14,13 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import io.github.joyreverie.onebnu.AppVisibility
 import io.github.joyreverie.onebnu.MainActivity
 import io.github.joyreverie.onebnu.R
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.store.ReminderStyle
 import io.github.joyreverie.onebnu.core.store.Settings
+import io.github.joyreverie.onebnu.ui.notify.AlarmActivity
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -165,7 +167,19 @@ object ClassReminder {
     /** 闹钟方式起不来（系统拒绝后台启动前台服务）时退回通知：宁可安静，也不能整条丢掉。 */
     private fun deliver(context: Context, items: List<ReminderItem>, lead: Int, style: ReminderStyle) {
         if (items.isEmpty()) return
-        if (style == ReminderStyle.ALARM && AlarmService.start(context, alarmTitle(items), alarmText(items, lead))) return
+        if (style == ReminderStyle.ALARM && AlarmService.start(context, alarmTitle(items), alarmText(items, lead))) {
+            // 亮屏且正在用应用时，系统只会把全屏意图降级成横幅；关掉通知权限的话连横幅都没有，
+            // 那就没有「停止」可点了。所以前台时直接把全屏页拉起来。
+            if (AppVisibility.foreground) {
+                runCatching {
+                    context.startActivity(
+                        Intent(context, AlarmActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+                    )
+                }
+            }
+            return
+        }
         items.forEachIndexed { i, item -> notify(context, item, lead, NOTIFICATION_BASE_ID + i) }
     }
 

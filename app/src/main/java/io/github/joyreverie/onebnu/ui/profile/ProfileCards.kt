@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.notify.AlarmService
 import io.github.joyreverie.onebnu.core.notify.ClassReminder
 import io.github.joyreverie.onebnu.core.store.ReminderStyle
 import io.github.joyreverie.onebnu.ui.components.SectionCard
@@ -232,6 +234,7 @@ fun ReminderCard() {
     var lead by remember { mutableIntStateOf(settings.reminderLeadMinutes) }
     var editingLead by remember { mutableStateOf(false) }
     var style by remember { mutableStateOf(settings.reminderStyle) }
+    val ringing by AlarmService.ringing.collectAsState()
     var next by remember { mutableStateOf(ClassReminder.nextDescription(context)) }
     var batteryOk by remember { mutableStateOf(ClassReminder.ignoringBatteryOptimizations(context)) }
     var exactOk by remember { mutableStateOf(ClassReminder.canScheduleExact(context)) }
@@ -307,7 +310,18 @@ fun ReminderCard() {
         Divider(Modifier.padding(vertical = 8.dp))
         Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("提醒方式", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            TextButton(onClick = { ClassReminder.showTest(context, style) }) { Text("试一下") }
+            if (ringing) {
+                TextButton(onClick = { AlarmService.stop(context) }) {
+                    Text("停止", color = MaterialTheme.colorScheme.error)
+                }
+            } else {
+                TextButton(onClick = {
+                    if (style == ReminderStyle.ALARM && AlarmService.silencedByDnd(context)) {
+                        Toast.makeText(context, "勿扰模式已开，闹钟只震动不响铃", Toast.LENGTH_LONG).show()
+                    }
+                    ClassReminder.showTest(context, style)
+                }) { Text("试一下") }
+            }
         }
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             ReminderStyle.entries.forEachIndexed { i, s ->

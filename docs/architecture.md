@@ -81,6 +81,12 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
   `USAGE_ALARM` 循环播放系统闹铃并震动，通知带全屏意图：锁屏或灭屏时直接弹出 `ui/notify/AlarmActivity` 并点亮屏幕，
   亮屏时是横幅加「停止」。两分钟没人理会自动停，`MediaPlayer.setWakeMode` 与服务自持的唤醒锁保证灭屏期间不被 CPU 休眠掐断。
 
+  停止有四条路，任何一条失效都还有别的：通知上的「停止」（走 `AlarmStopReceiver` 广播 + `stopService`，不受后台启动限制）、
+  锁屏全屏页上的大按钮、「我的 → 上课提醒」卡片上的「停止」（响铃时「试一下」就地变成它）、两分钟自动停。
+  亮屏且应用在前台时系统只会把全屏意图降级成横幅，若用户还关掉了通知权限就没有可点的「停止」，所以前台时直接把全屏页拉起来。
+  重复拉起不会叠加：`onStartCommand` 先 `stopPlayback()` 再起新的，全程只有一个 `MediaPlayer`。
+  勿扰模式（`currentInterruptionFilter != INTERRUPTION_FILTER_ALL`）下不出声，只震动，通知里写明原因。
+
 定时始终由系统 AlarmManager 保管，应用进程被清理不影响到点；精确闹钟触发时系统会给应用一段临时白名单，后台也能拉起前台服务。
 真正能挡住提醒的只有 ROM 级别的「强制停止」，所以卡片上保留了忽略电池优化的入口。前台服务万一起不来（系统拒绝后台启动），
 `ClassReminder.deliver` 会退回普通通知，不让这一条整个丢掉。
