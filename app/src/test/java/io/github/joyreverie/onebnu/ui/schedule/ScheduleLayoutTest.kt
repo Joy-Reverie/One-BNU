@@ -63,7 +63,7 @@ class ScheduleLayoutTest {
 
     @Test
     fun `首尾相接的日程不算重叠：同一块里分成两簇，各自显示`() {
-        // 8:00–9:00 落在第 1 节到第 2 节的 1/9 处，9:00–10:00 从那里到第 3 节上沿：行范围都碰到第 2 行，但时间不重叠
+        // 8:00–9:00 落到第 2 节行内一点点，9:00–10:00 从那里接到第 3 节上沿：行范围都碰到第 2 行，但时间不重叠
         val groups = ScheduleLayout.groupColumn(listOf(event("吃饭", "08:00", "09:00"), event("自习", "09:00", "10:00")))
         assertEquals(1, groups.size)
         assertEquals(1 to 2, groups[0].start to groups[0].end)
