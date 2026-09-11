@@ -71,6 +71,10 @@ WebView 只接收 CAS 返回的一次性 service ticket。同步 Cookie 时，`C
 `SessionAuthenticator` 在应用侧完成一次标准 SSO，取得目标站点的会话 Cookie 后再加载最终地址；如果会话已失效或预热失败，
 才回退到官方认证页面。这样复用的是应用已有的认证会话，不保存或向网页填写账号密码。
 
+登录成功或应用启动时检测到已有会话后，`OneBnuRoot` 会在后台通过 `SsoWarmup` 依次预热北京门户、教务和 OneVPN
+的服务会话；预热失败不会阻塞首页，点击入口时仍会按需重试。同步到 WebView 的只包含对应目标站点 Cookie，`CASTGC`
+仍严格限制在 CAS 主机。
+
 珠海当前使用独立的 `cas.bnuzh.edu.cn`，而该 OneVPN 登录中转明确指向 `cas.bnu.edu.cn`。在学校没有明确提供跨域
 委托前，应用不会把珠海凭据或 CAS 票据送往北京认证域；珠海用户仍在学校官方页面完成 OneVPN 登录。
 

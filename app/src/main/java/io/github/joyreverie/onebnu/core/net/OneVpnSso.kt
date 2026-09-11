@@ -17,6 +17,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 internal object OneVpnSso {
     private const val ONEVPN_HOST = "onevpn.bnu.edu.cn"
     private const val ONEVPN_LOGIN_PATH = "/login"
+    const val LOGIN_SERVICE = "https://onevpn.bnu.edu.cn/login?cas_login=true"
 
     /**
      * 若 [redirect] 是已知、受信的 OneVPN → CAS 中转，则返回 OneVPN 要求的 CAS service。

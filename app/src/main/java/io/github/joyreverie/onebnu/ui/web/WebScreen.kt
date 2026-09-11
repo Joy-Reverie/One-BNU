@@ -225,7 +225,12 @@ private fun syncCookiesToWebView() {
     val casHost: String
     val domains = if (ServiceLocator.activeCampus == Campus.BEIJING) {
         casHost = "cas.bnu.edu.cn"
-        listOf("https://cas.bnu.edu.cn/", "https://one.bnu.edu.cn/", "http://zyfw.bnu.edu.cn/")
+        listOf(
+            "https://cas.bnu.edu.cn/",
+            "https://one.bnu.edu.cn/",
+            "https://onevpn.bnu.edu.cn/",
+            "http://zyfw.bnu.edu.cn/",
+        )
     } else {
         casHost = "cas.bnuzh.edu.cn"
         listOf("https://cas.bnuzh.edu.cn/", "https://one.bnuzh.edu.cn/", "https://jwxt.bnuzh.edu.cn/")

@@ -27,6 +27,7 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.net.SsoWarmup
 import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.ui.campus.CalendarScreen
 import io.github.joyreverie.onebnu.ui.diagnostics.DiagnosticsScreen
@@ -64,6 +66,8 @@ import io.github.joyreverie.onebnu.ui.theme.OneBnuTheme
 import io.github.joyreverie.onebnu.ui.theme.ProvideScreenInfo
 import io.github.joyreverie.onebnu.ui.update.AutoUpdatePrompt
 import io.github.joyreverie.onebnu.ui.web.WebScreen
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 object Routes {
     const val LOGIN = "login"
@@ -122,6 +126,15 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
             val nav = rememberNavController()
             // rememberSaveable：旋转导致 Activity 重建时不要退回登录页
             var loggedIn by rememberSaveable { mutableStateOf(ServiceLocator.auth.hasSession()) }
+
+            LaunchedEffect(loggedIn, activeCampus) {
+                if (loggedIn) {
+                    val auth = ServiceLocator.auth
+                    withContext(Dispatchers.IO) {
+                        SsoWarmup.warm(auth, activeCampus)
+                    }
+                }
+            }
 
             val backStack by nav.currentBackStackEntryAsState()
             val current = backStack?.destination?.route
