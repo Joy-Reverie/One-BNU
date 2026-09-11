@@ -97,9 +97,30 @@ data class Grade(
     /** 补考、重修等标识。 */
     val remark: String = "",
 ) {
-    /** 是否计入 GPA：非数值且非等第的（缓考、免修等）排除在外。 */
-    val countable: Boolean get() = score != null || GradeScale.letterToScore(scoreText) != null
+    /**
+     * 教务有时把缓考暂记为 0 分，同时在备注、考核方式或成绩状态列标出「缓考」。
+     * 这个 0 不是一次实际考核成绩，不能拉低绩点或加权均分。
+     */
+    val isDeferredExam: Boolean
+        get() = listOf(scoreText, remark, examType).any { it.replace(Regex("\\s"), "").contains("缓考") }
+
+    /**
+     * 手动选择计算范围时使用的稳定、本机键。只由学期和课程标识组成，不含姓名、学号等身份信息。
+     * 用哈希保存到设置，避免把课程名称等原文作为偏好项键写入磁盘。
+     */
+    val calculationKey: String
+        get() = listOf(xn.trim(), xq.trim(), courseCode.trim(), courseName.trim(), credits.toString())
+            .joinToString("\u001F")
+            .sha256()
+
+    /** 是否具备可用于本地绩点换算的成绩；缓考即使显示为 0 也一律不算。 */
+    val countable: Boolean
+        get() = !isDeferredExam && (score != null || GradeScale.letterToScore(scoreText) != null)
 }
+
+private fun String.sha256(): String = java.security.MessageDigest.getInstance("SHA-256")
+    .digest(toByteArray(Charsets.UTF_8))
+    .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
 /** 一场考试。 */
 data class Exam(

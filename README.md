@@ -14,17 +14,18 @@
 
 - **课表**：周视图、课程详情、多学期切换、双指缩放行高；表头标注日期，当天整列高亮
 - **今日课表桌面小组件**：2×2 / 4×2 / 4×3 / 4×4 四种尺寸，跟随系统深浅色，后台按需刷新
-- **成绩与 GPA**：官方 / 4.0 / 4.3 等多种绩点口径换算，按学期统计
+- **成绩与 GPA**：官方 / 4.0 / 4.3 等多种绩点口径换算，按学期统计；缓考（即使暂记为 0 分）自动不计入，可手动勾选计算范围
 - **考试安排**：含倒计时
 - **空闲教室**：按周次或具体日期查询北京、珠海校区各楼空闲教室
 - **校历与周次**：内置官方校历原图，可放大、保存到相册；两校区通用周次 — 日期对照与假期要点
 - **校园平面图**与楼宇索引
 - **学籍信息**：原生展示，身份证号等敏感字段不显示
+- **培养方案**：北京、珠海通用的学校课程中心入口，集中查看培养方案、教学手册与教学大纲
 - **学分核算**：各学期修读学分按模块归类求和，归类可手动修改
 - **校内联系方式**：北京校区各部门公开办公电话；校区切换后与珠海功能隔离
 - **个人日程**：事件、时间、地点、备注，可按星期几重复；与课表一起出现在首页时间轴、课表网格和小组件里，网格中按起止时刻定位、按时长取高
 - **上课提醒 / 日程提醒**：两类各自开关、共用一个提前时间，开始前 N 分钟提醒（临时加的近期日程立刻提醒），可选通知提醒（响一声）或闹钟提醒（按闹钟音量持续响铃、锁屏全屏弹出，勿扰模式下只震动）
-- **内嵌浏览器**：北京、珠海图书馆及各自门户、教务系统，自动带入登录态
+- **内嵌浏览器**：北京、珠海图书馆及各自门户、教务系统与课程中心；站内页面可直接打开，也可转系统浏览器
 - **检查更新**：设置页内查询 GitHub Releases，下载并安装新版本；联网启动时自动检查一次并询问，可关闭
 - **作息时间**：默认学校统一作息，可在设置里逐节调整上下课时刻；课表刻度、日程定位、提醒与小组件都按它算
 - **深浅色**：跟随系统，或在设置里固定为浅色 / 深色
@@ -70,6 +71,7 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 - 会话 Cookie 只在内存，退出应用即失效。唯一跨会话留存的是认证服务用来认设备的 `devInfo`，它不是凭据，
   可在「网络诊断」里重置。登录表单中的设备标识是安装时生成的随机值，不采集硬件信息。
 - 课表缓存与个人日程存在应用私有目录，退出登录即清除课表缓存。
+- 「培养方案」只提供学校 OneVPN 课程中心的受限网页入口；应用不抓取、解析或导出培养方案、手册和大纲内容。
 - 默认禁止明文流量，只对确实没有 HTTPS 的教务与图书馆主机放行；重定向途中的协议降级会被升回 HTTPS。
 - 关闭云备份与设备迁移（`allowBackup=false`）。内嵌浏览器不注入 JS 接口、禁用文件域访问与混合内容，站外链接交给系统浏览器。
 - 权限：`INTERNET`、`ACCESS_NETWORK_STATE`；`POST_NOTIFICATIONS`、`USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM`、
@@ -118,6 +120,8 @@ adb shell am start -n $P/.widget.SchedulePreviewActivity                   # 课
 adb shell am start -n $P/.widget.WidgetPreviewActivity --es mode sample    # 小组件各尺寸（mode: sample|empty|loggedout|error）
 adb shell am start -n $P/.widget.ContactsPreviewActivity                   # 校内联系方式
 adb shell am start -n $P/.widget.CreditsPreviewActivity                    # 学分核算
+adb shell am start -n $P/.widget.GradePreviewActivity                      # 成绩、缓考与手动计算范围
+adb shell am start -n $P/.widget.CultivationPlanPreviewActivity            # 培养方案入口页
 adb shell am start -n $P/.widget.ProfileCardsPreviewActivity               # 「我的」页的提醒与小组件卡
 adb shell am start -n $P/.widget.ProfileCardsPreviewActivity --ez alarm true --ei delay 8  # 延迟起铃，可先锁屏看闹钟全屏页
 adb shell am start -n $P/.widget.SettingsPreviewActivity --es version 1.0.0  # 设置页；伪装旧版本以演练更新流程
@@ -156,12 +160,14 @@ docs/              技术说明、截图、校内联系方式的原始整理稿
   `AcademicCalendarTest` 会检查起点是否周一、周数与日期是否合理。
 - **校内联系方式**：`res/raw/campus_contacts.json`，每条带来源页面地址与该页面标注的发布日期；改完同步 `CampusContactsTest` 的计数。
 - **作息时间**：默认值是 `core/store/Settings.kt` 的 `PERIOD_TIMES`；用户在设置里改过的存在本机（`period_times`），换默认值不影响已有的自定义。
+- **课程中心**：培养方案、教学手册和教学大纲通过学校 OneVPN 的实时页面提供；不要内置或提交个人页面内容、截图、Cookie、导出文件。
 
 ## 已知限制
 
 - 北京与珠海使用独立认证、Cookie、教务会话、凭据与本地业务缓存；空闲教室只反映教务排课占用，不含临时借用。
 - 二次认证只支持短信方式，企业微信扫码未实现。
 - 图书馆检索为内嵌官网，未做原生解析。
+- 课程中心需要北师大 OneVPN 与学校账号权限；首次访问可能需要在官方页面完成认证，内容以学校实时页面为准。
 - 小组件后台刷新依赖「记住密码」；换新设备需要短信验证时后台不会自动完成。
 - 小米、华为等 ROM 需在应用信息里允许自启动、将省电策略设为「无限制」并允许忽略电池优化，上课提醒才可靠；
   闹钟提醒用系统的闹钟通道登记（状态栏会出现闹钟图标），受这类限制的影响比通知提醒小。

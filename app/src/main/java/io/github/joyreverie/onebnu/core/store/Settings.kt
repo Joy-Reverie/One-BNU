@@ -36,6 +36,14 @@ class Settings(context: Context, campus: Campus = Campus.BEIJING) {
             .getOrDefault(GpaScale.OFFICIAL)
         set(value) { prefs.edit().putString(KEY_GPA_SCALE, value.name).apply() }
 
+    /**
+     * 「成绩 → 计算范围」里用户主动排除的课程键。键是哈希值，且设置按校区隔离；
+     * 新出现的课程默认纳入，避免成绩更新后要逐门重新勾选。
+     */
+    var gpaExcludedCourseKeys: Set<String>
+        get() = prefs.getStringSet(KEY_GPA_EXCLUDED_COURSES, emptySet()).orEmpty().toSet()
+        set(value) { prefs.edit().putStringSet(KEY_GPA_EXCLUDED_COURSES, value.toSet()).apply() }
+
     private val _periodTimes = MutableStateFlow(storedPeriodTimes())
 
     /**
@@ -145,6 +153,7 @@ class Settings(context: Context, campus: Campus = Campus.BEIJING) {
     companion object {
         private const val KEY_TERM_START = "term_start"
         private const val KEY_GPA_SCALE = "gpa_scale"
+        private const val KEY_GPA_EXCLUDED_COURSES = "gpa_excluded_course_keys"
         private const val KEY_LOCK = "require_unlock"
         private const val KEY_SCHEDULE_ZOOM = "schedule_zoom"
         private const val KEY_REMIND_CLASSES = "remind_classes"

@@ -54,6 +54,7 @@ import io.github.joyreverie.onebnu.ui.home.HomeScreen
 import io.github.joyreverie.onebnu.ui.info.InfoScreen
 import io.github.joyreverie.onebnu.ui.login.LoginScreen
 import io.github.joyreverie.onebnu.ui.profile.CreditsScreen
+import io.github.joyreverie.onebnu.ui.profile.CultivationPlanScreen
 import io.github.joyreverie.onebnu.ui.profile.ProfileScreen
 import io.github.joyreverie.onebnu.ui.profile.StudentInfoScreen
 import io.github.joyreverie.onebnu.ui.schedule.ScheduleScreen
@@ -78,6 +79,7 @@ object Routes {
     const val MAP = "map"
     const val SETTINGS = "settings"
     const val STUDENT_INFO = "student_info"
+    const val CULTIVATION_PLAN = "cultivation_plan"
     const val CREDITS = "credits"
     const val DIAGNOSTICS = "diagnostics"
     const val INFO = "info"
@@ -244,6 +246,14 @@ private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus)
     }
     composable(Routes.INFO) { InfoScreen(onBack = { nav.popBackStack() }) }
     composable(Routes.STUDENT_INFO) { StudentInfoScreen(onBack = { nav.popBackStack() }) }
+    composable(Routes.CULTIVATION_PLAN) {
+        CultivationPlanScreen(
+            onBack = { nav.popBackStack() },
+            // OneVPN 自己完成正确的 CAS 回跳；不能拿当前校区的教务 SSO 强行包一层，
+            // 否则北京/珠海的认证链路会互相干扰。
+            onOpenOfficialPage = { title, url -> nav.navigate(Routes.web(title, url, sso = false)) },
+        )
+    }
     composable(Routes.CREDITS) { CreditsScreen(onBack = { nav.popBackStack() }) }
     composable(Routes.DIAGNOSTICS) { DiagnosticsScreen(onBack = { nav.popBackStack() }) }
     composable("${Routes.WEB}/{title}/{url}/{sso}") { entry ->

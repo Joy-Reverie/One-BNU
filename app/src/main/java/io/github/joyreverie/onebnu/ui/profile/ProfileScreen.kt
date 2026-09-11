@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Refresh
@@ -85,6 +86,7 @@ fun ProfileScreen(
         item {
             MenuGroup {
                 MenuItem(Icons.Outlined.Badge, "学籍信息") { nav.navigate(Routes.STUDENT_INFO) }
+                MenuItem(Icons.Outlined.AccountTree, "培养方案") { nav.navigate(Routes.CULTIVATION_PLAN) }
                 MenuItem(Icons.Outlined.School, "学分核算") { nav.navigate(Routes.CREDITS) }
                 MenuItem(Icons.Outlined.Settings, "设置") { nav.navigate(Routes.SETTINGS) }
                 MenuItem(Icons.Outlined.Info, "关于与支持") { nav.navigate(Routes.INFO) }

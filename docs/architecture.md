@@ -51,10 +51,24 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 | 学籍 | `STU_BaseInfoAction.do`（XML） | 身份证号、准考证号等敏感字段不展示 |
 | 培养方案要求 | `DataTable.jsp?tableId=6033` | 学分核算里有数据时附带显示 |
 | 培养方案课程模块 | `DataTable.jsp?tableId=5327008` | 有数据时优先作为学分归类依据 |
+| 课程中心 | OneVPN `jw-pyfa` SPA | 北京、珠海通用；个人培养方案、教学手册、教学大纲实时展示 |
 | 校历 | 无接口 | 手工录入，见 `data/model/OfficialCalendar.kt` |
 | 作息时间 | 无接口 | 默认 `Settings.PERIOD_TIMES` 按学校统一作息生成，可在设置里逐节自定义 |
 
 解析全部在 `data/parse/Parsers.kt`，用 Jsoup；单元测试的样本在 `app/src/test/resources/fixtures/`，已脱敏。
+
+课程中心的入口是 `https://onevpn.bnu.edu.cn/https/77726476706e69737468656265737421fbf45b8469326645300d8db9d6562d/www/dd/vue/spa/jw-pyfa#/`。
+它受 OneVPN / CAS 保护，且方案、手册、大纲会随学校发布和个人权限变化，因此 `CultivationPlanScreen` 只提供一个原生目录页，
+由受限的 `WebScreen` 打开官方实时页面；不做 HTML 抓取、离线内置或导出。跳转时不额外包教务 SSO，
+避免北京和珠海各自的认证链路与 OneVPN 的服务回跳互相干扰。
+
+## 成绩与绩点
+
+教务有时将缓考暂记为 `0` 分，并在备注、考核方式或单列的「成绩状态」中写出「缓考」。解析器将这些状态合并进
+`Grade`；`Grade.isDeferredExam` 在所有绩点口径之前优先排除，因此即使教务同时返回 `0` 绩点也不会影响 GPA 或加权均分。
+
+「成绩 → 计算范围」允许用户取消勾选当前口径下可计算的课程；选择只保存在本机的 `Settings.gpaExcludedCourseKeys`，
+键为课程标识的 SHA-256，不含姓名、学号。缓考和无可用绩点记录不可手动重新纳入，新增成绩默认纳入。
 
 ## 课表缓存与桌面小组件
 

@@ -4,11 +4,14 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -210,14 +213,25 @@ private fun PeriodTimesCard() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("第 ${i + 1} 节", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                TimeChip(t.substringBefore('-')) { editing = i to true }
-                Text(
-                    "–",
-                    Modifier.padding(horizontal = 4.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-                TimeChip(t.substringAfter('-')) { editing = i to false }
+                // 两枚时间芯片与中间连字符放进同一个固定最小高度的行。
+                // 之前三者直接和左侧文字同列布局，某些字体/字号下连字符的行高会把右侧视觉中心带偏。
+                Row(
+                    Modifier.heightIn(min = 40.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TimeChip(t.substringBefore('-')) { editing = i to true }
+                    Box(
+                        Modifier.width(24.dp).fillMaxHeight(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "–",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                    TimeChip(t.substringAfter('-')) { editing = i to false }
+                }
             }
             if (i < periods.lastIndex) HorizontalDivider()
         }
@@ -252,16 +266,21 @@ private fun PeriodTimesCard() {
 /** 可点的时刻，点开时间选择器。 */
 @Composable
 private fun TimeChip(text: String, onClick: () -> Unit) {
-    Text(
-        text,
+    Box(
         Modifier
+            .heightIn(min = 36.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.secondaryContainer)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSecondaryContainer,
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    }
 }
 
 private val ThemeMode.icon: ImageVector

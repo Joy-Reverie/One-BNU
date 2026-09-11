@@ -21,6 +21,8 @@ data class GradeUiState(
     val scale: GpaScale = GpaScale.OFFICIAL,
     val overall: GpaSummary? = null,
     val byTerm: List<Pair<String, GpaSummary>> = emptyList(),
+    /** 用户在「计算范围」中取消勾选的课程键，仅存本机。 */
+    val manuallyExcludedCourseKeys: Set<String> = emptySet(),
     /** 教务没给绩点、只能本地换算时提示用户口径差异。 */
     val officialPointsMissing: Boolean = false,
 )
@@ -54,18 +56,37 @@ class GradeViewModel : ViewModel() {
         applyGrades(_state.value.grades)
     }
 
+    /**
+     * 保存当前口径下的手动计算范围。新成绩默认纳入，自动排除项（尤其是缓考）不能被重新勾选。
+     * 不删掉其他口径当前不可计算的键，用户切回原口径时选择仍在。
+     */
+    fun setIncludedCourses(includedCourseKeys: Set<String>) {
+        val scale = _state.value.scale
+        val eligible = _state.value.grades
+            .filter { GpaCalculator.isEligible(it, scale) }
+            .map { it.calculationKey }
+            .toSet()
+        val excluded = settings.gpaExcludedCourseKeys.toMutableSet()
+        excluded.removeAll(eligible)
+        excluded.addAll(eligible - includedCourseKeys)
+        settings.gpaExcludedCourseKeys = excluded
+        applyGrades(_state.value.grades)
+    }
+
     private fun applyGrades(grades: List<Grade>) {
         var scale = _state.value.scale
         val noOfficial = grades.isNotEmpty() && grades.none { it.officialPoint != null }
         // 教务没返回绩点时，「教务绩点」口径算不出东西，自动切到线性五分制并提示
         if (scale == GpaScale.OFFICIAL && noOfficial) scale = GpaScale.LINEAR_5
 
+        val manuallyExcluded = settings.gpaExcludedCourseKeys
         _state.value = _state.value.copy(
             loading = false,
             grades = grades.sortedWith(compareByDescending<Grade> { it.xn }.thenByDescending { it.xq }),
             scale = scale,
-            overall = GpaCalculator.summarize(grades, scale),
-            byTerm = GpaCalculator.byTerm(grades, scale),
+            overall = GpaCalculator.summarize(grades, scale, manuallyExcluded),
+            byTerm = GpaCalculator.byTerm(grades, scale, manuallyExcluded),
+            manuallyExcludedCourseKeys = manuallyExcluded,
             officialPointsMissing = noOfficial,
             error = null,
             emptyReason = null,

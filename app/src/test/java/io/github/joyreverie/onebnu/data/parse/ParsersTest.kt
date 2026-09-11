@@ -163,6 +163,25 @@ class ParsersTest {
         assertNotNull(Parsers.parseSchedule(html, term))
         assertTrue(Parsers.parseSchedule(html, term).courses.isEmpty())
     }
+
+    @Test
+    fun `成绩状态列里的缓考会随零分一起被识别`() {
+        val html = """
+            <table><thead><tr>
+              <th>学年</th><th>学期</th><th>课程代码</th><th>课程名称</th><th>学分</th>
+              <th>总评成绩</th><th>学分绩点</th><th>成绩状态</th>
+            </tr></thead><tbody><tr>
+              <td>2026</td><td>0</td><td>TEST001</td><td>测试课程</td><td>2</td>
+              <td>0</td><td>0</td><td>缓考</td>
+            </tr></tbody></table>
+        """.trimIndent()
+
+        val grade = Parsers.parseGrades(html).single()
+
+        assertEquals("缓考", grade.remark)
+        assertTrue(grade.isDeferredExam)
+        assertTrue(!grade.countable)
+    }
     // ---------------- 学籍（XML，非 HTML 表格）----------------
 
     @Test

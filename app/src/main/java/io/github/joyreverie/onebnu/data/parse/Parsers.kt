@@ -176,6 +176,9 @@ object Parsers {
         val iType = header.findAny("课程性质", "课程属性", "课程类别", "类别")
         val iExam = header.findAny("考核方式", "考试性质")
         val iRemark = header.findAny("备注", "重修标记", "补考")
+        // 不同校区/报表会把「缓考」放在备注，也可能单列成成绩状态或成绩说明。
+        // 合并进 remark，领域层只需统一判断 Grade.isDeferredExam。
+        val iScoreStatus = header.findAny("缓考", "成绩状态", "成绩标志", "成绩说明", "考试状态")
 
         val out = ArrayList<Grade>()
         for (row in dataRows(table)) {
@@ -205,7 +208,10 @@ object Parsers {
                 officialPoint = cells.getOrNull(iPoint)?.toDoubleOrNull(),
                 courseType = cells.getOrNull(iType).orEmpty(),
                 examType = cells.getOrNull(iExam).orEmpty(),
-                remark = cells.getOrNull(iRemark).orEmpty(),
+                remark = listOf(cells.getOrNull(iRemark).orEmpty(), cells.getOrNull(iScoreStatus).orEmpty())
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .joinToString(" · "),
             )
         }
         return out
