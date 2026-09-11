@@ -5,6 +5,7 @@ import io.github.joyreverie.onebnu.core.net.CasClient
 import io.github.joyreverie.onebnu.core.net.Http
 import io.github.joyreverie.onebnu.core.net.NetworkDiagnostics
 import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
+import io.github.joyreverie.onebnu.core.net.PortalSso
 import io.github.joyreverie.onebnu.core.notify.ClassReminder
 import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.core.store.CampusStore
@@ -115,6 +116,7 @@ object ServiceLocator {
     }
 
     fun signOut(forgetCredentials: Boolean) {
+        PortalSso.clear(activeCampus)
         current.auth.logout()
         current.api.invalidate()
         current.session.clear()

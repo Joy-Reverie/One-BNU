@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import io.github.joyreverie.onebnu.core.net.OneVpnSso
 import io.github.joyreverie.onebnu.ui.components.BnuCard
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.listPadding
@@ -41,8 +42,7 @@ import io.github.joyreverie.onebnu.ui.theme.listPadding
  * 学校课程中心的入口由 OneVPN 保护，方案、手册和大纲也会随学校发布实时变动。
  * 因此这里保留一个原生导航页，再交给受限的内嵌浏览器打开官方地址；不抓取或内置副本。
  */
-private const val COURSE_CENTER =
-    "https://onevpn.bnu.edu.cn/https/77726476706e69737468656265737421fbf45b8469326645300d8db9d6562d/www/dd/vue/spa/jw-pyfa#"
+private const val COURSE_CENTER = OneVpnSso.COURSE_CENTER_BASE
 
 private data class CourseCenterItem(
     val title: String,

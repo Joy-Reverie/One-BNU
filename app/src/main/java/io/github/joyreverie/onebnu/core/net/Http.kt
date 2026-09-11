@@ -24,6 +24,14 @@ class HttpResult(
     val body: String,
 )
 
+/** 不跟随重定向的一次 HTTP 响应，供需要读取 Location 中一次性 code 的 SSO 流程使用。 */
+internal class HttpOnceResult(
+    val url: HttpUrl,
+    val code: Int,
+    val location: HttpUrl?,
+    val body: String,
+)
+
 /**
  * 教务系统与统一认证共用的 HTTP 封装。
  *
@@ -67,6 +75,29 @@ class Http(val client: OkHttpClient, val cookies: BnuCookieJar) {
     @Throws(IOException::class)
     fun get(url: String, referer: String? = null, headers: Map<String, String> = emptyMap()): HttpResult =
         execute(newRequest(url, referer, headers).get().build())
+
+    /** 只请求一跳；Cookie 仍由同一个 CookieJar 自动收发，但不消费后续 Location。 */
+    internal fun getOnce(
+        url: String,
+        referer: String? = null,
+        headers: Map<String, String> = emptyMap(),
+    ): HttpOnceResult {
+        val request = newRequest(url, referer, headers).get().build()
+        return client.newCall(request).execute().use { response ->
+            val location = response.header("Location")
+                ?.let { response.request.url.resolve(it) }
+                ?.let { BnuHosts.upgraded(it) }
+            val bytes = response.body?.bytes() ?: ByteArray(0)
+            val declared = response.header("Content-Type")
+                ?.let { Regex("charset=([\\w-]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
+            HttpOnceResult(
+                url = response.request.url,
+                code = response.code,
+                location = location,
+                body = decode(bytes, declared),
+            )
+        }
+    }
 
     @Throws(IOException::class)
     fun postForm(

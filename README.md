@@ -74,7 +74,7 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 - 「培养方案」只提供学校 OneVPN 课程中心的受限网页入口；应用不抓取、解析或导出培养方案、手册和大纲内容。
 - 默认禁止明文流量，只对确实没有 HTTPS 的教务与图书馆主机放行；重定向途中的协议降级会被升回 HTTPS。
 - 关闭云备份与设备迁移（`allowBackup=false`）。内嵌浏览器不注入 JS 接口、禁用文件域访问与混合内容，站外链接交给系统浏览器。
-- 北京数字京师/教务系统与珠海门户/教务系统，均通过当前校区已有 CAS 会话取得标准的一次性 SSO service ticket；应用不会在网页中自动填写或注入账号、密码。
+- 北京、珠海教务系统通过当前校区已有 CAS 会话取得标准的一次性 SSO service ticket；数字京师与珠海门户按各自官方 OAuth CAS 流程用现有会话换取 access token。应用不会在网页中自动填写或注入账号、密码。
 - 北京校区打开课程中心时，内嵌页只通过现有 CAS 会话取得标准的一次性 SSO service ticket，绝不把密码填入网页；`CASTGC` 在 WebView 中强制为 CAS 主机专属 Cookie，不会同步给 OneVPN 或其他子域。珠海使用独立认证域，未确认跨域委托前保留官方登录页。
 - 权限：`INTERNET`、`ACCESS_NETWORK_STATE`；`POST_NOTIFICATIONS`、`USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM`、
   `RECEIVE_BOOT_COMPLETED`、`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 仅在开启提醒时用到；

@@ -131,7 +131,7 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                 if (loggedIn) {
                     val auth = ServiceLocator.auth
                     withContext(Dispatchers.IO) {
-                        SsoWarmup.warm(auth, activeCampus)
+                        SsoWarmup.warm(ServiceLocator.http, auth, activeCampus)
                     }
                 }
             }

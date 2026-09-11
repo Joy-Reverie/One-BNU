@@ -16,7 +16,7 @@ class SsoWarmupTest {
             listOf(
                 "https://one.bnu.edu.cn/tp_nup/",
                 "http://zyfw.bnu.edu.cn/",
-                OneVpnSso.LOGIN_SERVICE,
+                OneVpnSso.COURSE_CENTER,
             ),
             services,
         )

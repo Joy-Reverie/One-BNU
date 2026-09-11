@@ -18,6 +18,9 @@ internal object OneVpnSso {
     private const val ONEVPN_HOST = "onevpn.bnu.edu.cn"
     private const val ONEVPN_LOGIN_PATH = "/login"
     const val LOGIN_SERVICE = "https://onevpn.bnu.edu.cn/login?cas_login=true"
+    const val COURSE_CENTER_BASE =
+        "https://onevpn.bnu.edu.cn/https/77726476706e69737468656265737421fbf45b8469326645300d8db9d6562d/www/dd/vue/spa/jw-pyfa#"
+    const val COURSE_CENTER = "${COURSE_CENTER_BASE}/pyfa"
 
     /**
      * 若 [redirect] 是已知、受信的 OneVPN → CAS 中转，则返回 OneVPN 要求的 CAS service。
@@ -54,5 +57,24 @@ internal object OneVpnSso {
             return null
         }
         return service.toString()
+    }
+
+    /**
+     * 在应用侧完成一次完整的 OneVPN 中转：先建立原页面的匿名返回状态，再通过现有 CAS
+     * 会话兑换 OneVPN ticket，最后访问目标页让 OneVPN 会话 Cookie 落地。
+     */
+    fun establish(http: Http, auth: SessionAuthenticator, campus: Campus, target: String): Boolean {
+        if (campus != Campus.BEIJING || !auth.hasSession()) return false
+        val initial = http.getOnce(target)
+        if (initial.code in 200..299 && initial.location == null) return true
+
+        val login = initial.location?.takeIf { it.host == ONEVPN_HOST && it.pathSegments.lastOrNull() == "login" }
+            ?: return false
+        val relay = http.getOnce(login.toString())
+        val service = serviceForRelayRedirect(relay.location, campus, hasCasSession = true) ?: return false
+        auth.sso(service)
+
+        val landed = http.get(target)
+        return landed.code in 200..299 && landed.url.toHttpUrlOrNull()?.host == ONEVPN_HOST
     }
 }

@@ -36,6 +36,7 @@ import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.net.BnuHosts
 import io.github.joyreverie.onebnu.core.net.BnuCookieJar
 import io.github.joyreverie.onebnu.core.net.OneVpnSso
+import io.github.joyreverie.onebnu.core.net.PortalSso
 import io.github.joyreverie.onebnu.core.store.Campus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -69,13 +70,26 @@ fun WebScreen(
 
     // 先由同一份 OkHttp CAS 会话完成标准 SSO，再把目标站点的会话 Cookie 交给 WebView。
     // 这样不依赖 WebView 是否接受手工写入的 CASTGC；会话失效时仍回到官方登录页。
-    val target by produceState<String?>(if (useSso) null else url, url, useSso) {
-        value = if (!useSso) {
+    val campus = ServiceLocator.activeCampus
+    val auth = ServiceLocator.auth
+    val http = ServiceLocator.http
+    val target by produceState<String?>(if (useSso || useOneVpnSso) null else url, url, useSso, useOneVpnSso) {
+        value = if (!useSso && !useOneVpnSso) {
+            url
+        } else if (useOneVpnSso) {
+            withContext(Dispatchers.IO) {
+                runCatching { OneVpnSso.establish(http, auth, campus, url) }
+            }
             url
         } else {
             withContext(Dispatchers.IO) {
-                runCatching { ServiceLocator.auth.sso(url).url }.getOrNull()
-            } ?: ServiceLocator.auth.ssoUrl(url)
+                if (PortalSso.isPortalService(campus, url)) {
+                    runCatching { PortalSso.establish(http, auth, campus, url) }
+                    url
+                } else {
+                    runCatching { auth.sso(url).url }.getOrNull()
+                }
+            } ?: auth.ssoUrl(url)
         }
     }
 
@@ -242,6 +256,12 @@ private fun syncCookiesToWebView() {
         "https://$casHost/",
         "${BnuCookieJar.CAS_TICKET}=; Max-Age=0; Path=/; Domain=$parentDomain",
     )
+    PortalSso.webViewCookieTarget(ServiceLocator.activeCampus)?.let { (url, cookie) ->
+        cm.setCookie(url, cookie)
+    }
+    PortalSso.webViewCookie(ServiceLocator.activeCampus)?.let { (url, cookie) ->
+        cm.setCookie(url, cookie)
+    }
     for (domain in domains) {
         val url = domain.toHttpUrlOrNull() ?: continue
         for (c in jar.loadForRequest(url)) {

@@ -63,13 +63,15 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 北京校区已有 CAS 会话时，OneVPN 初始跳转会先保存原页面的匿名返回状态，随后访问其已知的
 `…/cas/login?service=https://onevpn.bnu.edu.cn/login?cas_login=true` 中转。`OneVpnSso` 只识别这一条固定的
-HTTPS 主机、路径和 service，转而调用当前 CAS 的标准 `ssoUrl(service)`；密码不传给 WebView、不执行 JS 表单填充，
-WebView 只接收 CAS 返回的一次性 service ticket。同步 Cookie 时，`CASTGC` 强制为 `cas.bnu.edu.cn` 的 host-only Cookie，
-并清除旧版可能遗留的 `.bnu.edu.cn` 跨子域副本，不能发送给 OneVPN 或门户。
+HTTPS 主机、路径和 service，先在应用侧调用当前 CAS 的标准 `ssoUrl(service)`，再请求原页面让 OneVPN 会话 Cookie 落地；
+密码不传给 WebView、不执行 JS 表单填充。应用侧失败时，WebView 仍只接管同一条可信中转。同步 Cookie 时，`CASTGC`
+强制为 `cas.bnu.edu.cn` 的 host-only Cookie，并清除旧版可能遗留的 `.bnu.edu.cn` 跨子域副本，不能发送给 OneVPN 或门户。
 
-教务系统、数字京师和珠海门户等普通 CAS 入口也不直接把 CAS 登录页交给 WebView：`WebScreen` 先用当前
-`SessionAuthenticator` 在应用侧完成一次标准 SSO，取得目标站点的会话 Cookie 后再加载最终地址；如果会话已失效或预热失败，
-才回退到官方认证页面。这样复用的是应用已有的认证会话，不保存或向网页填写账号密码。
+教务系统等普通 CAS 入口不直接把 CAS 登录页交给 WebView：`WebScreen` 先用当前
+`SessionAuthenticator` 在应用侧完成一次标准 SSO，取得目标站点的会话 Cookie 后再加载最终地址。数字京师与珠海门户
+使用的是官方 OAuth CAS 流程，`PortalSso` 从 CAS authorize 回调中取一次性 code，再调用门户自己的 token 接口换取
+`accessToken`；token 只存在进程内并以门户专属 Cookie 交给网页脚本使用。如果会话已失效或预热失败，才回退到官方认证页面。
+整个过程复用应用已有的认证会话，不保存或向网页填写账号密码。
 
 登录成功或应用启动时检测到已有会话后，`OneBnuRoot` 会在后台通过 `SsoWarmup` 依次预热北京门户、教务和 OneVPN
 的服务会话；预热失败不会阻塞首页，点击入口时仍会按需重试。同步到 WebView 的只包含对应目标站点 Cookie，`CASTGC`
