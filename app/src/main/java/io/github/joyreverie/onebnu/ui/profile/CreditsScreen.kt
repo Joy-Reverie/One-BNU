@@ -80,7 +80,7 @@ data class CreditsUiState(
 
 /**
  * 学分核算：把每个学期的选课课程表拼起来，按模块归类求和。
- * 归类依据依次是用户手动指定、成绩单的课程性质、按课程号与学分推断（见 [CategoryRules]）。
+ * 归类依据依次是用户手动指定、培养方案课程模块、成绩单课程性质、名称与课程号推断（见 [CategoryRules]）。
  */
 class CreditsViewModel : ViewModel() {
     private val repo = ServiceLocator.repo
@@ -90,6 +90,7 @@ class CreditsViewModel : ViewModel() {
 
     private var schedules: List<Schedule> = emptyList()
     private var grades: List<Grade> = emptyList()
+    private var modules: Map<String, CourseCategory> = emptyMap()
 
     init { load() }
 
@@ -116,10 +117,18 @@ class CreditsViewModel : ViewModel() {
             }
             schedules = loaded
             grades = (repo.grades() as? Outcome.Ok)?.data.orEmpty()
+            modules = (repo.courseModules() as? Outcome.Ok)?.data.orEmpty().mapNotNull { (code, label) ->
+                CategoryRules.fromGradeType(label)?.let { code to it }
+            }.toMap()
             val requirements = (repo.creditRequirement() as? Outcome.Ok)?.data.orEmpty()
             _state.value = CreditsUiState(
                 loading = false,
-                ledger = CategoryRules.build(schedules, grades, manual.all()),
+                ledger = CategoryRules.build(
+                    schedules,
+                    grades,
+                    manual.all(),
+                    modules,
+                ),
                 requirements = requirements,
             )
         }
@@ -128,7 +137,7 @@ class CreditsViewModel : ViewModel() {
     /** 手动改一门课的模块；传 null 恢复自动归类。 */
     fun setCategory(courseCode: String, category: CourseCategory?) {
         manual.set(courseCode, category)
-        _state.value = _state.value.copy(ledger = CategoryRules.build(schedules, grades, manual.all()))
+        _state.value = _state.value.copy(ledger = CategoryRules.build(schedules, grades, manual.all(), modules))
     }
 }
 

@@ -66,4 +66,26 @@ class CreditLedgerTest {
         val noManual = CategoryRules.build(schedules, grades, emptyMap())
         assertEquals(CategorySource.GRADE, noManual.terms[0].entries.first { it.course.code == "AIS21158302" }.source)
     }
+
+    @Test
+    fun `珠海非 GRA 公共课按课程名称识别，培养方案模块优先`() {
+        val publicCourse = course("MAR20531801", "马克思主义与当代科技", 1.0)
+        assertEquals(CourseCategory.PUBLIC_REQUIRED, CategoryRules.infer(publicCourse))
+        val schedule = Schedule(autumn, "1", "张三", "", listOf(publicCourse))
+        val ledger = CategoryRules.build(
+            listOf(schedule),
+            emptyList(),
+            emptyMap(),
+            mapOf("MAR20531801" to CourseCategory.PUBLIC_REQUIRED),
+        )
+        assertEquals(CourseCategory.PUBLIC_REQUIRED, ledger.entries.single().category)
+        assertEquals(CategorySource.GRADE, ledger.entries.single().source)
+    }
+
+    @Test
+    fun `专业选修不会被误归为公共选修`() {
+        assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.fromGradeType("专业选修课"))
+        assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.fromGradeType("学位专业课"))
+        assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.fromGradeType("学位必修课"))
+    }
 }

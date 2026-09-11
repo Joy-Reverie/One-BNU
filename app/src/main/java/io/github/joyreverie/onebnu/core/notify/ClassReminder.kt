@@ -19,7 +19,6 @@ import io.github.joyreverie.onebnu.MainActivity
 import io.github.joyreverie.onebnu.R
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.store.ReminderStyle
-import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.ui.notify.AlarmActivity
 import java.time.Duration
 import java.time.Instant
@@ -85,7 +84,7 @@ object ClassReminder {
         val events = if (settings.remindEvents) ServiceLocator.events.all() else emptyList()
         return ReminderPlanner.items(
             schedule, events, now.toLocalDate(), LOOKAHEAD_DAYS, settings.periodTimes,
-            useOfficialCalendar = ServiceLocator.activeCampus == Campus.BEIJING,
+            useOfficialCalendar = true,
         )
     }
 

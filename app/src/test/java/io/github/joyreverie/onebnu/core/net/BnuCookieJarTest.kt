@@ -82,6 +82,14 @@ class BnuCookieJarTest {
         assertTrue(j.loadForRequest(casUrl).isEmpty())
     }
 
+    @Test
+    fun `珠海设备标识只会种到珠海认证主机`() {
+        val mark = FakeMark(serverMark = "ZH-MARK")
+        val j = BnuCookieJar(mark, casHost = "cas.bnuzh.edu.cn")
+        assertEquals("ZH-MARK", j.loadForRequest(zhCasUrl).single().value)
+        assertTrue(j.loadForRequest(casUrl).isEmpty())
+    }
+
     // ------------------------------------------------------------------
     // 作用域
     // ------------------------------------------------------------------

@@ -211,6 +211,26 @@ object Parsers {
         return out
     }
 
+    /**
+     * 解析「学业成绩与培养方案对比」报表（tableId=5327008）。
+     * 该报表在成绩尚未发布时仍可能有课程模块，正好用于学分归类；
+     * 返回课程号到模块的映射，空表时返回空映射。
+     */
+    fun parseCourseModules(html: String): Map<String, String> {
+        val doc = Jsoup.parse(html)
+        val table = pickDataTable(doc, listOf("课程模块", "课程代码", "课程名称")) ?: return emptyMap()
+        val header = headerIndex(table)
+        val iModule = header.findAny("课程模块", "模块")
+        val iCode = header.findAny("课程代码", "课程号", "代码")
+        if (iModule < 0 || iCode < 0) return emptyMap()
+        return dataRows(table).mapNotNull { row ->
+            val cells = row.select("td").map { it.cleanText() }
+            val module = cells.getOrNull(iModule).orEmpty()
+            val code = cells.getOrNull(iCode).orEmpty()
+            if (module.isBlank() || code.isBlank() || module == "课程模块") null else code to module
+        }.toMap()
+    }
+
     private fun buildTermLabel(xn: String, xq: String): String {
         if (xn.isBlank()) return "未分学期"
         val season = when (xq.trim()) {

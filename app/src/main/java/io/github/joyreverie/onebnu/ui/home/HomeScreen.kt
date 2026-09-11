@@ -95,8 +95,11 @@ private val BEIJING_ENTRIES = listOf(
 
 private val ZHUHAI_ENTRIES = listOf(
     Entry("考试安排", Icons.Outlined.EditCalendar, Routes.EXAM, 0),
-    Entry("珠海门户", Icons.Outlined.Public, Routes.web("珠海门户", "https://one.bnuzh.edu.cn/", false), 1),
-    Entry("珠海教务", Icons.Outlined.AccountBalance, Routes.web("珠海教务系统", "https://jwxt.bnuzh.edu.cn/caslogin", true), 2),
+    Entry("空闲教室", Icons.Outlined.MeetingRoom, Routes.CLASSROOM, 1),
+    Entry("校历周次", Icons.Outlined.CalendarMonth, Routes.CALENDAR, 2),
+    Entry("图书馆", Icons.Outlined.LocalLibrary, Routes.web("珠海图书馆", "https://library.bnuzh.edu.cn/", false), 3),
+    Entry("珠海门户", Icons.Outlined.Public, Routes.web("珠海门户", "https://one.bnuzh.edu.cn/", false), 4),
+    Entry("珠海教务", Icons.Outlined.AccountBalance, Routes.web("珠海教务系统", "https://jwxt.bnuzh.edu.cn/caslogin", true), 5),
 )
 
 /** 今日时间轴上的一项：一节课或一条日程，统一按开始时刻排序。 */

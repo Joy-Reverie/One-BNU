@@ -1,6 +1,7 @@
 package io.github.joyreverie.onebnu.data.repo
 
 import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
+import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.core.store.ScheduleCache
 import io.github.joyreverie.onebnu.core.store.SecureStore
 import io.github.joyreverie.onebnu.data.model.AcademicCalendar
@@ -32,6 +33,7 @@ class AcademicRepository(
     /** 当前学期课表的本地缓存（桌面小组件用）；为 null 时不缓存。 */
     private val scheduleCache: ScheduleCache? = null,
     private val useOfficialCalendar: Boolean = true,
+    private val campus: Campus = Campus.BEIJING,
 ) {
 
     /** 空数据不是错误：界面要显示「本学期暂无…」而不是报错。 */
@@ -128,6 +130,13 @@ class AcademicRepository(
         } else o
     }
 
+    /** 培养方案中的课程模块；没有发布时返回空映射而不是错误。 */
+    suspend fun courseModules(): Outcome<Map<String, String>> = call {
+        Parsers.parseCourseModules(api.courseModulesHtml())
+    }.let { o ->
+        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未发布培养方案课程模块") else o
+    }
+
     suspend fun examRounds(): Outcome<List<Option>> = call { api.examRounds() }.let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未发布考试安排") else o
     }
@@ -138,18 +147,23 @@ class AcademicRepository(
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("该轮次下没有你的考试安排") else o
     }
 
-    /**
-     * 北京校区（教务里叫「本部」）。本应用只服务北京校区，界面上不让用户选校区，
-     * 这里直接从教务的校区表里定位它：优先名字带「本部」的，否则取第一个非珠海校区。
-     */
-    suspend fun mainCampus(): Outcome<Option> = when (val o = call { pickMainCampus(api.campuses()) }) {
-        is Outcome.Ok -> o.data?.let { Outcome.Ok(it) } ?: Outcome.Empty("教务系统没有返回北京校区信息")
+    /** 当前登录入口对应的教务校区，用于查该校区的教室课表。 */
+    suspend fun classroomCampus(): Outcome<Option> = when (val o = call { pickClassroomCampus(api.campuses()) }) {
+        is Outcome.Ok -> o.data?.let { Outcome.Ok(it) } ?: Outcome.Empty("教务系统没有返回${campus.label}信息")
         is Outcome.Empty -> o
         is Outcome.Error -> o
     }
 
-    private fun pickMainCampus(all: List<Option>): Option? =
-        all.firstOrNull { it.name.contains("本部") } ?: all.firstOrNull { !it.name.contains("珠海") }
+    /** 兼容北京校区平面图旧调用点；新功能请使用 [classroomCampus]。 */
+    suspend fun mainCampus(): Outcome<Option> = when (campus) {
+        Campus.BEIJING -> classroomCampus()
+        Campus.ZHUHAI -> Outcome.Empty("珠海校区没有内置北京校区平面图")
+    }
+
+    private fun pickClassroomCampus(all: List<Option>): Option? = when (campus) {
+        Campus.BEIJING -> all.firstOrNull { it.name.contains("本部") } ?: all.firstOrNull { !it.name.contains("珠海") }
+        Campus.ZHUHAI -> all.firstOrNull { it.name.contains("珠海") } ?: all.singleOrNull()
+    }
 
     suspend fun buildings(campus: String): Outcome<List<Option>> = call { api.buildings(campus) }.let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统没有返回楼房列表") else o

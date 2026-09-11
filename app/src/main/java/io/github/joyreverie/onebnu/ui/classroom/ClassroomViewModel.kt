@@ -26,7 +26,7 @@ data class ClassroomUiState(
     val building: Option? = null,
     val term: Term? = null,
     /** 所查学期第 1 周的周一，周次与日期互相换算的基准。 */
-    val termStart: LocalDate = AcademicCalendar.currentTermStart(),
+    val termStart: LocalDate = AcademicCalendar.currentTermStart(useOfficial = true),
     /** 可拨到的最大周次：有官方校历取校历周数，否则给一个宽松上限。 */
     val maxWeek: Int = DEFAULT_MAX_WEEK,
     /** 周次依据的说明，界面上直接展示，避免把推算值误当官方校历。 */
@@ -86,8 +86,9 @@ class ClassroomViewModel : ViewModel() {
             // 学期：教务当前学期，其次最新的一个；周次基准跟着所查学期走
             val terms = (repo.terms() as? Outcome.Ok)?.data
             val term = terms?.let { repo.currentTerm(it) }
-            val official = term?.let { AcademicCalendar.official(it) }
-            val start = term?.let { AcademicCalendar.firstMonday(it) } ?: AcademicCalendar.currentTermStart()
+            val official = term?.let { AcademicCalendar.official(it, useOfficial = true) }
+            val start = term?.let { AcademicCalendar.firstMonday(it, useOfficial = true) }
+                ?: AcademicCalendar.currentTermStart(useOfficial = true)
             val maxWeek = official?.weeks ?: DEFAULT_MAX_WEEK
             val today = LocalDate.now()
             _state.update {
@@ -97,7 +98,7 @@ class ClassroomViewModel : ViewModel() {
                     maxWeek = maxWeek,
                     calendarNote = when {
                         official != null -> "周次依据：${official.termLabel}官方校历"
-                        term != null -> "周次依据：${term.name}，按学校惯例推算（尚未录入官方校历）"
+                        term != null -> "周次依据：${term.name}，按学校惯例推算（珠海与北京通用周次）"
                         else -> "周次依据：按学校惯例推算"
                     },
                     week = AcademicCalendar.weekOf(start, today).coerceIn(1, maxWeek),
@@ -105,7 +106,7 @@ class ClassroomViewModel : ViewModel() {
                 )
             }
 
-            when (val c = repo.mainCampus()) {
+            when (val c = repo.classroomCampus()) {
                 is Outcome.Ok -> {
                     campus = c.data
                     loadBuildings(c.data.code)

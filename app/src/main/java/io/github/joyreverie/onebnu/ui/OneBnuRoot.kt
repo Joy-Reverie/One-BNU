@@ -230,12 +230,8 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
 
 private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus) {
     composable(Routes.EXAM) { ExamScreen(onBack = { nav.popBackStack() }) }
-    if (campus == Campus.BEIJING) {
-        composable(Routes.CLASSROOM) { ClassroomScreen(onBack = { nav.popBackStack() }) }
-    }
-    if (campus == Campus.BEIJING) {
-        composable(Routes.CALENDAR) { CalendarScreen(onBack = { nav.popBackStack() }) }
-    }
+    composable(Routes.CLASSROOM) { ClassroomScreen(onBack = { nav.popBackStack() }) }
+    composable(Routes.CALENDAR) { CalendarScreen(onBack = { nav.popBackStack() }) }
     if (campus == Campus.BEIJING) {
         composable(Routes.PHONE) { ContactsScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.MAP) { CampusMapScreen(onBack = { nav.popBackStack() }) }

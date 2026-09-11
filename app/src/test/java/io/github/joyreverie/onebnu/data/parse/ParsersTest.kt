@@ -219,4 +219,12 @@ class ParsersTest {
         assertEquals("18.0", r[0].value)
         assertEquals("专业选修课", r[1].label)
     }
+
+    @Test
+    fun `解析培养方案课程模块`() {
+        assertEquals(
+            mapOf("AAA20000001" to "公共必修课", "BBB20000002" to "学位专业课"),
+            Parsers.parseCourseModules(fixture("course_modules_table.html")),
+        )
+    }
 }

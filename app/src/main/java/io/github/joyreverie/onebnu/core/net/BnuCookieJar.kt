@@ -92,7 +92,8 @@ class BnuCookieJar(
         val cookie = Cookie.Builder()
             .name(DEVICE_COOKIE)
             .value(value)
-            .hostOnlyDomain(DEFAULT_CAS_HOST)
+            // 北京、珠海各有独立认证主机；设备标记不能被错误地种到另一校区。
+            .hostOnlyDomain(casHost)
             .path("/")
             .expiresAt(System.currentTimeMillis() + DEVICE_COOKIE_TTL_MS)
             .build()

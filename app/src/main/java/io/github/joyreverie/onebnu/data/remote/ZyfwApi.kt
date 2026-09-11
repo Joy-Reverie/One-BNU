@@ -140,9 +140,17 @@ class ZyfwApi(
         }
     }
 
-    /** 已发布课表的学年学期。 */
+    /**
+     * 已发布课表的学年学期。
+     *
+     * 珠海学生端页面使用 `Ms_KBBP_FBXKJGXNXQ`：它只返回当前学生可查的学期。
+     * 若该下拉暂未配置则回退到通用下拉，避免误报「没有发布任何学期课表」。
+     */
     @Throws(IOException::class)
-    fun scheduleTerms(): List<Option> = dropList("Ms_KBBP_FBXQLLJXAP")
+    fun scheduleTerms(): List<Option> {
+        val personalTerms = if (base != BASE) dropList("Ms_KBBP_FBXKJGXNXQ") else emptyList()
+        return personalTerms.ifEmpty { dropList("Ms_KBBP_FBXQLLJXAP") }
+    }
 
     /** 已发布的考试轮次，code 形如 "2025,1,2"。 */
     @Throws(IOException::class)
@@ -193,6 +201,29 @@ class ZyfwApi(
         )
         return guard(
             http.postForm("$base/student/$page", form, referer = "$base/student/xscj.stuckcj.jsp").body,
+        )
+    }
+
+    /** 教务培养方案对比报表；有课程模块时可为学分核算提供权威归类。 */
+    @Throws(IOException::class)
+    fun courseModulesHtml(xn: String = "", xq: String = ""): String {
+        ensureSession()
+        val context = userContext
+        val year = xn.ifBlank { context?.currentXn.orEmpty() }
+        val season = xq.ifBlank { context?.currentXq.orEmpty() }
+        return guard(
+            http.postForm(
+                "$base/taglib/DataTable.jsp?tableId=5327008",
+                mapOf(
+                    "xh" to (context?.userCode ?: context?.loginId).orEmpty(),
+                    "xn" to year,
+                    "xn1" to (year.toIntOrNull()?.plus(1)?.toString() ?: ""),
+                    "xq_m" to season,
+                    "_xq" to season,
+                    "ck_px" to "akcmk",
+                ),
+                referer = "$base/student/wsxk.pyfadb.html",
+            ).body,
         )
     }
 

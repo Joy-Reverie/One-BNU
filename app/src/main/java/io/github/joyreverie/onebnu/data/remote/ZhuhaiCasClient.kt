@@ -9,7 +9,6 @@ import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
 import io.github.joyreverie.onebnu.core.net.SmsResult
 import io.github.joyreverie.onebnu.core.net.encodedService
 import org.json.JSONObject
-import java.io.IOException
 
 /** 珠海校区独立统一认证（cas.bnuzh.edu.cn）。 */
 class ZhuhaiCasClient(private val http: Http) : SessionAuthenticator {
@@ -25,15 +24,6 @@ class ZhuhaiCasClient(private val http: Http) : SessionAuthenticator {
         private val TITLE = Regex("""<title[^>]*>(.*?)</title>""", RegexOption.IGNORE_CASE)
     }
 
-    private data class Pending(
-        val formUrl: String,
-        val pageUrl: String,
-        val lt: String,
-        val execution: String,
-        val rsa: String,
-        val service: String,
-    )
-
     override fun login(username: String, password: String, captcha: String): AuthResult {
         // 珠海教务要求账号从珠海统一认证进入；使用教务首页作为 CAS service，
         // 成功后 CAS 会签发一次性 ticket，教务再把它换成本地 JSESSIONID。
@@ -43,36 +33,32 @@ class ZhuhaiCasClient(private val http: Http) : SessionAuthenticator {
             ?: return AuthResult.Failed(pageProblem(page))
         val action = ACTION.find(page.body)?.groupValues?.get(1)
             ?: return AuthResult.Failed("无法解析珠海认证页面")
+        // 浏览器端以 POST 取一次性公钥；不带 Referer 时服务端会返回 400。
         val rsaResponse = http.postForm("$CAS_BASE/cas/rsa", emptyMap(), referer = page.url)
         val publicKey = runCatching { JSONObject(rsaResponse.body).optString("publicKey") }
             .getOrNull()
             ?.takeIf { it.isNotBlank() }
             ?: return AuthResult.Failed("珠海认证未返回加密公钥")
-        val pending = Pending(
-            formUrl = absolute(action, page.url),
-            pageUrl = page.url,
-            lt = lt,
-            execution = EXECUTION.find(page.body)?.groupValues?.get(1) ?: "e1s1",
-            rsa = "",
-            service = service,
-        )
         val response = http.postForm(
-            pending.formUrl,
+            absolute(action, page.url),
             mapOf(
                 "rsa" to "",
                 "ul" to RsaCrypto.encryptWithKey(username, publicKey),
                 "pl" to RsaCrypto.encryptWithKey(password, publicKey),
-                "lt" to pending.lt,
-                "execution" to pending.execution,
+                "lt" to lt,
+                "execution" to (EXECUTION.find(page.body)?.groupValues?.get(1) ?: "e1s1"),
                 "choosenumber" to "",
                 "_eventId" to "submit",
             ),
-            referer = pending.pageUrl,
+            referer = page.url,
         )
         if (!http.cookies.hasCasTicket()) return AuthResult.Failed(errorText(response.body))
-        // Http 已接管 CAS ticket → jwxt → jsessionid 的整条跳转链，最终 body 就是教务首页。
-        return if (looksLikeJwxtHome(response.body)) AuthResult.Success
-        else AuthResult.Failed("珠海教务系统未能建立会话，请重试")
+        // 珠海 CAS 成功后先返回 302；Http 已接管 ticket → jwxt → JSESSIONID 的跳转链。
+        // 某些网关会在最后一步返回空 body，因此以 CASTGC + 最终 URL/状态为准，
+        // 不把合法的空落地页误报成登录失败。
+        return if (looksLikeJwxtHome(response.body) ||
+            response.code in 200..399 && response.url.contains("jwxt.bnuzh.edu.cn")
+        ) AuthResult.Success else AuthResult.Failed("珠海教务系统未能建立会话，请重试")
     }
 
     override fun sendSecondAuthSms(pending: AuthPending): SmsResult =

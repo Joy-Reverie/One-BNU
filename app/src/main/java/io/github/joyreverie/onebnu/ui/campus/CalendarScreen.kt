@@ -55,6 +55,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.joyreverie.onebnu.core.media.ImageSaver
+import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.data.model.AcademicCalendar
 import io.github.joyreverie.onebnu.data.model.AcademicCalendar.Season
 import io.github.joyreverie.onebnu.data.model.CalendarEvent
@@ -102,6 +104,7 @@ private data class TermView(
 fun CalendarScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val today = remember { LocalDate.now() }
+    val sharedWithZhuhai = ServiceLocator.activeCampus == Campus.ZHUHAI
     val current = remember { AcademicCalendar.currentTerm(today) }
     val (curYear, curSeason) = current
 
@@ -178,7 +181,7 @@ fun CalendarScreen(onBack: () -> Unit) {
             contentPadding = LocalScreenInfo.current.listPadding(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item { TermHeader(view, isCurrentTerm, currentWeek, today) }
+            item { TermHeader(view, isCurrentTerm, currentWeek, today, sharedWithZhuhai) }
 
             if (views.size > 1) {
                 item {
@@ -200,7 +203,7 @@ fun CalendarScreen(onBack: () -> Unit) {
             if (official != null) {
                 item { CalendarImageCard(official, onOpen = { viewer = true }, onSave = { save(official) }) }
                 if (official.events.isNotEmpty() || official.remarks.isNotEmpty()) {
-                    item { EventsCard(official) }
+                    item { EventsCard(official, sharedWithZhuhai) }
                 }
             } else {
                 item { EstimateNotice(view) }
@@ -228,7 +231,13 @@ fun CalendarScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun TermHeader(view: TermView, isCurrentTerm: Boolean, currentWeek: Int?, today: LocalDate) {
+private fun TermHeader(
+    view: TermView,
+    isCurrentTerm: Boolean,
+    currentWeek: Int?,
+    today: LocalDate,
+    sharedWithZhuhai: Boolean,
+) {
     val fg = MaterialTheme.colorScheme.onPrimaryContainer
     Surface(
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -249,7 +258,9 @@ private fun TermHeader(view: TermView, isCurrentTerm: Boolean, currentWeek: Int?
                     shape = RoundedCornerShape(50),
                 ) {
                     Text(
-                        if (view.official != null) "官方校历" else "惯例推算",
+                        if (view.official != null) {
+                            if (sharedWithZhuhai) "官方校历·周次共用" else "官方校历"
+                        } else "惯例推算",
                         Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (view.official != null) MaterialTheme.colorScheme.onPrimary
@@ -263,6 +274,14 @@ private fun TermHeader(view: TermView, isCurrentTerm: Boolean, currentWeek: Int?
                 style = MaterialTheme.typography.bodySmall,
                 color = fg.copy(alpha = 0.85f),
             )
+            if (sharedWithZhuhai && view.official != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "珠海校区周次与北京校区通用；校区活动与调课以珠海校区通知为准。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = fg.copy(alpha = 0.85f),
+                )
+            }
             if (isCurrentTerm && currentWeek != null) {
                 Spacer(Modifier.height(10.dp))
                 Text(
@@ -318,8 +337,16 @@ private fun CalendarImageCard(cal: OfficialCalendar, onOpen: () -> Unit, onSave:
 }
 
 @Composable
-private fun EventsCard(cal: OfficialCalendar) {
+private fun EventsCard(cal: OfficialCalendar, sharedWithZhuhai: Boolean) {
     SectionCard("校历要点") {
+        if (sharedWithZhuhai) {
+            Text(
+                "以下为学校校历公共日期；珠海校区的具体调课以校区通知为准。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(bottom = 10.dp),
+            )
+        }
         cal.events.forEachIndexed { i, e ->
             Row(Modifier.fillMaxWidth().padding(top = if (i == 0) 0.dp else 10.dp)) {
                 Text(

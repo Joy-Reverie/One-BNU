@@ -36,7 +36,8 @@ private class CampusRuntime(
     val creditCategories: CreditCategoryStore,
     val diagnostics: NetworkDiagnostics,
 ) {
-    val repo = AcademicRepository(api, auth, secure, scheduleCache, campus == Campus.BEIJING)
+    // 2026-2027 校历两校区周次一致；珠海也使用同一份官方周次基准。
+    val repo = AcademicRepository(api, auth, secure, scheduleCache, useOfficialCalendar = true, campus = campus)
     val session = SessionRepository(api, auth, secure)
 }
 

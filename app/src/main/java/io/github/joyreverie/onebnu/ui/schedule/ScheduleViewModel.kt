@@ -3,7 +3,6 @@ package io.github.joyreverie.onebnu.ui.schedule
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
-import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.data.model.AcademicCalendar
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
@@ -98,7 +97,7 @@ class ScheduleViewModel : ViewModel() {
 
             val start = AcademicCalendar.firstMonday(
                 target,
-                useOfficial = ServiceLocator.activeCampus == Campus.BEIJING,
+                useOfficial = true,
             )
             val cur = start?.let { currentWeekIn(it) }
 

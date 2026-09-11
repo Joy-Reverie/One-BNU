@@ -47,9 +47,10 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 | 课表 | `wsxk/xkjg.ckdgxsxdkchj_data10319.jsp` | 表格无课程类别列 |
 | 成绩 | `xscj.chkdgxscjyxxjd_data.jsp` | 按列名而非列序定位；含「课程性质」 |
 | 考试 | `DataTable.jsp?tableId=2538` | |
-| 空闲教室 | 教室课表取补集 | 只反映排课占用 |
+| 空闲教室 | 教室课表取补集 | 北京、珠海均可用；只反映排课占用 |
 | 学籍 | `STU_BaseInfoAction.do`（XML） | 身份证号、准考证号等敏感字段不展示 |
 | 培养方案要求 | `DataTable.jsp?tableId=6033` | 学分核算里有数据时附带显示 |
+| 培养方案课程模块 | `DataTable.jsp?tableId=5327008` | 有数据时优先作为学分归类依据 |
 | 校历 | 无接口 | 手工录入，见 `data/model/OfficialCalendar.kt` |
 | 作息时间 | 无接口 | 默认 `Settings.PERIOD_TIMES` 按学校统一作息生成，可在设置里逐节自定义 |
 
@@ -120,9 +121,10 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 ## 学分核算
 
-教务的选课课程表没有课程类别列，归类依据按优先级：用户手动指定 > 成绩单的「课程性质」> 推断
-（`data/model/CreditLedger.kt` 的 `CategoryRules`：GRA 开头是研究生院公共课，按课名分必修 / 选修；院系开课 3 学分及以上算
-学位基础课，其余算学位专业课）。「重修」显示但不计学分。手动归类存本机（`CreditCategoryStore`）。
+教务的选课课程表没有课程类别列，归类依据按优先级：用户手动指定 > 培养方案对比页的「课程模块」> 成绩单的
+「课程性质」> 推断（`data/model/CreditLedger.kt` 的 `CategoryRules`）。公共课先按课程名称识别；这是为兼容珠海
+校区公共课不统一使用 `GRA` 前缀的情况。院系课再按学分推断学位基础 / 专业课。「重修」显示但不计学分，手动归类存本机
+（`CreditCategoryStore`）。
 
 ## 校内联系方式
 
