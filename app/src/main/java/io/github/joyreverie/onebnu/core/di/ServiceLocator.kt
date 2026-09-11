@@ -4,84 +4,124 @@ import android.content.Context
 import io.github.joyreverie.onebnu.core.net.CasClient
 import io.github.joyreverie.onebnu.core.net.Http
 import io.github.joyreverie.onebnu.core.net.NetworkDiagnostics
+import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
 import io.github.joyreverie.onebnu.core.notify.ClassReminder
-import io.github.joyreverie.onebnu.core.store.DeviceIdentity
+import io.github.joyreverie.onebnu.core.store.Campus
+import io.github.joyreverie.onebnu.core.store.CampusStore
 import io.github.joyreverie.onebnu.core.store.CreditCategoryStore
+import io.github.joyreverie.onebnu.core.store.DeviceIdentity
 import io.github.joyreverie.onebnu.core.store.PersonalEventStore
 import io.github.joyreverie.onebnu.core.store.ScheduleCache
 import io.github.joyreverie.onebnu.core.store.SecureStore
 import io.github.joyreverie.onebnu.core.store.Settings
+import io.github.joyreverie.onebnu.data.remote.ZhuhaiCasClient
 import io.github.joyreverie.onebnu.data.remote.ZyfwApi
 import io.github.joyreverie.onebnu.data.repo.AcademicRepository
 import io.github.joyreverie.onebnu.data.repo.SessionRepository
 import io.github.joyreverie.onebnu.widget.TodayWidgetProvider
 import io.github.joyreverie.onebnu.widget.WidgetState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * 依赖装配。应用规模不大，用一个显式的单例容器比引入 DI 框架更清楚。
- */
+private class CampusRuntime(
+    val campus: Campus,
+    val http: Http,
+    val auth: SessionAuthenticator,
+    val secure: SecureStore,
+    val settings: Settings,
+    val api: ZyfwApi,
+    val scheduleCache: ScheduleCache,
+    val events: PersonalEventStore,
+    val creditCategories: CreditCategoryStore,
+    val diagnostics: NetworkDiagnostics,
+) {
+    val repo = AcademicRepository(api, auth, secure, scheduleCache, campus == Campus.BEIJING)
+    val session = SessionRepository(api, auth, secure)
+}
+
+/** 北京、珠海各自拥有完整运行时，不共享认证会话或业务缓存。 */
 object ServiceLocator {
-
     lateinit var app: Context
         private set
-    lateinit var http: Http
-        private set
-    lateinit var cas: CasClient
-        private set
-    lateinit var api: ZyfwApi
-        private set
-    lateinit var secure: SecureStore
-        private set
-    lateinit var settings: Settings
-        private set
-    lateinit var device: DeviceIdentity
-        private set
-    lateinit var repo: AcademicRepository
-        private set
-    lateinit var session: SessionRepository
-        private set
-    lateinit var diagnostics: NetworkDiagnostics
-        private set
-    lateinit var scheduleCache: ScheduleCache
-        private set
-    lateinit var events: PersonalEventStore
-        private set
-    lateinit var creditCategories: CreditCategoryStore
+    lateinit var campusStore: CampusStore
         private set
 
+    private lateinit var runtimes: Map<Campus, CampusRuntime>
+    private lateinit var beijingDevice: DeviceIdentity
+    private val _activeCampus = MutableStateFlow(Campus.BEIJING)
+    val activeCampusFlow: StateFlow<Campus> = _activeCampus.asStateFlow()
+    val activeCampus: Campus get() = _activeCampus.value
+    private val current: CampusRuntime get() = runtimes.getValue(activeCampus)
+
+    val http: Http get() = current.http
+    val auth: SessionAuthenticator get() = current.auth
+    /** 旧调用点兼容别名；新代码按校区使用 [auth]。 */
+    val cas: SessionAuthenticator get() = current.auth
+    val api: ZyfwApi get() = current.api
+    val secure: SecureStore get() = current.secure
+    val settings: Settings get() = current.settings
+    val repo: AcademicRepository get() = current.repo
+    val session: SessionRepository get() = current.session
+    val diagnostics: NetworkDiagnostics get() = current.diagnostics
+    val scheduleCache: ScheduleCache get() = current.scheduleCache
+    val events: PersonalEventStore get() = current.events
+    val creditCategories: CreditCategoryStore get() = current.creditCategories
+    val device: DeviceIdentity? get() = currentDevice()
+
     fun init(context: Context) {
-        val app = context.applicationContext
-        this.app = app
-        device = DeviceIdentity(app)
-        http = Http.create(device)
-        cas = CasClient(http, device)
-        api = ZyfwApi(http, cas)
-        secure = SecureStore.create(app)
-        settings = Settings(app)
-        // 课表缓存、个人日程一有变化就让桌面小组件重绘，并重排上课提醒
-        val onTimetableChanged = {
-            TodayWidgetProvider.updateAll(app)
-            ClassReminder.reschedule(app)
+        app = context.applicationContext
+        campusStore = CampusStore(app)
+        beijingDevice = DeviceIdentity(app)
+
+        fun createRuntime(campus: Campus): CampusRuntime {
+            val isBeijing = campus == Campus.BEIJING
+            val device = if (isBeijing) beijingDevice else null
+            val http = Http.create(device, if (isBeijing) "cas.bnu.edu.cn" else "cas.bnuzh.edu.cn")
+            val auth: SessionAuthenticator = if (isBeijing) CasClient(http, beijingDevice) else ZhuhaiCasClient(http)
+            val secure = SecureStore.create(app, campus)
+            val settings = Settings(app, campus)
+            val changed = {
+                TodayWidgetProvider.updateAll(app)
+                ClassReminder.reschedule(app)
+            }
+            return CampusRuntime(
+                campus = campus,
+                http = http,
+                auth = auth,
+                secure = secure,
+                settings = settings,
+                api = ZyfwApi(http, auth, if (isBeijing) ZyfwApi.BASE else ZhuhaiCasClient.JWXT_BASE),
+                scheduleCache = ScheduleCache(app, campus, changed),
+                events = PersonalEventStore(app, campus, changed),
+                creditCategories = CreditCategoryStore(app, campus),
+                diagnostics = NetworkDiagnostics(http, campus),
+            )
         }
-        scheduleCache = ScheduleCache(app, onTimetableChanged)
-        events = PersonalEventStore(app, onTimetableChanged)
-        creditCategories = CreditCategoryStore(app)
-        repo = AcademicRepository(api, cas, secure, scheduleCache)
-        session = SessionRepository(api, cas, secure)
-        diagnostics = NetworkDiagnostics(http)
+
+        runtimes = Campus.values().associateWith(::createRuntime)
+        _activeCampus.value = campusStore.selected
         ClassReminder.ensureChannel(app)
-        // 进程重启后闹钟可能已丢，开着提醒就补排一次
         if (settings.remindersEnabled) ClassReminder.reschedule(app)
     }
 
-    /** 退出登录：清会话、清 Cookie，并按需清凭据；桌面小组件上的课表也一并清掉。 */
-    fun signOut(forgetCredentials: Boolean) {
-        cas.logout()
-        api.invalidate()
-        session.clear()
-        if (forgetCredentials) secure.clear()
-        WidgetState(app).clear()
-        scheduleCache.clear()
+    fun selectCampus(campus: Campus) {
+        if (!runtimes.containsKey(campus)) return
+        _activeCampus.value = campus
+        campusStore.selected = campus
+        TodayWidgetProvider.updateAll(app)
         ClassReminder.reschedule(app)
     }
+
+    fun signOut(forgetCredentials: Boolean) {
+        current.auth.logout()
+        current.api.invalidate()
+        current.session.clear()
+        if (forgetCredentials) current.secure.clear()
+        WidgetState(app, activeCampus).clear()
+        current.scheduleCache.clear()
+        ClassReminder.reschedule(app)
+    }
+
+    fun currentDevice(): DeviceIdentity? = if (activeCampus == Campus.BEIJING) beijingDevice else null
 }

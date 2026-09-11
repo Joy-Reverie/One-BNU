@@ -3,6 +3,7 @@ package io.github.joyreverie.onebnu.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.data.model.AcademicCalendar
 import io.github.joyreverie.onebnu.data.model.ClassSession
 import io.github.joyreverie.onebnu.data.model.Course
@@ -112,7 +113,9 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    private fun currentWeek(): Int = AcademicCalendar.currentWeek()
+    private fun currentWeek(): Int = AcademicCalendar.currentWeek(
+        useOfficial = ServiceLocator.activeCampus == Campus.BEIJING,
+    )
 
     private fun dayLabel(d: Int) = listOf("一", "二", "三", "四", "五", "六", "日").getOrElse(d - 1) { "?" }
 

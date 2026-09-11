@@ -51,6 +51,12 @@ class BnuHostsTest {
     }
 
     @Test
+    fun `珠海主机同样升级明文跳转`() {
+        assertEquals("https://cas.bnuzh.edu.cn/cas/login", up("http://cas.bnuzh.edu.cn/cas/login"))
+        assertEquals("https://jwxt.bnuzh.edu.cn/frame/homes.html", up("http://jwxt.bnuzh.edu.cn/frame/homes.html"))
+    }
+
+    @Test
     fun `校外域名一律不动 —— 升级只针对北师大主机`() {
         assertEquals("http://example.com/", up("http://example.com/"))
         // 后缀相似但并非北师大的域名不能被误判

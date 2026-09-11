@@ -18,6 +18,7 @@ class BnuCookieJarTest {
 
     private val casUrl = "https://cas.bnu.edu.cn/cas/login".toHttpUrl()
     private val zyfwUrl = "http://zyfw.bnu.edu.cn/frame/homes.html".toHttpUrl()
+    private val zhCasUrl = "https://cas.bnuzh.edu.cn/cas/login".toHttpUrl()
 
     private class FakeMark(override var serverMark: String? = null) : DeviceMarkStore {
         var resetCount = 0
@@ -71,6 +72,14 @@ class BnuCookieJarTest {
         j.saveFromResponse(casUrl, listOf(cookie("CASTGC=TGT-1-xyz; Path=/cas")))
         j.clear()
         assertFalse(j.hasCasTicket())
+    }
+
+    @Test
+    fun `珠海 CAS 使用独立主机判定票据`() {
+        val j = BnuCookieJar(casHost = "cas.bnuzh.edu.cn")
+        j.saveFromResponse(zhCasUrl, listOf(Cookie.parse(zhCasUrl, "CASTGC=TGT-zh; Path=/cas")!!))
+        assertTrue(j.hasCasTicket())
+        assertTrue(j.loadForRequest(casUrl).isEmpty())
     }
 
     // ------------------------------------------------------------------

@@ -1,6 +1,6 @@
 package io.github.joyreverie.onebnu.data.repo
 
-import io.github.joyreverie.onebnu.core.net.CasClient
+import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
 import io.github.joyreverie.onebnu.core.store.SecureStore
 import io.github.joyreverie.onebnu.data.model.InfoItem
 import io.github.joyreverie.onebnu.data.model.StudentProfile
@@ -26,7 +26,7 @@ import kotlinx.coroutines.withContext
  */
 class SessionRepository(
     private val api: ZyfwApi,
-    private val cas: CasClient,
+    private val auth: SessionAuthenticator,
     private val secure: SecureStore,
 ) {
 
@@ -57,7 +57,7 @@ class SessionRepository(
     }
 
     private fun load(): State {
-        if (!cas.hasSession() && !relogin()) {
+        if (!auth.hasSession() && !relogin()) {
             return State.Failed("登录状态已失效，请重新登录", needLogin = true)
         }
         return try {
@@ -106,8 +106,7 @@ class SessionRepository(
 
     private fun relogin(): Boolean {
         if (!secure.hasCredentials) return false
-        val r = runCatching { cas.login(secure.username, secure.password) }.getOrNull()
-        return r is CasClient.Result.Success
+        return runCatching { auth.relogin(secure.username, secure.password) }.getOrDefault(false)
     }
 
     fun clear() {

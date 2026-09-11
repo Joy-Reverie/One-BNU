@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.data.model.PeriodMapper
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.ui.Routes
@@ -81,7 +82,7 @@ private data class Entry(
     val tint: Int,
 )
 
-private val ENTRIES = listOf(
+private val BEIJING_ENTRIES = listOf(
     Entry("考试安排", Icons.Outlined.EditCalendar, Routes.EXAM, 0),
     Entry("空闲教室", Icons.Outlined.MeetingRoom, Routes.CLASSROOM, 1),
     Entry("校历周次", Icons.Outlined.CalendarMonth, Routes.CALENDAR, 2),
@@ -90,6 +91,12 @@ private val ENTRIES = listOf(
     Entry("校内联系", Icons.Outlined.Phone, Routes.PHONE, 5),
     Entry("数字京师", Icons.Outlined.Public, Routes.web("数字京师门户", "https://one.bnu.edu.cn/tp_nup/", true), 6),
     Entry("教务系统", Icons.Outlined.AccountBalance, Routes.web("教务系统", "http://zyfw.bnu.edu.cn/", true), 7),
+)
+
+private val ZHUHAI_ENTRIES = listOf(
+    Entry("考试安排", Icons.Outlined.EditCalendar, Routes.EXAM, 0),
+    Entry("珠海门户", Icons.Outlined.Public, Routes.web("珠海门户", "https://one.bnuzh.edu.cn/", false), 1),
+    Entry("珠海教务", Icons.Outlined.AccountBalance, Routes.web("珠海教务系统", "https://jwxt.bnuzh.edu.cn/caslogin", true), 2),
 )
 
 /** 今日时间轴上的一项：一节课或一条日程，统一按开始时刻排序。 */
@@ -116,6 +123,7 @@ fun HomeScreen(nav: NavHostController, vm: HomeViewModel = viewModel()) {
         onNavigate = { nav.navigate(it) },
         onSaveEvent = { store.upsert(it) },
         onDeleteEvent = { store.delete(it.id) },
+        campus = ServiceLocator.activeCampus,
     )
 }
 
@@ -127,6 +135,7 @@ internal fun HomeContent(
     onNavigate: (String) -> Unit,
     onSaveEvent: (PersonalEvent) -> Unit,
     onDeleteEvent: (PersonalEvent) -> Unit,
+    campus: Campus = Campus.BEIJING,
 ) {
     val screen = LocalScreenInfo.current
     val pad = screen.listPadding(top = 0.dp, bottom = 24.dp)
@@ -188,7 +197,7 @@ internal fun HomeContent(
         }
         item {
             Box(Modifier.padding(pad.horizontalOnly())) {
-                ServiceGrid(screen.serviceColumns) { onNavigate(it) }
+                ServiceGrid(screen.serviceColumns, campus) { onNavigate(it) }
             }
         }
     }
@@ -446,13 +455,14 @@ private fun EmptyToday(hint: String) {
 }
 
 @Composable
-private fun ServiceGrid(columns: Int, onNavigate: (String) -> Unit) {
+private fun ServiceGrid(columns: Int, campus: Campus, onNavigate: (String) -> Unit) {
+    val entries = if (campus == Campus.BEIJING) BEIJING_ENTRIES else ZHUHAI_ENTRIES
     BnuCard(Modifier.fillMaxWidth()) {
         Column(
             Modifier.padding(vertical = 18.dp, horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            ENTRIES.chunked(columns).forEach { row ->
+            entries.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth()) {
                     row.forEach { e ->
                         EntryTile(e, Modifier.weight(1f)) { onNavigate(e.route) }

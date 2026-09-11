@@ -37,7 +37,7 @@ class WidgetRefreshJob : JobService() {
 
     override fun onStopJob(params: JobParameters): Boolean {
         scope.coroutineContext.cancelChildren()
-        WidgetState(this).refreshing = false
+        WidgetState(this, ServiceLocator.activeCampus).refreshing = false
         TodayWidgetProvider.updateAll(this)
         return false
     }
@@ -78,13 +78,13 @@ class WidgetRefreshJob : JobService() {
                 result = scheduler.schedule(info(expedited = false))
             }
             if (result != JobScheduler.RESULT_SUCCESS) {
-                WidgetState(context).refreshing = false
+                WidgetState(context, ServiceLocator.activeCampus).refreshing = false
                 TodayWidgetProvider.updateAll(context)
             }
         }
 
         fun scheduleIfStale(context: Context) {
-            val state = WidgetState(context)
+            val state = WidgetState(context, ServiceLocator.activeCampus)
             if (state.refreshing) return
             val newest = maxOf(ServiceLocator.scheduleCache.savedAt, state.lastAttempt)
             if (System.currentTimeMillis() - newest > STALE_MS) schedule(context, urgent = false)
@@ -96,12 +96,12 @@ class WidgetRefreshJob : JobService() {
 
         /** 拉一次课表。成功与否都会把 refreshing 复位并重绘。 */
         suspend fun refresh(context: Context): Boolean {
-            val state = WidgetState(context)
+            val state = WidgetState(context, ServiceLocator.activeCampus)
             state.lastAttempt = System.currentTimeMillis()
             state.refreshing = true
             TodayWidgetProvider.updateAll(context)
             try {
-                if (!ServiceLocator.secure.hasCredentials && !ServiceLocator.cas.hasSession()) {
+                if (!ServiceLocator.secure.hasCredentials && !ServiceLocator.auth.hasSession()) {
                     state.lastError = "尚未登录"
                     return false
                 }

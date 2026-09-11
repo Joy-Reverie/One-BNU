@@ -31,9 +31,10 @@ object ReminderPlanner {
         from: LocalDate,
         days: Int,
         periodTimes: List<String>,
+        useOfficialCalendar: Boolean = true,
     ): List<ReminderItem> {
         val out = ArrayList<ReminderItem>()
-        val termStart = schedule?.let { AcademicCalendar.firstMonday(it.term) }
+        val termStart = schedule?.let { AcademicCalendar.firstMonday(it.term, useOfficialCalendar) }
         for (offset in 0 until days) {
             val date = from.plusDays(offset.toLong())
             if (schedule != null && termStart != null) {

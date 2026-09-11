@@ -124,8 +124,7 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
                         }
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            "教务系统只提供 HTTP，若某一项失败，把报告复制出来即可定位" +
-                                "是域名解析、连接还是协议层的问题。",
+                            "把报告复制出来即可定位是域名解析、连接还是协议层的问题。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline,
                         )
@@ -145,7 +144,19 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
  */
 @Composable
 private fun DeviceCard() {
-    var known by remember { mutableStateOf(ServiceLocator.device.serverMark != null) }
+    val device = ServiceLocator.currentDevice()
+    if (device == null) {
+        BnuCard(Modifier.fillMaxWidth()) {
+            Text(
+                "当前为珠海校区。珠海认证使用独立会话，不共享北京校区的设备标识。",
+                Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    var known by remember { mutableStateOf(device.serverMark != null) }
     var confirming by remember { mutableStateOf(false) }
 
     BnuCard(Modifier.fillMaxWidth()) {
@@ -175,7 +186,7 @@ private fun DeviceCard() {
             text = { Text("重置后下次登录需要重新做一次短信验证。换人使用本机时才需要这么做。") },
             confirmButton = {
                 TextButton(onClick = {
-                    ServiceLocator.cas.resetDeviceIdentity()
+                    ServiceLocator.auth.resetDeviceIdentity()
                     known = false
                     confirming = false
                 }) { Text("重置") }

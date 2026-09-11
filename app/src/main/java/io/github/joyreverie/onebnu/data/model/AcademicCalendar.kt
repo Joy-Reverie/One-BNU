@@ -44,21 +44,23 @@ object AcademicCalendar {
     // ------------------------------------------------------------------
 
     /** 该学期的官方校历；尚未录入时为 null。 */
-    fun official(year: Int, season: Season): OfficialCalendar? =
-        OfficialCalendars.ALL.firstOrNull { it.year == year && it.season == season }
+    fun official(year: Int, season: Season, useOfficial: Boolean = true): OfficialCalendar? =
+        if (useOfficial) OfficialCalendars.ALL.firstOrNull { it.year == year && it.season == season } else null
 
-    fun official(term: Term): OfficialCalendar? = academicYear(term)?.let { official(it, season(term)) }
+    fun official(term: Term, useOfficial: Boolean = true): OfficialCalendar? =
+        academicYear(term)?.let { official(it, season(term), useOfficial) }
 
     // ------------------------------------------------------------------
     // 学期起点
     // ------------------------------------------------------------------
 
     /** 该学期第 1 周的周一：有官方校历以校历为准，否则按学校惯例推算。 */
-    fun firstMonday(year: Int, season: Season): LocalDate =
-        official(year, season)?.firstMonday ?: ruleFirstMonday(year, season)
+    fun firstMonday(year: Int, season: Season, useOfficial: Boolean = true): LocalDate =
+        official(year, season, useOfficial)?.firstMonday ?: ruleFirstMonday(year, season)
 
     /** 该学期第 1 周的周一；学年编码异常时为 null。 */
-    fun firstMonday(term: Term): LocalDate? = academicYear(term)?.let { firstMonday(it, season(term)) }
+    fun firstMonday(term: Term, useOfficial: Boolean = true): LocalDate? =
+        academicYear(term)?.let { firstMonday(it, season(term), useOfficial) }
 
     private fun ruleFirstMonday(y: Int, season: Season): LocalDate = when (season) {
         Season.AUTUMN -> mondayOnOrAfter(LocalDate.of(y, 9, 1))
@@ -110,26 +112,26 @@ object AcademicCalendar {
      * 今天所在的学期（学年起始年, 季节）。
      * 只在秋、春之间判断 —— 夏季学期很短且不固定，暑假里按春季学期的延续处理。
      */
-    fun currentTerm(today: LocalDate = LocalDate.now()): Pair<Int, Season> {
+    fun currentTerm(today: LocalDate = LocalDate.now(), useOfficial: Boolean = true): Pair<Int, Season> {
         // 候选按起点从晚到早：今年秋季、今年春季（属上一学年）、去年秋季；取第一个已开始的
         val candidates = listOf(
             today.year to Season.AUTUMN,
             today.year - 1 to Season.SPRING,
             today.year - 1 to Season.AUTUMN,
         )
-        return candidates.firstOrNull { (y, s) -> !firstMonday(y, s).isAfter(today) } ?: candidates.last()
+        return candidates.firstOrNull { (y, s) -> !firstMonday(y, s, useOfficial).isAfter(today) } ?: candidates.last()
     }
 
     /**
      * 今天所在学期第 1 周的周一。
      * 首页「第几周」、校历页、空闲教室都按它推算，不需要用户手工校准。
      */
-    fun currentTermStart(today: LocalDate = LocalDate.now()): LocalDate =
-        currentTerm(today).let { (y, s) -> firstMonday(y, s) }
+    fun currentTermStart(today: LocalDate = LocalDate.now(), useOfficial: Boolean = true): LocalDate =
+        currentTerm(today, useOfficial).let { (y, s) -> firstMonday(y, s, useOfficial) }
 
     /** 今天是所在学期的第几周（最小为 1）。 */
-    fun currentWeek(today: LocalDate = LocalDate.now()): Int =
-        weekOf(currentTermStart(today), today).coerceAtLeast(1)
+    fun currentWeek(today: LocalDate = LocalDate.now(), useOfficial: Boolean = true): Int =
+        weekOf(currentTermStart(today, useOfficial), today).coerceAtLeast(1)
 
     // ------------------------------------------------------------------
     // 周次 ⇄ 日期

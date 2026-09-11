@@ -33,7 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.net.BnuHosts
-import io.github.joyreverie.onebnu.data.remote.ZyfwApi
+import io.github.joyreverie.onebnu.core.store.Campus
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
@@ -114,7 +114,7 @@ fun WebScreen(title: String, url: String, useSso: Boolean, onBack: () -> Unit) {
                                 val u = request?.url ?: return false
                                 val host = u.host.orEmpty()
                                 // 校外链接交给系统浏览器，避免在内嵌页里输入账号
-                                if (!host.endsWith("bnu.edu.cn")) {
+                                if (!BnuHosts.isBnu(host)) {
                                     runCatching {
                                         ctx.startActivity(
                                             android.content.Intent(android.content.Intent.ACTION_VIEW, u),
@@ -169,7 +169,12 @@ private fun syncCookiesToWebView() {
     val cm = CookieManager.getInstance()
     cm.setAcceptCookie(true)
     val jar = ServiceLocator.http.cookies
-    for (domain in listOf("https://cas.bnu.edu.cn/", "https://one.bnu.edu.cn/", "${ZyfwApi.BASE}/")) {
+    val domains = if (ServiceLocator.activeCampus == Campus.BEIJING) {
+        listOf("https://cas.bnu.edu.cn/", "https://one.bnu.edu.cn/", "http://zyfw.bnu.edu.cn/")
+    } else {
+        listOf("https://cas.bnuzh.edu.cn/", "https://one.bnuzh.edu.cn/", "https://jwxt.bnuzh.edu.cn/")
+    }
+    for (domain in domains) {
         val url = domain.toHttpUrlOrNull() ?: continue
         for (c in jar.loadForRequest(url)) {
             cm.setCookie(domain, "${c.name}=${c.value}; Path=/; Domain=${c.domain}")

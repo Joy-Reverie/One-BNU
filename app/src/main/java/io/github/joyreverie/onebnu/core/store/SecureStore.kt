@@ -23,14 +23,14 @@ class SecureStore private constructor(private val prefs: SharedPreferences?) {
         private const val KEY_PASS = "password"
         private const val KEY_REMEMBER = "remember"
 
-        fun create(context: Context): SecureStore {
+        fun create(context: Context, campus: Campus = Campus.BEIJING): SecureStore {
             val prefs = runCatching {
                 val masterKey = MasterKey.Builder(context)
                     .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                     .build()
                 EncryptedSharedPreferences.create(
                     context,
-                    FILE,
+                    if (campus == Campus.BEIJING) FILE else "${FILE}_${campus.storageKey}",
                     masterKey,
                     EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                     EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,

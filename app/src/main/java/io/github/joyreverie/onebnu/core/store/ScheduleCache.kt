@@ -12,12 +12,19 @@ import java.io.File
  * 小组件直接读缓存，不必每次都联网。只缓存课表本身（课程、时间、地点、教师），不含任何凭据。
  * [onChanged] 在写入 / 清除后回调，用来通知小组件重绘。
  */
-class ScheduleCache(context: Context, private val onChanged: () -> Unit = {}) {
+class ScheduleCache(
+    context: Context,
+    campus: Campus = Campus.BEIJING,
+    private val onChanged: () -> Unit = {},
+) {
 
     data class Cached(val schedule: Schedule, val savedAt: Long)
 
-    private val file = File(context.filesDir, FILE_NAME)
-    private val meta = context.getSharedPreferences("onebnu_schedule_cache", Context.MODE_PRIVATE)
+    private val file = File(context.filesDir, if (campus == Campus.BEIJING) FILE_NAME else "${FILE_NAME}_${campus.storageKey}")
+    private val meta = context.getSharedPreferences(
+        if (campus == Campus.BEIJING) "onebnu_schedule_cache" else "onebnu_schedule_cache_${campus.storageKey}",
+        Context.MODE_PRIVATE,
+    )
 
     /** 上次成功写入的时间（毫秒）；从未写入为 0。 */
     val savedAt: Long get() = meta.getLong(KEY_SAVED_AT, 0L)

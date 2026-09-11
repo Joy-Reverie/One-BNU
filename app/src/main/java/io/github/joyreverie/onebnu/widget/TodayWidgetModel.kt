@@ -76,6 +76,7 @@ object TodayWidgetModel {
         /** 12 节的作息，"HH:mm-HH:mm"。 */
         val periodTimes: List<String>,
         val heightDp: Int,
+        val useOfficialCalendar: Boolean = true,
     )
 
     // 与 widget_today.xml / widget_row.xml 的实际尺寸对应（dp）：色带 46 + 列表上内边距 6 + 底部内边距 6
@@ -116,15 +117,15 @@ object TodayWidgetModel {
         val weekdayLabel = "周${DAYS[i.today.dayOfWeek.value - 1]}"
 
         val schedule = i.schedule
-        val termStart = schedule?.let { AcademicCalendar.firstMonday(it.term) }
-            ?: AcademicCalendar.currentTermStart(i.today)
+        val termStart = schedule?.let { AcademicCalendar.firstMonday(it.term, i.useOfficialCalendar) }
+            ?: AcademicCalendar.currentTermStart(i.today, i.useOfficialCalendar)
         val week = AcademicCalendar.weekOf(termStart, i.today)
         val weekLabel = if (week < 1) "开学前" else "第 $week 周"
         val refreshingLabel = if (i.refreshing) "刷新中…" else ""
 
         // 缓存里的学期比今天所在学期旧：换学期了，提醒刷新而不是拿旧课表硬算。
         // 缓存的是还没开学的下学期则不算过期，走下面的「学期尚未开始」。
-        val (curYear, curSeason) = AcademicCalendar.currentTerm(i.today)
+        val (curYear, curSeason) = AcademicCalendar.currentTerm(i.today, i.useOfficialCalendar)
         val termOutdated = schedule != null &&
             AcademicCalendar.sortKey(schedule.term) < curYear * 10 + curSeason.order
 

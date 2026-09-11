@@ -40,7 +40,7 @@ open class TodayWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == ACTION_REFRESH) {
-            WidgetState(context).refreshing = true
+            WidgetState(context, io.github.joyreverie.onebnu.core.di.ServiceLocator.activeCampus).refreshing = true
             updateAll(context)
             WidgetRefreshJob.schedule(context, urgent = true)
             return

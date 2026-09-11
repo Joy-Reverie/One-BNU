@@ -14,7 +14,10 @@ import okhttp3.HttpUrl
  * 唯一的例外是 [DEVICE_COOKIE]：那是服务端用来认设备的记号，不是凭据。
  * 它必须跨进程留存，否则每次启动都被当成新设备、每次登录都要重新做短信二次认证。
  */
-class BnuCookieJar(private val device: DeviceMarkStore? = null) : CookieJar {
+class BnuCookieJar(
+    private val device: DeviceMarkStore? = null,
+    private val casHost: String = DEFAULT_CAS_HOST,
+) : CookieJar {
 
     private val store = LinkedHashMap<String, MutableMap<String, Cookie>>()
 
@@ -65,7 +68,7 @@ class BnuCookieJar(private val device: DeviceMarkStore? = null) : CookieJar {
     fun hasCasTicket(): Boolean {
         val now = System.currentTimeMillis()
         return store.any { (domain, bucket) ->
-            CAS_HOST.domainMatches(domain) &&
+            casHost.domainMatches(domain) &&
                 bucket[CAS_TICKET]?.let { it.expiresAt >= now && it.value.isNotBlank() } == true
         }
     }
@@ -89,7 +92,7 @@ class BnuCookieJar(private val device: DeviceMarkStore? = null) : CookieJar {
         val cookie = Cookie.Builder()
             .name(DEVICE_COOKIE)
             .value(value)
-            .hostOnlyDomain(CAS_HOST)
+            .hostOnlyDomain(DEFAULT_CAS_HOST)
             .path("/")
             .expiresAt(System.currentTimeMillis() + DEVICE_COOKIE_TTL_MS)
             .build()
@@ -100,7 +103,7 @@ class BnuCookieJar(private val device: DeviceMarkStore? = null) : CookieJar {
         this == domain || (endsWith(domain) && this[length - domain.length - 1] == '.')
 
     companion object {
-        private const val CAS_HOST = "cas.bnu.edu.cn"
+        private const val DEFAULT_CAS_HOST = "cas.bnu.edu.cn"
         private const val CAS_TICKET = "CASTGC"
 
         /** 服务端认设备用的 Cookie 名。 */

@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import io.github.joyreverie.onebnu.MainActivity
 import io.github.joyreverie.onebnu.R
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
 import java.time.LocalDate
@@ -56,7 +57,7 @@ object TodayWidgetRenderer {
     }
 
     private fun loadBase(context: Context): Base {
-        val state = WidgetState(context)
+        val state = WidgetState(context, ServiceLocator.activeCampus)
         return Base(
             schedule = ServiceLocator.scheduleCache.load()?.schedule,
             hasCredentials = ServiceLocator.secure.hasCredentials,
@@ -75,6 +76,7 @@ object TodayWidgetRenderer {
         today = today,
         now = now,
         periodTimes = ServiceLocator.settings.periodTimes,
+        useOfficialCalendar = ServiceLocator.activeCampus == Campus.BEIJING,
         heightDp = heightDp,
     )
 

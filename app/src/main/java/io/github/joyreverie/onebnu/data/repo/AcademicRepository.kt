@@ -1,6 +1,6 @@
 package io.github.joyreverie.onebnu.data.repo
 
-import io.github.joyreverie.onebnu.core.net.CasClient
+import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
 import io.github.joyreverie.onebnu.core.store.ScheduleCache
 import io.github.joyreverie.onebnu.core.store.SecureStore
 import io.github.joyreverie.onebnu.data.model.AcademicCalendar
@@ -27,10 +27,11 @@ import java.time.LocalDate
  */
 class AcademicRepository(
     private val api: ZyfwApi,
-    private val cas: CasClient,
+    private val auth: SessionAuthenticator,
     private val secure: SecureStore,
     /** 当前学期课表的本地缓存（桌面小组件用）；为 null 时不缓存。 */
     private val scheduleCache: ScheduleCache? = null,
+    private val useOfficialCalendar: Boolean = true,
 ) {
 
     /** 空数据不是错误：界面要显示「本学期暂无…」而不是报错。 */
@@ -46,8 +47,8 @@ class AcademicRepository(
         } catch (e: ZyfwApi.SessionExpiredException) {
             // 用保存的凭据重登一次
             if (secure.hasCredentials) {
-                val r = runCatching { cas.login(secure.username, secure.password) }.getOrNull()
-                if (r is CasClient.Result.Success) {
+                val ok = runCatching { auth.relogin(secure.username, secure.password) }.getOrDefault(false)
+                if (ok) {
                     api.invalidate()
                     return@withContext try {
                         Outcome.Ok(block())
@@ -87,7 +88,7 @@ class AcademicRepository(
         if (ctx != null && ctx.currentXn.isNotBlank()) {
             terms.firstOrNull { it.xn == ctx.currentXn && it.xq == ctx.currentXq }?.let { return it }
         }
-        val (y, season) = AcademicCalendar.currentTerm(today)
+        val (y, season) = AcademicCalendar.currentTerm(today, useOfficialCalendar)
         terms.firstOrNull { AcademicCalendar.academicYear(it) == y && AcademicCalendar.season(it) == season }
             ?.let { return it }
         return terms.filter { AcademicCalendar.hasBegun(it, today) }.maxByOrNull { AcademicCalendar.sortKey(it) }
@@ -98,7 +99,7 @@ class AcademicRepository(
     private fun isCurrentTerm(term: Term): Boolean {
         val ctx = api.userContext
         if (ctx != null && ctx.currentXn.isNotBlank()) return term.xn == ctx.currentXn && term.xq == ctx.currentXq
-        val (y, season) = AcademicCalendar.currentTerm()
+        val (y, season) = AcademicCalendar.currentTerm(useOfficial = useOfficialCalendar)
         return AcademicCalendar.academicYear(term) == y && AcademicCalendar.season(term) == season
     }
 

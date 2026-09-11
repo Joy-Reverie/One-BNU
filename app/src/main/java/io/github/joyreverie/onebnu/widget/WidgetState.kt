@@ -1,11 +1,15 @@
 package io.github.joyreverie.onebnu.widget
 
 import android.content.Context
+import io.github.joyreverie.onebnu.core.store.Campus
 
 /** 小组件自己的少量状态：是否正在刷新、上次刷新的错误、上次尝试时间。与课表缓存分开存。 */
-class WidgetState(context: Context) {
+class WidgetState(context: Context, campus: Campus = Campus.BEIJING) {
 
-    private val prefs = context.getSharedPreferences("onebnu_widget", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(
+        if (campus == Campus.BEIJING) "onebnu_widget" else "onebnu_widget_${campus.storageKey}",
+        Context.MODE_PRIVATE,
+    )
 
     /**
      * 是否正在刷新。带超时：后台任务被系统推迟或进程中途被杀时，

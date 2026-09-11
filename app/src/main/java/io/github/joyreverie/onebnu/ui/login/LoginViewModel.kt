@@ -3,8 +3,11 @@ package io.github.joyreverie.onebnu.ui.login
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
-import io.github.joyreverie.onebnu.core.net.CasClient
+import io.github.joyreverie.onebnu.core.net.AuthPending
+import io.github.joyreverie.onebnu.core.net.AuthResult
 import io.github.joyreverie.onebnu.core.net.NetworkDiagnostics
+import io.github.joyreverie.onebnu.core.net.SmsResult
+import io.github.joyreverie.onebnu.core.store.Campus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -35,6 +38,7 @@ data class SecondAuthState(
 }
 
 data class LoginUiState(
+    val campus: Campus = Campus.BEIJING,
     val username: String = "",
     val password: String = "",
     val remember: Boolean = false,
@@ -49,15 +53,17 @@ data class LoginUiState(
 
 class LoginViewModel : ViewModel() {
 
-    private val secure = ServiceLocator.secure
-    private val cas = ServiceLocator.cas
+    private val secure get() = ServiceLocator.secure
+    private val auth get() = ServiceLocator.auth
 
     /** 二次认证要用原来那次尝试的 lt/rsa 续做，不能重新取登录页。 */
-    private var pending: CasClient.Pending? = null
+    private var pending: AuthPending? = null
     private var countdown: Job? = null
+    private var loginJob: Job? = null
 
     private val _state = MutableStateFlow(
         LoginUiState(
+            campus = ServiceLocator.activeCampus,
             username = secure.username,
             password = if (secure.hasCredentials) secure.password else "",
             remember = secure.remember,
@@ -65,6 +71,23 @@ class LoginViewModel : ViewModel() {
         ),
     )
     val state: StateFlow<LoginUiState> = _state.asStateFlow()
+
+    fun onCampus(campus: Campus) {
+        if (campus == _state.value.campus) return
+        countdown?.cancel()
+        countdown = null
+        loginJob?.cancel()
+        loginJob = null
+        pending = null
+        ServiceLocator.selectCampus(campus)
+        _state.value = LoginUiState(
+            campus = campus,
+            username = ServiceLocator.secure.username,
+            password = if (ServiceLocator.secure.hasCredentials) ServiceLocator.secure.password else "",
+            remember = ServiceLocator.secure.remember,
+            canSaveCredentials = ServiceLocator.secure.available,
+        )
+    }
 
     fun onUsername(v: String) = _state.update { it.copy(username = v.trim(), error = null) }
     fun onPassword(v: String) = _state.update { it.copy(password = v, error = null) }
@@ -85,13 +108,14 @@ class LoginViewModel : ViewModel() {
             return
         }
         if (s.password.isBlank()) {
-            _state.update { it.copy(error = "请输入数字京师密码") }
+            _state.update { it.copy(error = "请输入${if (s.campus == Campus.BEIJING) "数字京师" else "珠海统一认证"}密码") }
             return
         }
         _state.update { it.copy(loading = true, error = null, secondAuth = null) }
 
-        viewModelScope.launch {
-            val r = runIo { cas.login(s.username, s.password, s.captcha) } ?: return@launch
+        loginJob = viewModelScope.launch {
+            val authForAttempt = auth
+            val r = runIo { authForAttempt.login(s.username, s.password, s.captcha) } ?: return@launch
             handle(r, onSuccess)
         }
     }
@@ -103,19 +127,19 @@ class LoginViewModel : ViewModel() {
         _state.updateSecondAuth { it.copy(sending = true, error = null, notice = null) }
 
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { cas.sendSecondAuthSms(p) } }
+            val result = withContext(Dispatchers.IO) { runCatching { auth.sendSecondAuthSms(p) } }
             val r = result.getOrElse { e ->
                 _state.updateSecondAuth { it.copy(sending = false, error = networkMessage(e)) }
                 return@launch
             }
             when (r) {
-                is CasClient.SmsResult.Sent -> {
+                is SmsResult.Sent -> {
                     _state.updateSecondAuth {
                         it.copy(sending = false, notice = "验证码已发送，5 分钟内有效")
                     }
                     startCountdown()
                 }
-                is CasClient.SmsResult.Failed ->
+                is SmsResult.Failed ->
                     _state.updateSecondAuth { it.copy(sending = false, error = r.message) }
             }
         }
@@ -129,14 +153,14 @@ class LoginViewModel : ViewModel() {
         _state.updateSecondAuth { it.copy(submitting = true, error = null, notice = null) }
 
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { cas.completeSecondAuth(p, code) } }
+            val result = withContext(Dispatchers.IO) { runCatching { auth.completeSecondAuth(p, code) } }
             val r = result.getOrElse { e ->
                 _state.updateSecondAuth { it.copy(submitting = false, error = networkMessage(e)) }
                 return@launch
             }
             when (r) {
-                is CasClient.Result.Success -> onLoggedIn(onSuccess)
-                is CasClient.Result.Failed ->
+                is AuthResult.Success -> onLoggedIn(onSuccess)
+                is AuthResult.Failed ->
                     _state.updateSecondAuth { it.copy(submitting = false, error = r.message) }
                 // 验证码环节不会再要图形码或二次认证；真出现就退回重来，避免卡死
                 else -> {
@@ -156,16 +180,16 @@ class LoginViewModel : ViewModel() {
     }
 
     fun refreshCaptcha() = _state.update {
-        it.copy(captchaUrl = cas.captchaUrl(), captcha = "")
+        it.copy(captchaUrl = auth.captchaUrl(), captcha = "")
     }
 
     // ------------------------------------------------------------------
 
-    private fun handle(r: CasClient.Result, onSuccess: () -> Unit) {
+    private fun handle(r: AuthResult, onSuccess: () -> Unit) {
         when (r) {
-            is CasClient.Result.Success -> onLoggedIn(onSuccess)
+            is AuthResult.Success -> onLoggedIn(onSuccess)
 
-            is CasClient.Result.NeedCaptcha -> _state.update {
+            is AuthResult.NeedCaptcha -> _state.update {
                 it.copy(
                     loading = false,
                     captchaUrl = r.captchaUrl,
@@ -174,7 +198,7 @@ class LoginViewModel : ViewModel() {
                 )
             }
 
-            is CasClient.Result.NeedSecondAuth -> {
+            is AuthResult.NeedSecondAuth -> {
                 pending = r.pending
                 _state.update {
                     it.copy(
@@ -185,7 +209,7 @@ class LoginViewModel : ViewModel() {
                 }
             }
 
-            is CasClient.Result.Failed -> _state.update {
+            is AuthResult.Failed -> _state.update {
                 it.copy(loading = false, error = r.message)
             }
         }
@@ -205,7 +229,7 @@ class LoginViewModel : ViewModel() {
         onSuccess()
     }
 
-    private suspend fun runIo(block: () -> CasClient.Result): CasClient.Result? {
+    private suspend fun runIo(block: () -> AuthResult): AuthResult? {
         val result = withContext(Dispatchers.IO) { runCatching(block) }
         return result.getOrElse { e ->
             _state.update { it.copy(loading = false, error = networkMessage(e)) }

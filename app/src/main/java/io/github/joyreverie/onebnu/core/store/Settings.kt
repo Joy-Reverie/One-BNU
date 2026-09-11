@@ -10,9 +10,12 @@ import java.time.LocalDate
 /**
  * 应用设置。用普通 SharedPreferences 即可 —— 这里不存任何凭据。
  */
-class Settings(context: Context) {
+class Settings(context: Context, campus: Campus = Campus.BEIJING) {
 
-    private val prefs = context.getSharedPreferences("onebnu_settings", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(
+        if (campus == Campus.BEIJING) "onebnu_settings" else "onebnu_settings_${campus.storageKey}",
+        Context.MODE_PRIVATE,
+    )
 
     init {
         migrateReminderSwitches()

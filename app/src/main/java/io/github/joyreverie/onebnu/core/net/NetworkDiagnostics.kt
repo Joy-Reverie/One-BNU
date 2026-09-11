@@ -5,6 +5,7 @@ import java.net.InetAddress
 import java.net.UnknownHostException
 import java.net.UnknownServiceException
 import javax.net.ssl.SSLException
+import io.github.joyreverie.onebnu.core.store.Campus
 
 /**
  * 网络自检。
@@ -13,7 +14,10 @@ import javax.net.ssl.SSLException
  * 这类环境差异。这里对每个依赖的主机分别做 DNS / 连接 / 协议三层检查，
  * 把具体失败点和原始异常呈现出来，用户可以直接把报告发出来。
  */
-class NetworkDiagnostics(private val http: Http) {
+class NetworkDiagnostics(
+    private val http: Http,
+    private val campus: Campus = Campus.BEIJING,
+) {
 
     data class Check(
         val name: String,
@@ -52,7 +56,7 @@ class NetworkDiagnostics(private val http: Http) {
         }
     }
 
-    fun run(): Report = listOf(
+    fun run(): Report = (if (campus == Campus.BEIJING) listOf(
         dns("域名解析 · 统一认证", "cas.bnu.edu.cn", critical = true),
         dns("域名解析 · 教务系统", "zyfw.bnu.edu.cn", critical = true),
         httpCheck(
@@ -67,7 +71,16 @@ class NetworkDiagnostics(private val http: Http) {
         httpCheck(
             "数字京师门户 (HTTPS)", "https://one.bnu.edu.cn/tp_nup/", critical = false,
         ) { null },
-    ).let(::Report)
+    ) else listOf(
+        dns("域名解析 · 珠海统一认证", "cas.bnuzh.edu.cn", critical = true),
+        dns("域名解析 · 珠海门户", "one.bnuzh.edu.cn", critical = true),
+        dns("域名解析 · 珠海教务", "jwxt.bnuzh.edu.cn", critical = true),
+        httpCheck("珠海统一认证 (HTTPS)", "https://cas.bnuzh.edu.cn/cas/login", critical = true) { body ->
+            if (body.contains("loginForm")) null else "页面结构异常，可能被网络中间设备改写"
+        },
+        httpCheck("珠海门户 (HTTPS)", "https://one.bnuzh.edu.cn/nup/", critical = true) { null },
+        httpCheck("珠海教务 (HTTPS)", "https://jwxt.bnuzh.edu.cn/frame/homes.html", critical = true) { null },
+    )).let(::Report)
 
     private fun dns(name: String, host: String, critical: Boolean): Check {
         val t0 = System.currentTimeMillis()

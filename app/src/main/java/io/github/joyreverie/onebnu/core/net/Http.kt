@@ -45,8 +45,11 @@ class Http(val client: OkHttpClient, val cookies: BnuCookieJar) {
         /**
          * [device] 用于把服务端认设备的 `devInfo` Cookie 跨进程留存，见 [DeviceIdentity]。
          */
-        fun create(device: DeviceIdentity? = null): Http {
-            val jar = BnuCookieJar(device)
+        fun create(
+            device: DeviceIdentity? = null,
+            casHost: String = "cas.bnu.edu.cn",
+        ): Http {
+            val jar = BnuCookieJar(device, casHost)
             val client = OkHttpClient.Builder()
                 .cookieJar(jar)
                 .connectTimeout(20, TimeUnit.SECONDS)
@@ -180,7 +183,9 @@ internal object BnuHosts {
         "libone.bnu.edu.cn",
     )
 
-    fun isBnu(host: String): Boolean = host == "bnu.edu.cn" || host.endsWith(".bnu.edu.cn")
+    fun isBnu(host: String): Boolean =
+        host == "bnu.edu.cn" || host.endsWith(".bnu.edu.cn") ||
+            host == "bnuzh.edu.cn" || host.endsWith(".bnuzh.edu.cn")
 
     fun isHttpOnly(host: String): Boolean = host in HTTP_ONLY
 

@@ -24,7 +24,7 @@ import java.net.URLEncoder
 class CasClient(
     private val http: Http,
     private val device: DeviceIdentity? = null,
-) {
+) : SessionAuthenticator {
 
     companion object {
         const val CAS_BASE = "https://cas.bnu.edu.cn"
@@ -61,37 +61,25 @@ class CasClient(
         internal val pl: String,
     )
 
-    sealed interface Result {
-        object Success : Result
-        /** 需要图形验证码；[captchaUrl] 用于拉取验证码图片。 */
-        data class NeedCaptcha(val captchaUrl: String) : Result
-        /**
-         * 触发二次认证。[maskedPhone] 是服务端返回的打码手机号（如 `138****1234`），
-         * [pending] 用于继续 [sendSecondAuthSms] / [completeSecondAuth]。
-         */
-        data class NeedSecondAuth(val maskedPhone: String, val pending: Pending) : Result
-        data class Failed(val message: String) : Result
-    }
-
-    /** 短信下发结果。 */
-    sealed interface SmsResult {
-        object Sent : SmsResult
-        data class Failed(val message: String) : SmsResult
-    }
-
     /**
-     * @param captcha 上一轮返回 [Result.NeedCaptcha] 时用户填写的验证码
+     * @param captcha 上一轮返回 [AuthResult.NeedCaptcha] 时用户填写的验证码
      */
     @Throws(IOException::class)
-    fun login(
+    override fun login(
         username: String,
         password: String,
-        captcha: String = "",
+        captcha: String,
+    ): AuthResult = loginToService(username, password, captcha, "http://zyfw.bnu.edu.cn/")
+
+    fun loginToService(
+        username: String,
+        password: String,
+        captcha: String,
         // 默认落到教务系统而不是门户：应用真正依赖的是教务，
         // 而 one.bnu.edu.cn 存在分区解析（会 CNAME 到 onevpn），
         // 在部分运营商网络下行为不一致，没必要让登录依赖它。
-        service: String = "http://zyfw.bnu.edu.cn/",
-    ): Result {
+        service: String,
+    ): AuthResult {
         // 必须在取登录页之前判断：这一次 GET 本身就会让服务端补发 devInfo，
         // 取完再读就永远是 true，看不出「这台机器服务端认不认识」。
         val knownDevice = device?.serverMark != null
@@ -100,10 +88,10 @@ class CasClient(
         Log.i(TAG, "登录页 HTTP ${page.code}, ${page.body.length}B, 登录前已知设备=$knownDevice")
 
         val lt = RE_LT.find(page.body)?.groupValues?.get(1)
-            ?: return Result.Failed(loginPageProblem(page).also { Log.w(TAG, "登录页解析失败: $it") })
+            ?: return AuthResult.Failed(loginPageProblem(page).also { Log.w(TAG, "登录页解析失败: $it") })
         val execution = RE_EXECUTION.find(page.body)?.groupValues?.get(1) ?: "e1s1"
         val action = RE_ACTION.find(page.body)?.groupValues?.get(1)
-            ?: return Result.Failed("无法解析登录表单，认证页面结构可能已变更")
+            ?: return AuthResult.Failed("无法解析登录表单，认证页面结构可能已变更")
         val needCaptcha = RE_CODE_OPEN.find(page.body)?.groupValues?.get(1) == "true"
 
         val formUrl = absolute(action, page.url)
@@ -112,7 +100,7 @@ class CasClient(
         val pl = password.length.toString()
 
         if (needCaptcha && captcha.isBlank()) {
-            return Result.NeedCaptcha(captchaUrl())
+            return AuthResult.NeedCaptcha(captchaUrl())
         }
 
         val pending = Pending(
@@ -137,22 +125,22 @@ class CasClient(
                 "rsa" to rsa,
             ),
         )
-        val json = probe.json ?: return Result.Failed(probe.problem!!)
+        val json = probe.json ?: return AuthResult.Failed(probe.problem!!)
 
         if (json.optString("result") != "true") {
             val err = json.optString("error").ifBlank { "用户名或密码错误" }
             Log.w(TAG, "secondAuth check 拒绝: $err")
             // failureTimes 为真表示后续需要图形验证码；服务端布尔与字符串都出现过
             if (json.optBoolean("failureTimes") || json.optString("failureTimes") == "true") {
-                return Result.NeedCaptcha(captchaUrl())
+                return AuthResult.NeedCaptcha(captchaUrl())
             }
-            return Result.Failed(err)
+            return AuthResult.Failed(err)
         }
 
         val info = json.optString("info")
         if (info.isNotEmpty() && info != "noAuth") {
             Log.i(TAG, "触发短信二次认证")
-            return Result.NeedSecondAuth(info, pending)
+            return AuthResult.NeedSecondAuth(info, AuthPending(pending))
         }
 
         Log.i(TAG, "无需二次认证，直接提交表单")
@@ -161,8 +149,9 @@ class CasClient(
 
     /** 二次认证第一步：让服务端把短信验证码发到账号绑定的手机。 */
     @Throws(IOException::class)
-    fun sendSecondAuthSms(pending: Pending): SmsResult {
-        val res = postSecondAuth(pending, mapOf("method" to "send"))
+    override fun sendSecondAuthSms(pending: AuthPending): SmsResult {
+        val p = pending.value as? Pending ?: return SmsResult.Failed("二次认证状态已失效，请重新登录")
+        val res = postSecondAuth(p, mapOf("method" to "send"))
         val json = res.json ?: return SmsResult.Failed(res.problem!!)
         // 网页端只在 result 明确为 "false" 时报错，其余按成功处理
         if (json.optString("result") == "false") {
@@ -173,13 +162,14 @@ class CasClient(
 
     /** 二次认证第二步：提交短信验证码，通过后立即完成登录（等价于网页端 realSubmit）。 */
     @Throws(IOException::class)
-    fun completeSecondAuth(pending: Pending, smsCode: String): Result {
-        val res = postSecondAuth(pending, mapOf("method" to "login", "code" to smsCode))
-        val json = res.json ?: return Result.Failed(res.problem!!)
+    override fun completeSecondAuth(pending: AuthPending, smsCode: String): AuthResult {
+        val p = pending.value as? Pending ?: return AuthResult.Failed("二次认证状态已失效，请重新登录")
+        val res = postSecondAuth(p, mapOf("method" to "login", "code" to smsCode))
+        val json = res.json ?: return AuthResult.Failed(res.problem!!)
         if (json.optString("result") != "true") {
-            return Result.Failed(json.optString("error").ifBlank { "验证码不正确" })
+            return AuthResult.Failed(json.optString("error").ifBlank { "验证码不正确" })
         }
-        return submitLoginForm(pending)
+        return submitLoginForm(p)
     }
 
     /**
@@ -187,28 +177,33 @@ class CasClient(
      * 会话已失效时返回的是 CAS 登录页，调用方据此触发重新登录。
      */
     @Throws(IOException::class)
-    fun sso(service: String): HttpResult = http.get("$LOGIN?service=${enc(service)}")
+    override fun sso(service: String): HttpResult = http.get("$LOGIN?service=${enc(service)}")
 
-    fun hasSession(): Boolean = http.cookies.hasCasTicket()
+    override fun hasSession(): Boolean = http.cookies.hasCasTicket()
 
-    fun logout() {
+    override fun relogin(username: String, password: String): Boolean =
+        login(username, password, "") is AuthResult.Success
+
+    override fun logout() {
         runCatching { http.get("$CAS_BASE/cas/logout") }
         http.cookies.clear()
     }
 
     /** 让服务端重新把本机当作陌生设备（下次登录会重新要短信验证）。 */
-    fun resetDeviceIdentity() {
+    override fun resetDeviceIdentity() {
         http.cookies.clearIncludingDevice()
     }
 
-    fun captchaUrl(): String = "$CAS_BASE/cas/code?${System.currentTimeMillis()}"
+    override fun captchaUrl(): String = "$CAS_BASE/cas/code?${System.currentTimeMillis()}"
+
+    override fun ssoUrl(service: String): String = "$LOGIN?service=${enc(service)}"
 
     // ------------------------------------------------------------------
     // 内部
     // ------------------------------------------------------------------
 
     /** 网页端的 realSubmit()：提交登录表单，CASTGC 落地即成功。 */
-    private fun submitLoginForm(p: Pending): Result {
+    private fun submitLoginForm(p: Pending): AuthResult {
         val res = http.postForm(
             p.formUrl,
             mapOf(
@@ -226,11 +221,11 @@ class CasClient(
 
         val ok = http.cookies.hasCasTicket()
         Log.i(TAG, "提交表单 HTTP ${res.code} → ${res.url.substringBefore('?')}, CASTGC=$ok")
-        if (ok) return Result.Success
+        if (ok) return AuthResult.Success
 
         val tip = RE_TIPS.find(res.body)?.groupValues?.get(1)?.trim()
-        if (!tip.isNullOrBlank()) return Result.Failed(tip)
-        return Result.Failed("登录未能完成（HTTP ${res.code}），请重试")
+        if (!tip.isNullOrBlank()) return AuthResult.Failed(tip)
+        return AuthResult.Failed("登录未能完成（HTTP ${res.code}），请重试")
     }
 
     private class JsonOrProblem(val json: JSONObject?, val problem: String?)

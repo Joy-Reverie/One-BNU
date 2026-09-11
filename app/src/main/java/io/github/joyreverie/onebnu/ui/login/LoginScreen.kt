@@ -78,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.joyreverie.onebnu.R
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.Shape
@@ -120,7 +121,7 @@ fun LoginScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Brand(compact = false)
+                Brand(compact = false, campus = state.campus)
                 }
                 Box(
                     Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
@@ -149,7 +150,7 @@ fun LoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Spacer(Modifier.height(if (screen.isShort) 20.dp else 64.dp))
-                Brand(compact = screen.isShort)
+                Brand(compact = screen.isShort, campus = state.campus)
                 Spacer(Modifier.height(if (screen.isShort) 20.dp else 36.dp))
                 content()
                 Spacer(Modifier.height(28.dp))
@@ -184,7 +185,7 @@ private fun AuroraBackground() {
 }
 
 @Composable
-private fun Brand(compact: Boolean) {
+private fun Brand(compact: Boolean, campus: Campus) {
     val accents = LocalAccents.current
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         // 启动器图标里的箭头标志，底色与图标背景相同（白到极淡的蓝），
@@ -220,7 +221,8 @@ private fun Brand(compact: Boolean) {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "北京师范大学校园助手",
+            if (campus == Campus.BEIJING) "北京师范大学校园助手"
+            else "北京师范大学珠海校园助手",
             style = MaterialTheme.typography.bodyMedium,
             letterSpacing = 3.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -260,11 +262,13 @@ private fun LoginCard(
             Text("登录", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(2.dp))
             Text(
-                "使用数字京师统一身份认证",
+                "${state.campus.label} · ${if (state.campus == Campus.BEIJING) "数字京师统一身份认证" else "珠海统一身份认证"}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(14.dp))
+            CampusPicker(state.campus, vm::onCampus)
+            Spacer(Modifier.height(16.dp))
 
             OutlinedTextField(
                 value = state.username,
@@ -331,6 +335,7 @@ private fun LoginCard(
                         CaptchaImage(
                             url = state.captchaUrl.orEmpty(),
                             onRefresh = vm::refreshCaptcha,
+                            referer = if (state.campus == Campus.BEIJING) "https://cas.bnu.edu.cn/cas/login" else "https://cas.bnuzh.edu.cn/cas/login",
                             modifier = Modifier.size(width = 108.dp, height = 56.dp),
                         )
                     }
@@ -375,6 +380,33 @@ private fun LoginCard(
                 onClick = submit,
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+    }
+}
+
+@Composable
+private fun CampusPicker(selected: Campus, onSelect: (Campus) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Campus.values().forEach { campus ->
+            Surface(
+                modifier = Modifier.weight(1f).clickable { onSelect(campus) },
+                shape = RoundedCornerShape(Shape.field),
+                color = if (selected == campus) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (selected == campus) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.outlineVariant,
+                ),
+            ) {
+                Text(
+                    campus.label,
+                    Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected == campus) MaterialTheme.colorScheme.onSecondaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -535,7 +567,12 @@ private fun Footer(onDiagnostics: () -> Unit) {
  * 所以走应用自己的 OkHttp 客户端，而不是通用图片加载器。
  */
 @Composable
-private fun CaptchaImage(url: String, onRefresh: () -> Unit, modifier: Modifier = Modifier) {
+private fun CaptchaImage(
+    url: String,
+    onRefresh: () -> Unit,
+    referer: String,
+    modifier: Modifier = Modifier,
+) {
     var bitmap by remember(url) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
 
     LaunchedEffect(url) {
@@ -543,7 +580,7 @@ private fun CaptchaImage(url: String, onRefresh: () -> Unit, modifier: Modifier 
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
                 val req = okhttp3.Request.Builder().url(url)
-                    .header("Referer", "https://cas.bnu.edu.cn/cas/login")
+                    .header("Referer", referer)
                     .build()
                 ServiceLocator.http.client.newCall(req).execute().use { res ->
                     val bytes = res.body?.bytes() ?: return@use null

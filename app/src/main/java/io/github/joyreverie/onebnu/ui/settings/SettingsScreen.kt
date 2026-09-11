@@ -213,7 +213,7 @@ private fun PeriodTimesCard() {
                 TimeChip(t.substringBefore('-')) { editing = i to true }
                 Text(
                     "–",
-                    Modifier.padding(horizontal = 8.dp),
+                    Modifier.padding(horizontal = 4.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.outline,
                 )

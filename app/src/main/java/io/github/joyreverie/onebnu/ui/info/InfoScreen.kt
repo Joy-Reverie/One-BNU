@@ -50,6 +50,7 @@ import androidx.compose.ui.window.Dialog
 import io.github.joyreverie.onebnu.BuildConfig
 import io.github.joyreverie.onebnu.R
 import io.github.joyreverie.onebnu.ui.components.SectionCard
+import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.listPadding
 
@@ -150,7 +151,7 @@ private fun AboutCard() {
         Column(Modifier.padding(top = 2.dp)) {
             // 版本号从 BuildConfig 取，避免和 build.gradle.kts 里的 versionName 漂移
             Text(
-                "北京师范大学非官方校园助手，版本 ${BuildConfig.VERSION_NAME}",
+                "北京师范大学校园助手 · ${ServiceLocator.activeCampus.label}，版本 ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(Modifier.height(6.dp))

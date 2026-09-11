@@ -13,9 +13,16 @@ import java.time.LocalDate
  * 个人日程的本地存储：一个 JSON 文件，改动后整份重写。
  * 日程量很小（一学期几十条），不值得上数据库。[onChanged] 用来通知小组件重绘、重排上课提醒。
  */
-class PersonalEventStore(context: Context, private val onChanged: () -> Unit = {}) {
+class PersonalEventStore(
+    context: Context,
+    campus: Campus = Campus.BEIJING,
+    private val onChanged: () -> Unit = {},
+) {
 
-    private val file = File(context.filesDir, "personal_events.json")
+    private val file = File(
+        context.filesDir,
+        if (campus == Campus.BEIJING) "personal_events.json" else "personal_events_${campus.storageKey}.json",
+    )
 
     private val _events = MutableStateFlow(read())
     val events: StateFlow<List<PersonalEvent>> = _events.asStateFlow()

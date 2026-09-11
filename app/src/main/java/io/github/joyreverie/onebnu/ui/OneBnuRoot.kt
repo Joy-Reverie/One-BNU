@@ -27,6 +27,7 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +42,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.ui.campus.CalendarScreen
 import io.github.joyreverie.onebnu.ui.diagnostics.DiagnosticsScreen
 import io.github.joyreverie.onebnu.ui.campus.CampusMapScreen
@@ -105,10 +107,11 @@ private val TABS = listOf(
 fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
     OneBnuTheme {
         ProvideScreenInfo(windowSizeClass) {
+            val activeCampus by ServiceLocator.activeCampusFlow.collectAsState()
             val screen = LocalScreenInfo.current
             val nav = rememberNavController()
             // rememberSaveable：旋转导致 Activity 重建时不要退回登录页
-            var loggedIn by rememberSaveable { mutableStateOf(ServiceLocator.cas.hasSession()) }
+            var loggedIn by rememberSaveable { mutableStateOf(ServiceLocator.auth.hasSession()) }
 
             val backStack by nav.currentBackStackEntryAsState()
             val current = backStack?.destination?.route
@@ -133,7 +136,7 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                     composable(Routes.LOGIN) {
                         LoginScreen(
                             onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) },
-                            onLoggedIn = {
+                        onLoggedIn = {
                             loggedIn = true
                             nav.navigate(Routes.HOME) {
                                 popUpTo(Routes.LOGIN) { inclusive = true }
@@ -141,7 +144,7 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                             },
                         )
                     }
-                    composable(Routes.HOME) { HomeScreen(nav) }
+    composable(Routes.HOME) { HomeScreen(nav) }
                     composable(Routes.SCHEDULE) { ScheduleScreen() }
                     composable(Routes.GRADE) { GradeScreen() }
                     composable(Routes.PROFILE) {
@@ -153,7 +156,7 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                             },
                         )
                     }
-                    detailRoutes(nav)
+                    detailRoutes(nav, activeCampus)
                 }
             }
 
@@ -225,12 +228,18 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
     }
 }
 
-private fun NavGraphBuilder.detailRoutes(nav: NavHostController) {
+private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus) {
     composable(Routes.EXAM) { ExamScreen(onBack = { nav.popBackStack() }) }
-    composable(Routes.CLASSROOM) { ClassroomScreen(onBack = { nav.popBackStack() }) }
-    composable(Routes.CALENDAR) { CalendarScreen(onBack = { nav.popBackStack() }) }
-    composable(Routes.PHONE) { ContactsScreen(onBack = { nav.popBackStack() }) }
-    composable(Routes.MAP) { CampusMapScreen(onBack = { nav.popBackStack() }) }
+    if (campus == Campus.BEIJING) {
+        composable(Routes.CLASSROOM) { ClassroomScreen(onBack = { nav.popBackStack() }) }
+    }
+    if (campus == Campus.BEIJING) {
+        composable(Routes.CALENDAR) { CalendarScreen(onBack = { nav.popBackStack() }) }
+    }
+    if (campus == Campus.BEIJING) {
+        composable(Routes.PHONE) { ContactsScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.MAP) { CampusMapScreen(onBack = { nav.popBackStack() }) }
+    }
     composable(Routes.SETTINGS) {
         SettingsScreen(
             onBack = { nav.popBackStack() },
