@@ -23,6 +23,11 @@
             android:label="Cultivation plan preview"
             android:theme="@style/Theme.OneBNU" />
         <activity
+            android:name=".widget.OneVpnPreviewActivity"
+            android:exported="true"
+            android:label="OneVPN SSO preview"
+            android:theme="@style/Theme.OneBNU" />
+        <activity
             android:name=".widget.ContactsPreviewActivity"
             android:exported="true"
             android:label="Contacts preview"

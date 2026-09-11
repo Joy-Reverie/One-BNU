@@ -105,7 +105,8 @@ class BnuCookieJar(
 
     companion object {
         private const val DEFAULT_CAS_HOST = "cas.bnu.edu.cn"
-        private const val CAS_TICKET = "CASTGC"
+        /** CAS 的全局登录票据；写入 WebView 时必须只留在 CAS 主机，不能扩散给其他子域。 */
+        internal const val CAS_TICKET = "CASTGC"
 
         /** 服务端认设备用的 Cookie 名。 */
         const val DEVICE_COOKIE = "devInfo"

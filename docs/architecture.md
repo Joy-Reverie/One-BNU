@@ -59,8 +59,16 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 课程中心的入口是 `https://onevpn.bnu.edu.cn/https/77726476706e69737468656265737421fbf45b8469326645300d8db9d6562d/www/dd/vue/spa/jw-pyfa#/`。
 它受 OneVPN / CAS 保护，且方案、手册、大纲会随学校发布和个人权限变化，因此 `CultivationPlanScreen` 只提供一个原生目录页，
-由受限的 `WebScreen` 打开官方实时页面；不做 HTML 抓取、离线内置或导出。跳转时不额外包教务 SSO，
-避免北京和珠海各自的认证链路与 OneVPN 的服务回跳互相干扰。
+由受限的 `WebScreen` 打开官方实时页面；不做 HTML 抓取、离线内置或导出。
+
+北京校区已有 CAS 会话时，OneVPN 初始跳转会先保存原页面的匿名返回状态，随后访问其已知的
+`…/cas/login?service=https://onevpn.bnu.edu.cn/login?cas_login=true` 中转。`OneVpnSso` 只识别这一条固定的
+HTTPS 主机、路径和 service，转而调用当前 CAS 的标准 `ssoUrl(service)`；密码不传给 WebView、不执行 JS 表单填充，
+WebView 只接收 CAS 返回的一次性 service ticket。同步 Cookie 时，`CASTGC` 强制为 `cas.bnu.edu.cn` 的 host-only Cookie，
+并清除旧版可能遗留的 `.bnu.edu.cn` 跨子域副本，不能发送给 OneVPN 或门户。
+
+珠海当前使用独立的 `cas.bnuzh.edu.cn`，而该 OneVPN 登录中转明确指向 `cas.bnu.edu.cn`。在学校没有明确提供跨域
+委托前，应用不会把珠海凭据或 CAS 票据送往北京认证域；珠海用户仍在学校官方页面完成 OneVPN 登录。
 
 ## 成绩与绩点
 

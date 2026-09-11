@@ -66,7 +66,7 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 ## 隐私与安全
 
 - 不设服务器。所有请求直接发往学校域名，只有「检查更新」（手动，或联网启动时自动，可在设置里关闭）会访问 GitHub 的公开接口，请求不带任何身份信息。
-- 账号密码经 `EncryptedSharedPreferences`（AES256-GCM，密钥由 Android Keystore 持有且不可导出）加密后仅存本机；
+- 勾选“记住密码（下次自动登录）”后，账号密码经 `EncryptedSharedPreferences`（AES256-GCM，密钥由 Android Keystore 持有且不可导出）加密后仅存本机；
   Keystore 不可用时拒绝保存，而不是降级为明文。
 - 会话 Cookie 只在内存，退出应用即失效。唯一跨会话留存的是认证服务用来认设备的 `devInfo`，它不是凭据，
   可在「网络诊断」里重置。登录表单中的设备标识是安装时生成的随机值，不采集硬件信息。
@@ -74,6 +74,8 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 - 「培养方案」只提供学校 OneVPN 课程中心的受限网页入口；应用不抓取、解析或导出培养方案、手册和大纲内容。
 - 默认禁止明文流量，只对确实没有 HTTPS 的教务与图书馆主机放行；重定向途中的协议降级会被升回 HTTPS。
 - 关闭云备份与设备迁移（`allowBackup=false`）。内嵌浏览器不注入 JS 接口、禁用文件域访问与混合内容，站外链接交给系统浏览器。
+- 北京数字京师/教务系统与珠海门户/教务系统，均通过当前校区已有 CAS 会话取得标准的一次性 SSO service ticket；应用不会在网页中自动填写或注入账号、密码。
+- 北京校区打开课程中心时，内嵌页只通过现有 CAS 会话取得标准的一次性 SSO service ticket，绝不把密码填入网页；`CASTGC` 在 WebView 中强制为 CAS 主机专属 Cookie，不会同步给 OneVPN 或其他子域。珠海使用独立认证域，未确认跨域委托前保留官方登录页。
 - 权限：`INTERNET`、`ACCESS_NETWORK_STATE`；`POST_NOTIFICATIONS`、`USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM`、
   `RECEIVE_BOOT_COMPLETED`、`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 仅在开启提醒时用到；
   `REQUEST_INSTALL_PACKAGES` 仅用于安装应用内下载的更新包；`WRITE_EXTERNAL_STORAGE` 限 Android 9 及以下保存校历图片时申请。
@@ -122,6 +124,7 @@ adb shell am start -n $P/.widget.ContactsPreviewActivity                   # 校
 adb shell am start -n $P/.widget.CreditsPreviewActivity                    # 学分核算
 adb shell am start -n $P/.widget.GradePreviewActivity                      # 成绩、缓考与手动计算范围
 adb shell am start -n $P/.widget.CultivationPlanPreviewActivity            # 培养方案入口页
+adb shell am start -n $P/.widget.OneVpnPreviewActivity                     # OneVPN / CAS 中转（不提供账号数据）
 adb shell am start -n $P/.widget.ProfileCardsPreviewActivity               # 「我的」页的提醒与小组件卡
 adb shell am start -n $P/.widget.ProfileCardsPreviewActivity --ez alarm true --ei delay 8  # 延迟起铃，可先锁屏看闹钟全屏页
 adb shell am start -n $P/.widget.SettingsPreviewActivity --es version 1.0.0  # 设置页；伪装旧版本以演练更新流程

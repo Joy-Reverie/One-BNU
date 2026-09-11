@@ -84,11 +84,19 @@ object Routes {
     const val DIAGNOSTICS = "diagnostics"
     const val INFO = "info"
     const val WEB = "web"
+    const val ONEVPN_WEB = "onevpn_web"
 
     fun web(title: String, url: String, sso: Boolean): String {
         val t = android.net.Uri.encode(title)
         val u = android.net.Uri.encode(url)
         return "$WEB/$t/$u/$sso"
+    }
+
+    /** 课程中心专用：OneVPN 的可信 CAS 中转使用当前北京 CAS 会话，不向网页传递密码。 */
+    fun oneVpnWeb(title: String, url: String): String {
+        val t = android.net.Uri.encode(title)
+        val u = android.net.Uri.encode(url)
+        return "$ONEVPN_WEB/$t/$u"
     }
 }
 
@@ -249,9 +257,7 @@ private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus)
     composable(Routes.CULTIVATION_PLAN) {
         CultivationPlanScreen(
             onBack = { nav.popBackStack() },
-            // OneVPN 自己完成正确的 CAS 回跳；不能拿当前校区的教务 SSO 强行包一层，
-            // 否则北京/珠海的认证链路会互相干扰。
-            onOpenOfficialPage = { title, url -> nav.navigate(Routes.web(title, url, sso = false)) },
+            onOpenOfficialPage = { title, url -> nav.navigate(Routes.oneVpnWeb(title, url)) },
         )
     }
     composable(Routes.CREDITS) { CreditsScreen(onBack = { nav.popBackStack() }) }
@@ -261,6 +267,15 @@ private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus)
             title = android.net.Uri.decode(entry.arguments?.getString("title").orEmpty()),
             url = android.net.Uri.decode(entry.arguments?.getString("url").orEmpty()),
             useSso = entry.arguments?.getString("sso") == "true",
+            onBack = { nav.popBackStack() },
+        )
+    }
+    composable("${Routes.ONEVPN_WEB}/{title}/{url}") { entry ->
+        WebScreen(
+            title = android.net.Uri.decode(entry.arguments?.getString("title").orEmpty()),
+            url = android.net.Uri.decode(entry.arguments?.getString("url").orEmpty()),
+            useSso = false,
+            useOneVpnSso = true,
             onBack = { nav.popBackStack() },
         )
     }

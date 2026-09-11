@@ -34,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.github.joyreverie.onebnu.ui.components.BnuCard
-import io.github.joyreverie.onebnu.ui.components.SectionCard
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.listPadding
 
@@ -96,26 +95,9 @@ fun CultivationPlanScreen(
             contentPadding = LocalScreenInfo.current.listPadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item { CourseCenterIntro() }
             items(COURSE_CENTER_ITEMS, key = { it.title }) { item ->
                 CourseCenterRow(item, onClick = { onOpenOfficialPage(item.title, item.url) })
             }
-            item { CourseCenterAccessHint() }
-        }
-    }
-}
-
-@Composable
-private fun CourseCenterIntro() {
-    BnuCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp)) {
-            Text("课程中心", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(3.dp))
-            Text(
-                "北京、珠海校区通用。培养方案、教学手册和教学大纲均以学校课程中心的实时内容为准。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
@@ -159,17 +141,5 @@ private fun CourseCenterRow(item: CourseCenterItem, onClick: () -> Unit) {
                 tint = MaterialTheme.colorScheme.outline,
             )
         }
-    }
-}
-
-@Composable
-private fun CourseCenterAccessHint() {
-    SectionCard("访问提示") {
-        Text(
-            "页面通过北师大 OneVPN 提供。首次访问可能跳转学校统一身份认证；内容按个人权限展示。" +
-                "应用不抓取、解析或导出这些页面内容，请始终以学校页面为准。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }

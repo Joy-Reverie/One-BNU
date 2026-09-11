@@ -354,7 +354,7 @@ private fun LoginCard(
                     enabled = state.canSaveCredentials,
                 )
                 Text(
-                    if (state.canSaveCredentials) "记住密码" else "本设备安全存储不可用",
+                    if (state.canSaveCredentials) "记住密码（下次自动登录）" else "本设备安全存储不可用",
                     Modifier.weight(1f),
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (state.canSaveCredentials) MaterialTheme.colorScheme.onSurface
