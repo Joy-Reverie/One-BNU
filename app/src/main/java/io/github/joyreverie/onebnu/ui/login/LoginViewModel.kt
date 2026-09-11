@@ -10,11 +10,14 @@ import io.github.joyreverie.onebnu.core.net.SmsResult
 import io.github.joyreverie.onebnu.core.store.Campus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 
 /** 二次认证（短信）过程中的界面状态。 */
@@ -230,8 +233,21 @@ class LoginViewModel : ViewModel() {
     }
 
     private suspend fun runIo(block: () -> AuthResult): AuthResult? {
-        val result = withContext(Dispatchers.IO) { runCatching(block) }
-        return result.getOrElse { e ->
+        return try {
+            withTimeout(LOGIN_TIMEOUT_MS) {
+                withContext(Dispatchers.IO) { block() }
+            }
+        } catch (e: TimeoutCancellationException) {
+            _state.update {
+                it.copy(
+                    loading = false,
+                    error = "登录请求超时，请检查校园网、代理或 VPN 后重试",
+                )
+            }
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
             _state.update { it.copy(loading = false, error = networkMessage(e)) }
             null
         }
@@ -266,5 +282,6 @@ class LoginViewModel : ViewModel() {
     private companion object {
         /** 与网页端一致的重发间隔。 */
         const val RESEND_SECONDS = 60
+        const val LOGIN_TIMEOUT_MS = 45_000L
     }
 }

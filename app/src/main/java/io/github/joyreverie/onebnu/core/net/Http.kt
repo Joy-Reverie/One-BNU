@@ -60,9 +60,9 @@ class Http(val client: OkHttpClient, val cookies: BnuCookieJar) {
             val jar = BnuCookieJar(device, casHost)
             val client = OkHttpClient.Builder()
                 .cookieJar(jar)
-                .connectTimeout(20, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .callTimeout(60, TimeUnit.SECONDS)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(25, TimeUnit.SECONDS)
+                .callTimeout(45, TimeUnit.SECONDS)
                 // 跳转由 execute() 自己走，中途需要把明文降级升回 HTTPS
                 .followRedirects(false)
                 .followSslRedirects(false)
@@ -75,6 +75,47 @@ class Http(val client: OkHttpClient, val cookies: BnuCookieJar) {
     @Throws(IOException::class)
     fun get(url: String, referer: String? = null, headers: Map<String, String> = emptyMap()): HttpResult =
         execute(newRequest(url, referer, headers).get().build())
+
+    /** 只提交一跳表单；适合 CAS 登录，只需确认 CASTGC，不应等待业务站点的最终页面。 */
+    internal fun postFormOnce(
+        url: String,
+        form: Map<String, String>,
+        referer: String? = null,
+        headers: Map<String, String> = emptyMap(),
+    ): HttpOnceResult {
+        val body = FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build()
+        val request = newRequest(url, referer, headers).post(body).build()
+        return client.newCall(request).execute().use { response ->
+            val location = response.header("Location")
+                ?.let { response.request.url.resolve(it) }
+                ?.let { BnuHosts.upgraded(it) }
+            val bytes = response.body?.bytes() ?: ByteArray(0)
+            val declared = response.header("Content-Type")
+                ?.let { Regex("charset=([\\w-]+)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
+            HttpOnceResult(
+                url = response.request.url,
+                code = response.code,
+                location = location,
+                body = decode(bytes, declared),
+            )
+        }
+    }
+
+    /** 完成认证服务自己的收尾跳转，遇到业务站点时立即返回，避免弱网下等待业务首页。 */
+    internal fun finishSameHostRedirect(
+        response: HttpOnceResult,
+        host: String,
+        pathPrefix: String,
+        maxHops: Int = 2,
+    ): HttpOnceResult {
+        var current = response
+        repeat(maxHops) {
+            val next = current.location ?: return current
+            if (next.host != host || !next.encodedPath.startsWith(pathPrefix)) return current
+            current = getOnce(next.toString())
+        }
+        return current
+    }
 
     /** 只请求一跳；Cookie 仍由同一个 CookieJar 自动收发，但不消费后续 Location。 */
     internal fun getOnce(

@@ -206,7 +206,7 @@ class CasClient(
 
     /** 网页端的 realSubmit()：提交登录表单，CASTGC 落地即成功。 */
     private fun submitLoginForm(p: Pending): AuthResult {
-        val res = http.postForm(
+        val res = http.postFormOnce(
             p.formUrl,
             mapOf(
                 "rsa" to p.rsa,
@@ -221,14 +221,23 @@ class CasClient(
             referer = p.pageUrl,
         )
 
+        val completed = http.finishSameHostRedirect(res, "cas.bnu.edu.cn", "/cas/login")
         val ok = http.cookies.hasCasTicket()
-        Log.i(TAG, "提交表单 HTTP ${res.code} → ${res.url.substringBefore('?')}, CASTGC=$ok")
+        Log.i(
+            TAG,
+            "提交表单 HTTP ${res.code} → ${safeLocation(res.url)}, " +
+                "收尾=${safeLocation(completed.url)}, CASTGC=$ok",
+        )
         if (ok) return AuthResult.Success
 
-        val tip = RE_TIPS.find(res.body)?.groupValues?.get(1)?.trim()
+        val tip = RE_TIPS.find(completed.body)?.groupValues?.get(1)?.trim()
         if (!tip.isNullOrBlank()) return AuthResult.Failed(tip)
-        return AuthResult.Failed("登录未能完成（HTTP ${res.code}），请重试")
+        return AuthResult.Failed("登录未能完成（HTTP ${completed.code}），请重试")
     }
+
+    private fun safeLocation(url: okhttp3.HttpUrl?): String = url?.let {
+        "${it.host}${it.encodedPath.substringBefore(';')}"
+    } ?: "none"
 
     private class JsonOrProblem(val json: JSONObject?, val problem: String?)
 

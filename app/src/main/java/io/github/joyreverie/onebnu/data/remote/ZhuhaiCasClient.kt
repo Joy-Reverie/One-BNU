@@ -22,6 +22,10 @@ class ZhuhaiCasClient(private val http: Http) : SessionAuthenticator {
         private val EXECUTION = Regex("""name="execution"[^>]*value="([^"]+)"""")
         private val ACTION = Regex("""<form[^>]*id="loginForm"[^>]*action="([^"]+)"""")
         private val TITLE = Regex("""<title[^>]*>(.*?)</title>""", RegexOption.IGNORE_CASE)
+        private val ERROR = Regex(
+            """id="errorMsgHide"[^>]*>(.*?)</span>""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+        )
     }
 
     override fun login(username: String, password: String, captcha: String): AuthResult {
@@ -39,7 +43,7 @@ class ZhuhaiCasClient(private val http: Http) : SessionAuthenticator {
             .getOrNull()
             ?.takeIf { it.isNotBlank() }
             ?: return AuthResult.Failed("珠海认证未返回加密公钥")
-        val response = http.postForm(
+        val response = http.postFormOnce(
             absolute(action, page.url),
             mapOf(
                 "rsa" to "",
@@ -52,13 +56,11 @@ class ZhuhaiCasClient(private val http: Http) : SessionAuthenticator {
             ),
             referer = page.url,
         )
-        if (!http.cookies.hasCasTicket()) return AuthResult.Failed(errorText(response.body))
-        // 珠海 CAS 成功后先返回 302；Http 已接管 ticket → jwxt → JSESSIONID 的跳转链。
-        // 某些网关会在最后一步返回空 body，因此以 CASTGC + 最终 URL/状态为准，
-        // 不把合法的空落地页误报成登录失败。
-        return if (looksLikeJwxtHome(response.body) ||
-            response.code in 200..399 && response.url.contains("jwxt.bnuzh.edu.cn")
-        ) AuthResult.Success else AuthResult.Failed("珠海教务系统未能建立会话，请重试")
+        val completed = http.finishSameHostRedirect(response, "cas.bnuzh.edu.cn", "/cas/login")
+        if (!http.cookies.hasCasTicket()) return AuthResult.Failed(errorText(completed.body))
+        // 登录只确认珠海 CAS 已签发 CASTGC；教务 JSESSIONID 由登录成功后的独立 SSO 预热建立，
+        // 避免非校园网无法访问教务最终页时把认证页误报为「一直登录中」。
+        return if (completed.code in 200..399) AuthResult.Success else AuthResult.Failed("珠海统一认证未能完成，请重试")
     }
 
     override fun sendSecondAuthSms(pending: AuthPending): SmsResult =
@@ -94,12 +96,12 @@ class ZhuhaiCasClient(private val http: Http) : SessionAuthenticator {
     }
 
     private fun errorText(body: String): String =
-        TITLE.find(body)?.groupValues?.get(1)?.replace(Regex("\\s+"), " ")?.trim()
+        ERROR.find(body)?.groupValues?.get(1)?.replace(Regex("<[^>]+>"), " ")
+            ?.replace(Regex("\\s+"), " ")?.trim()
             ?.takeIf { it.isNotBlank() }
+            ?: TITLE.find(body)?.groupValues?.get(1)?.replace(Regex("\\s+"), " ")?.trim()
+                ?.takeIf { it.isNotBlank() && !it.equals("sign-in", ignoreCase = true) }
             ?: "珠海登录失败，请检查账号和密码"
-
-    private fun looksLikeJwxtHome(body: String): Boolean =
-        body.contains("KINGOSOFT") && body.contains("frame_current")
 
     private fun absolute(path: String, base: String): String =
         if (path.startsWith("http")) path else java.net.URI(base).resolve(path).toString()

@@ -76,6 +76,8 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 - 关闭云备份与设备迁移（`allowBackup=false`）。内嵌浏览器不注入 JS 接口、禁用文件域访问与混合内容，站外链接交给系统浏览器。
 - 北京、珠海教务系统通过当前校区已有 CAS 会话取得标准的一次性 SSO service ticket；数字京师与珠海门户按各自官方 OAuth CAS 流程用现有会话换取 access token。应用不会在网页中自动填写或注入账号、密码。
 - 北京校区打开课程中心时，内嵌页通过现有 CAS 会话取得课程中心会话，绝不把密码填入网页；`CASTGC` 在 WebView 中强制为 CAS 主机专属 Cookie，不会同步给 OneVPN 或其他子域。珠海使用独立认证域，未确认跨域委托前保留官方登录页。
+- 北京数字京师在手机内嵌浏览器中使用学校官方 H5 首页，绕过移动端引导页的 WebView 兼容问题；门户 accessToken 仍只存在进程内。
+- 登录网络异常时，应用会在有限时间内结束认证请求并提示检查校园网、代理或 VPN，不会无限停留在登录中；门户页面若因 WebView Cookie 或脚本加载瞬态为空，会自动重试一次。
 - 权限：`INTERNET`、`ACCESS_NETWORK_STATE`；`POST_NOTIFICATIONS`、`USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM`、
   `RECEIVE_BOOT_COMPLETED`、`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 仅在开启提醒时用到；
   `REQUEST_INSTALL_PACKAGES` 仅用于安装应用内下载的更新包；`WRITE_EXTERNAL_STORAGE` 限 Android 9 及以下保存校历图片时申请。

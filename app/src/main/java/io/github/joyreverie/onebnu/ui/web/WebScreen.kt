@@ -2,6 +2,7 @@ package io.github.joyreverie.onebnu.ui.web
 
 import android.annotation.SuppressLint
 import android.webkit.CookieManager
+import android.webkit.ConsoleMessage
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -42,6 +43,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import android.util.Log
+
+private const val TAG = "OneBNU/WebView"
+private const val BEIJING_PORTAL_MOBILE_HOME =
+    "https://one.bnu.edu.cn/tp_nup/resource/defaults/html/h5/loginHome.html#menu=home"
 
 /**
  * 内嵌浏览器。
@@ -124,7 +130,7 @@ fun WebScreen(
             if (target == null) {
                 LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
             } else {
-                val pageUrl = requireNotNull(target)
+                val pageUrl = portalWebViewUrl(requireNotNull(target))
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
@@ -142,12 +148,18 @@ fun WebScreen(
                             settings.javaScriptCanOpenWindowsAutomatically = false
                             // 教务系统只有 HTTP，门户是 HTTPS，允许混合内容会削弱 HTTPS 页面，故禁用
                             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                            if (isPortalPage(pageUrl)) {
+                                settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                            }
 
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
                             webViewClient = object : WebViewClient() {
                                 /** 已重定向一次就不再接管，CAS 会话失效时让官方页面正常显示登录表单。 */
                                 var oneVpnSsoRedirected = false
+                                var portalCookieRetried = false
+                                var portalBlankRetried = false
+                                var portalGuideBypassed = false
 
                                 fun takeOneVpnSsoUrl(candidate: String?): String? {
                                     if (!useOneVpnSso || oneVpnSsoRedirected) return null
@@ -193,6 +205,61 @@ fun WebScreen(
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     progress = 100
                                     canGoBack = view?.canGoBack() == true
+                                    if (
+                                        isCrossDeviceGuide(url) && !portalGuideBypassed &&
+                                        PortalSso.accessToken(campus) != null
+                                    ) {
+                                        portalGuideBypassed = true
+                                        // 这是门户官方引导页的“访问电脑端”状态，不涉及凭据；
+                                        // 由官方 H5 首页继续使用已同步的 accessToken。
+                                        view?.evaluateJavascript(
+                                            "localStorage.setItem('cross_device_guide','true')",
+                                        ) {
+                                            view.loadUrl(BEIJING_PORTAL_MOBILE_HOME)
+                                        }
+                                        return
+                                    }
+                                    if (isPortalPage(url)) {
+                                        Log.i(TAG, "门户页面完成 host=${url?.toHttpUrlOrNull()?.host} path=${url?.toHttpUrlOrNull()?.encodedPath}")
+                                    }
+                                    if (isPortalPage(url) && PortalSso.accessToken(campus) != null) {
+                                        val cookieVisible = CookieManager.getInstance()
+                                            .getCookie(url.orEmpty())
+                                            ?.contains("accessToken=") == true
+                                        Log.i(TAG, "门户 WebView 页面完成，accessToken Cookie=$cookieVisible")
+                                        if (!cookieVisible && !portalCookieRetried) {
+                                            portalCookieRetried = true
+                                            syncCookiesToWebView()
+                                            view?.reload()
+                                        }
+                                        if (!portalBlankRetried) {
+                                            view?.postDelayed({
+                                                view.evaluateJavascript(
+                                                    "JSON.stringify({length:(document.body&&document.body.innerText||'').trim().length,children:document.body?document.body.children.length:0})",
+                                                ) { length ->
+                                                    val blank = length.contains("\"length\":0") || length == "null"
+                                                    Log.i(TAG, "门户 WebView 主体文本为空=$blank")
+                                                    if (blank && !portalBlankRetried) {
+                                                        portalBlankRetried = true
+                                                        view.reload()
+                                                    }
+                                                }
+                                            }, 1500L)
+                                        }
+                                    }
+                                }
+
+                                @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+                                override fun onReceivedError(
+                                    view: WebView?,
+                                    errorCode: Int,
+                                    description: String?,
+                                    failingUrl: String?,
+                                ) {
+                                    if (view?.isShown == true) {
+                                        Log.w(TAG, "WebView 主页面加载失败 code=$errorCode host=${failingUrl?.toHttpUrlOrNull()?.host}")
+                                    }
+                                    super.onReceivedError(view, errorCode, description, failingUrl)
                                 }
 
                                 override fun onPageStarted(
@@ -201,7 +268,7 @@ fun WebScreen(
                                     favicon: android.graphics.Bitmap?,
                                 ) {
                                     // 部分 WebView 版本不会把服务端 302 交给 shouldOverrideUrlLoading；
-                                    // 这里作为同一可信中转的兜底，不执行或注入网页脚本。
+                                    // 这里作为同一可信中转的兜底，不注入账号或密码。
                                     takeOneVpnSsoUrl(url)?.let { target ->
                                         view?.stopLoading()
                                         view?.loadUrl(target)
@@ -213,6 +280,13 @@ fun WebScreen(
                             webChromeClient = object : android.webkit.WebChromeClient() {
                                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
                                     progress = newProgress
+                                }
+
+                                override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                                    if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                                        Log.w(TAG, "WebView 控制台错误 line=${message.lineNumber()}")
+                                    }
+                                    return true
                                 }
                             }
                             loadUrl(pageUrl)
@@ -228,6 +302,26 @@ fun WebScreen(
                 }
             }
         }
+    }
+}
+
+private fun isPortalPage(url: String?): Boolean {
+    val host = url?.toHttpUrlOrNull()?.host ?: return false
+    return host == "one.bnu.edu.cn" || host == "one.bnuzh.edu.cn"
+}
+
+private fun isCrossDeviceGuide(url: String?): Boolean =
+    url?.toHttpUrlOrNull()?.let {
+        it.host == "one.bnu.edu.cn" &&
+            it.encodedPath.endsWith("/resource/defaults/html/guide/crossDeviceGuide.html")
+    } == true
+
+private fun portalWebViewUrl(url: String): String {
+    val parsed = url.toHttpUrlOrNull() ?: return url
+    return if (parsed.host == "one.bnu.edu.cn" && parsed.encodedPath == "/tp_nup/") {
+        BEIJING_PORTAL_MOBILE_HOME
+    } else {
+        url
     }
 }
 

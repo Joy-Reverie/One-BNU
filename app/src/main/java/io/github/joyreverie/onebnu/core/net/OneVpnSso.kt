@@ -193,7 +193,7 @@ internal object OneVpnSso {
 
     private fun safeLocation(url: HttpUrl?): String = url?.let {
         val names = it.queryParameterNames.joinToString(",")
-        "${it.host}${it.encodedPath}${if (names.isBlank()) "" else "?$names"}"
+        "${it.host}${it.encodedPath.substringBefore(';')}${if (names.isBlank()) "" else "?$names"}"
     } ?: "none"
 
     private fun looksLikeLogin(body: String): Boolean =

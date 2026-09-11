@@ -66,7 +66,13 @@ internal object PortalSso {
         }
     }
 
-    private fun establishLocked(http: Http, auth: SessionAuthenticator, campus: Campus, service: String): Boolean {
+    private fun establishLocked(
+        http: Http,
+        auth: SessionAuthenticator,
+        campus: Campus,
+        service: String,
+        retryToken: Boolean = true,
+    ): Boolean {
         val config = configs[campus] ?: return false
         if (!isPortalService(campus, service) || !auth.hasSession()) return false
 
@@ -102,6 +108,12 @@ internal object PortalSso {
             "${config.portalHost} token HTTP ${tokenResponse.code} → ${safeLocation(tokenResponse.location)}, " +
                 "token=${token != null}",
         )
+        if (token == null && retryToken) {
+            // code 是一次性的；接口瞬时返回非 token 响应时重新走一遍 authorize，
+            // 避免 WebView 只能看到空白或登录页。
+            Log.w(TAG, "${config.portalHost} token 交换未完成，重试 OAuth")
+            return establishLocked(http, auth, campus, service, retryToken = false)
+        }
         token ?: return false
 
         synchronized(accessTokens) {
@@ -216,7 +228,9 @@ internal object PortalSso {
         return isCallbackAuthorize(config, service)
     }
 
-    private fun safeLocation(url: HttpUrl?): String = url?.let { "${it.host}${it.encodedPath}" } ?: "none"
+    private fun safeLocation(url: HttpUrl?): String = url?.let {
+        "${it.host}${it.encodedPath.substringBefore(';')}"
+    } ?: "none"
 
     private fun parseAccessToken(body: String): String? = runCatching {
         val json = JSONObject(body)
