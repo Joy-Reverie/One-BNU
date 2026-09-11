@@ -24,6 +24,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -36,6 +37,8 @@ import io.github.joyreverie.onebnu.core.net.BnuHosts
 import io.github.joyreverie.onebnu.core.net.BnuCookieJar
 import io.github.joyreverie.onebnu.core.net.OneVpnSso
 import io.github.joyreverie.onebnu.core.store.Campus
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
@@ -64,8 +67,16 @@ fun WebScreen(
     var webView by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
 
-    val target = remember(url, useSso) {
-        if (useSso) ServiceLocator.api.ssoUrl(url) else url
+    // 先由同一份 OkHttp CAS 会话完成标准 SSO，再把目标站点的会话 Cookie 交给 WebView。
+    // 这样不依赖 WebView 是否接受手工写入的 CASTGC；会话失效时仍回到官方登录页。
+    val target by produceState<String?>(if (useSso) null else url, url, useSso) {
+        value = if (!useSso) {
+            url
+        } else {
+            withContext(Dispatchers.IO) {
+                runCatching { ServiceLocator.auth.sso(url).url }.getOrNull()
+            } ?: ServiceLocator.auth.ssoUrl(url)
+        }
     }
 
     BackHandler(enabled = canGoBack) { webView?.goBack() }
@@ -96,106 +107,111 @@ fun WebScreen(
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    syncCookiesToWebView()
-                    WebView(ctx).apply {
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.useWideViewPort = true
-                        settings.loadWithOverviewMode = true
-                        settings.builtInZoomControls = true
-                        settings.displayZoomControls = false
-                        // 收紧：不放开本地文件与内容提供者访问
-                        settings.allowFileAccess = false
-                        settings.allowContentAccess = false
-                        settings.javaScriptCanOpenWindowsAutomatically = false
-                        // 教务系统只有 HTTP，门户是 HTTPS，允许混合内容会削弱 HTTPS 页面，故禁用
-                        settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            if (target == null) {
+                LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
+            } else {
+                val pageUrl = requireNotNull(target)
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        syncCookiesToWebView()
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.useWideViewPort = true
+                            settings.loadWithOverviewMode = true
+                            settings.builtInZoomControls = true
+                            settings.displayZoomControls = false
+                            // 收紧：不放开本地文件与内容提供者访问
+                            settings.allowFileAccess = false
+                            settings.allowContentAccess = false
+                            settings.javaScriptCanOpenWindowsAutomatically = false
+                            // 教务系统只有 HTTP，门户是 HTTPS，允许混合内容会削弱 HTTPS 页面，故禁用
+                            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
-                        CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
-                        webViewClient = object : WebViewClient() {
-                            /** 已重定向一次就不再接管，CAS 会话失效时让官方页面正常显示登录表单。 */
-                            var oneVpnSsoRedirected = false
+                            webViewClient = object : WebViewClient() {
+                                /** 已重定向一次就不再接管，CAS 会话失效时让官方页面正常显示登录表单。 */
+                                var oneVpnSsoRedirected = false
 
-                            fun takeOneVpnSsoUrl(candidate: String?): String? {
-                                if (!useOneVpnSso || oneVpnSsoRedirected) return null
-                                val service = OneVpnSso.serviceForRelayRedirect(
-                                    candidate?.toHttpUrlOrNull(),
-                                    campus = ServiceLocator.activeCampus,
-                                    hasCasSession = ServiceLocator.auth.hasSession(),
-                                ) ?: return null
-                                oneVpnSsoRedirected = true
-                                // `ssoUrl` 只会指向当前北京 CAS；密码仍只留在 SecureStore，
-                                // WebView 只收到 CAS 返回的一次性 service ticket。
-                                return ServiceLocator.auth.ssoUrl(service)
-                            }
-
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView?,
-                                request: WebResourceRequest?,
-                            ): Boolean {
-                                val u = request?.url ?: return false
-                                takeOneVpnSsoUrl(u.toString())?.let { target ->
-                                    view?.loadUrl(target)
-                                    return true
+                                fun takeOneVpnSsoUrl(candidate: String?): String? {
+                                    if (!useOneVpnSso || oneVpnSsoRedirected) return null
+                                    val service = OneVpnSso.serviceForRelayRedirect(
+                                        candidate?.toHttpUrlOrNull(),
+                                        campus = ServiceLocator.activeCampus,
+                                        hasCasSession = ServiceLocator.auth.hasSession(),
+                                    ) ?: return null
+                                    oneVpnSsoRedirected = true
+                                    // `ssoUrl` 只会指向当前北京 CAS；密码仍只留在 SecureStore，
+                                    // WebView 只收到 CAS 返回的一次性 service ticket。
+                                    return ServiceLocator.auth.ssoUrl(service)
                                 }
-                                val host = u.host.orEmpty()
-                                // 校外链接交给系统浏览器，避免在内嵌页里输入账号
-                                if (!BnuHosts.isBnu(host)) {
-                                    runCatching {
-                                        ctx.startActivity(
-                                            android.content.Intent(android.content.Intent.ACTION_VIEW, u),
-                                        )
+
+                                override fun shouldOverrideUrlLoading(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                ): Boolean {
+                                    val u = request?.url ?: return false
+                                    takeOneVpnSsoUrl(u.toString())?.let { target ->
+                                        view?.loadUrl(target)
+                                        return true
                                     }
-                                    return true
+                                    val host = u.host.orEmpty()
+                                    // 校外链接交给系统浏览器，避免在内嵌页里输入账号
+                                    if (!BnuHosts.isBnu(host)) {
+                                        runCatching {
+                                            ctx.startActivity(
+                                                android.content.Intent(android.content.Intent.ACTION_VIEW, u),
+                                            )
+                                        }
+                                        return true
+                                    }
+                                    // 教务会 302 到明文的统一认证，而明文策略只放行了教务和图书馆，
+                                    // WebView 撞上这一跳会直接白屏。和 OkHttp 侧一样，把它升回 HTTPS。
+                                    if (u.scheme == "http" && !BnuHosts.isHttpOnly(host)) {
+                                        view?.loadUrl(u.buildUpon().scheme("https").build().toString())
+                                        return true
+                                    }
+                                    return false
                                 }
-                                // 教务会 302 到明文的统一认证，而明文策略只放行了教务和图书馆，
-                                // WebView 撞上这一跳会直接白屏。和 OkHttp 侧一样，把它升回 HTTPS。
-                                if (u.scheme == "http" && !BnuHosts.isHttpOnly(host)) {
-                                    view?.loadUrl(u.buildUpon().scheme("https").build().toString())
-                                    return true
-                                }
-                                return false
-                            }
 
-                            override fun onPageFinished(view: WebView?, url: String?) {
-                                progress = 100
-                                canGoBack = view?.canGoBack() == true
-                            }
-
-                            override fun onPageStarted(
-                                view: WebView?,
-                                url: String?,
-                                favicon: android.graphics.Bitmap?,
-                            ) {
-                                // 部分 WebView 版本不会把服务端 302 交给 shouldOverrideUrlLoading；
-                                // 这里作为同一可信中转的兜底，不执行或注入网页脚本。
-                                takeOneVpnSsoUrl(url)?.let { target ->
-                                    view?.stopLoading()
-                                    view?.loadUrl(target)
-                                    return
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    progress = 100
+                                    canGoBack = view?.canGoBack() == true
                                 }
-                                progress = 10
+
+                                override fun onPageStarted(
+                                    view: WebView?,
+                                    url: String?,
+                                    favicon: android.graphics.Bitmap?,
+                                ) {
+                                    // 部分 WebView 版本不会把服务端 302 交给 shouldOverrideUrlLoading；
+                                    // 这里作为同一可信中转的兜底，不执行或注入网页脚本。
+                                    takeOneVpnSsoUrl(url)?.let { target ->
+                                        view?.stopLoading()
+                                        view?.loadUrl(target)
+                                        return
+                                    }
+                                    progress = 10
+                                }
                             }
-                        }
-                        webChromeClient = object : android.webkit.WebChromeClient() {
-                            override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                progress = newProgress
+                            webChromeClient = object : android.webkit.WebChromeClient() {
+                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                    progress = newProgress
+                                }
                             }
+                            loadUrl(pageUrl)
+                            webView = this
                         }
-                        loadUrl(target)
-                        webView = this
-                    }
-                },
-            )
-            if (progress in 1..99) {
-                LinearProgressIndicator(
-                    progress = { progress / 100f },
-                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                    },
                 )
+                if (progress in 1..99) {
+                    LinearProgressIndicator(
+                        progress = { progress / 100f },
+                        modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                    )
+                }
             }
         }
     }

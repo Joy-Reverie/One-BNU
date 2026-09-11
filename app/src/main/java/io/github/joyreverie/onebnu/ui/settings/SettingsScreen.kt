@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -213,10 +213,9 @@ private fun PeriodTimesCard() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("第 ${i + 1} 节", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                // 两枚时间芯片与中间连字符放进同一个固定最小高度的行。
-                // 之前三者直接和左侧文字同列布局，某些字体/字号下连字符的行高会把右侧视觉中心带偏。
+                // 给右侧时间组和两枚芯片固定槽位，避免每行按文本测量后蓝色点击区域横向漂移。
                 Row(
-                    Modifier.heightIn(min = 40.dp),
+                    Modifier.width(PERIOD_TIME_GROUP_WIDTH).height(PERIOD_TIME_ROW_HEIGHT),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TimeChip(t.substringBefore('-')) { editing = i to true }
@@ -268,7 +267,8 @@ private fun PeriodTimesCard() {
 private fun TimeChip(text: String, onClick: () -> Unit) {
     Box(
         Modifier
-            .heightIn(min = 36.dp)
+            .width(PERIOD_TIME_CHIP_WIDTH)
+            .height(PERIOD_TIME_ROW_HEIGHT)
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.secondaryContainer)
             .clickable(onClick = onClick)
@@ -282,6 +282,10 @@ private fun TimeChip(text: String, onClick: () -> Unit) {
         )
     }
 }
+
+private val PERIOD_TIME_CHIP_WIDTH = 64.dp
+private val PERIOD_TIME_GROUP_WIDTH = PERIOD_TIME_CHIP_WIDTH * 2 + 24.dp
+private val PERIOD_TIME_ROW_HEIGHT = 40.dp
 
 private val ThemeMode.icon: ImageVector
     get() = when (this) {
