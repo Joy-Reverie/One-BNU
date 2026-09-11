@@ -8,6 +8,14 @@ import org.junit.Test
 
 class OneVpnSsoTest {
 
+    @Test
+    fun `课程中心使用学校官方直连域名`() {
+        val courseCenter = OneVpnSso.COURSE_CENTER.toHttpUrl()
+
+        assertEquals("kczx.bnu.edu.cn", courseCenter.host)
+        assertEquals("/www/dd/vue/spa/jw-pyfa", courseCenter.encodedPath)
+    }
+
     private val expectedService = "https://onevpn.bnu.edu.cn/login?cas_login=true"
     private val trustedRelay = (
         "https://onevpn.bnu.edu.cn/https/77726476706e69737468656265737421f3f652d2253e7d1e7b0c9ce29b5b/" +

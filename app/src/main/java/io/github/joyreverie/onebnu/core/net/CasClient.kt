@@ -177,7 +177,9 @@ class CasClient(
      * 会话已失效时返回的是 CAS 登录页，调用方据此触发重新登录。
      */
     @Throws(IOException::class)
-    override fun sso(service: String): HttpResult = http.get("$LOGIN?service=${enc(service)}")
+    override fun sso(service: String): HttpResult = synchronized(SsoCoordinator.lock) {
+        http.get("$LOGIN?service=${enc(service)}")
+    }
 
     override fun hasSession(): Boolean = http.cookies.hasCasTicket()
 

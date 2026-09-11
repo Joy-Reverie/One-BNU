@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
+import io.github.joyreverie.onebnu.core.net.OneVpnSso
 import io.github.joyreverie.onebnu.ui.theme.OneBnuTheme
 import io.github.joyreverie.onebnu.ui.theme.ProvideScreenInfo
 import io.github.joyreverie.onebnu.ui.web.WebScreen
@@ -35,7 +36,6 @@ class OneVpnPreviewActivity : ComponentActivity() {
     }
 
     private companion object {
-        const val COURSE_CENTER_URL =
-            "https://onevpn.bnu.edu.cn/https/77726476706e69737468656265737421fbf45b8469326645300d8db9d6562d/www/dd/vue/spa/jw-pyfa#/pyfa"
+        const val COURSE_CENTER_URL = OneVpnSso.COURSE_CENTER
     }
 }

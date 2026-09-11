@@ -51,21 +51,21 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 | 学籍 | `STU_BaseInfoAction.do`（XML） | 身份证号、准考证号等敏感字段不展示 |
 | 培养方案要求 | `DataTable.jsp?tableId=6033` | 学分核算里有数据时附带显示 |
 | 培养方案课程模块 | `DataTable.jsp?tableId=5327008` | 有数据时优先作为学分归类依据 |
-| 课程中心 | OneVPN `jw-pyfa` SPA | 北京、珠海通用；个人培养方案、教学手册、教学大纲实时展示 |
+| 课程中心 | `kczx.bnu.edu.cn` `jw-pyfa` SPA | 北京校区；个人培养方案、教学手册、教学大纲实时展示 |
 | 校历 | 无接口 | 手工录入，见 `data/model/OfficialCalendar.kt` |
 | 作息时间 | 无接口 | 默认 `Settings.PERIOD_TIMES` 按学校统一作息生成，可在设置里逐节自定义 |
 
 解析全部在 `data/parse/Parsers.kt`，用 Jsoup；单元测试的样本在 `app/src/test/resources/fixtures/`，已脱敏。
 
-课程中心的入口是 `https://onevpn.bnu.edu.cn/https/77726476706e69737468656265737421fbf45b8469326645300d8db9d6562d/www/dd/vue/spa/jw-pyfa#/`。
-它受 OneVPN / CAS 保护，且方案、手册、大纲会随学校发布和个人权限变化，因此 `CultivationPlanScreen` 只提供一个原生目录页，
+课程中心的入口是 `https://kczx.bnu.edu.cn/www/dd/vue/spa/jw-pyfa#/`。
+它受北京 CAS 保护，且方案、手册、大纲会随学校发布和个人权限变化，因此 `CultivationPlanScreen` 只提供一个原生目录页，
 由受限的 `WebScreen` 打开官方实时页面；不做 HTML 抓取、离线内置或导出。
 
-北京校区已有 CAS 会话时，OneVPN 初始跳转会先保存原页面的匿名返回状态，随后访问其已知的
-`…/cas/login?service=https://onevpn.bnu.edu.cn/login?cas_login=true` 中转。`OneVpnSso` 只识别这一条固定的
-HTTPS 主机、路径和 service，先在应用侧调用当前 CAS 的标准 `ssoUrl(service)`，再请求原页面让 OneVPN 会话 Cookie 落地；
-密码不传给 WebView、不执行 JS 表单填充。应用侧失败时，WebView 仍只接管同一条可信中转。同步 Cookie 时，`CASTGC`
-强制为 `cas.bnu.edu.cn` 的 host-only Cookie，并清除旧版可能遗留的 `.bnu.edu.cn` 跨子域副本，不能发送给 OneVPN 或门户。
+北京校区已有 CAS 会话时，`OneVpnSso` 先访问课程中心的 `www/public/home/cas-bnu` 桥接页，
+再从其中提取并校验课程中心自己的 CAS service，调用当前 CAS 的标准 `sso(service)` 建立会话，最后加载官方直连地址。
+这样不依赖 OneVPN 网页端的 JavaScript Cookie 桥接，也不会把密码传给 WebView。旧版 OneVPN 代理地址仍保留严格白名单中转，
+用于兼容历史调试入口；同步 Cookie 时，`CASTGC` 强制为 `cas.bnu.edu.cn` 的 host-only Cookie，并清除旧版可能遗留的
+`.bnu.edu.cn` 跨子域副本，不能发送给 OneVPN 或门户。
 
 教务系统等普通 CAS 入口不直接把 CAS 登录页交给 WebView：`WebScreen` 先用当前
 `SessionAuthenticator` 在应用侧完成一次标准 SSO，取得目标站点的会话 Cookie 后再加载最终地址。数字京师与珠海门户
@@ -73,12 +73,12 @@ HTTPS 主机、路径和 service，先在应用侧调用当前 CAS 的标准 `ss
 `accessToken`；token 只存在进程内并以门户专属 Cookie 交给网页脚本使用。如果会话已失效或预热失败，才回退到官方认证页面。
 整个过程复用应用已有的认证会话，不保存或向网页填写账号密码。
 
-登录成功或应用启动时检测到已有会话后，`OneBnuRoot` 会在后台通过 `SsoWarmup` 依次预热北京门户、教务和 OneVPN
+登录成功或应用启动时检测到已有会话后，`OneBnuRoot` 会在后台通过 `SsoWarmup` 依次预热北京门户、教务和课程中心
 的服务会话；预热失败不会阻塞首页，点击入口时仍会按需重试。同步到 WebView 的只包含对应目标站点 Cookie，`CASTGC`
 仍严格限制在 CAS 主机。
 
-珠海当前使用独立的 `cas.bnuzh.edu.cn`，而该 OneVPN 登录中转明确指向 `cas.bnu.edu.cn`。在学校没有明确提供跨域
-委托前，应用不会把珠海凭据或 CAS 票据送往北京认证域；珠海用户仍在学校官方页面完成 OneVPN 登录。
+珠海当前使用独立的 `cas.bnuzh.edu.cn`，而课程中心的北京入口和旧 OneVPN 登录中转明确指向 `cas.bnu.edu.cn`。
+在学校没有明确提供跨域委托前，应用不会把珠海凭据或 CAS 票据送往北京认证域；珠海用户仍在学校官方页面完成课程中心登录。
 
 ## 成绩与绩点
 

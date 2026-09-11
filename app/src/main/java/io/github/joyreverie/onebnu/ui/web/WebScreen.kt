@@ -60,7 +60,7 @@ fun WebScreen(
     url: String,
     useSso: Boolean,
     onBack: () -> Unit,
-    /** 仅课程中心使用：识别可信的 OneVPN → 北京 CAS 中转，并改走当前 CAS 会话。 */
+    /** 课程中心使用：优先走官方直连 CAS；历史 OneVPN 代理跳转也只接受白名单中转。 */
     useOneVpnSso: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -243,6 +243,7 @@ private fun syncCookiesToWebView() {
             "https://cas.bnu.edu.cn/",
             "https://one.bnu.edu.cn/",
             "https://onevpn.bnu.edu.cn/",
+            "https://kczx.bnu.edu.cn/",
             "http://zyfw.bnu.edu.cn/",
         )
     } else {

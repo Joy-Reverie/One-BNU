@@ -8,7 +8,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  * 登录成功后提前为各个校内系统兑换一次 service ticket。
  *
  * CAS 的全局票据不能直接跨域发送给业务系统；教务使用自己的 service ticket，门户使用
- * OAuth code 换取 access token，OneVPN 还需要完成受信中转。这里统一在应用侧完成这些步骤，
+ * OAuth code 换取 access token，课程中心还需要完成自己的 CAS service 中转。这里统一在应用侧完成这些步骤，
  * WebView 只接收目标系统的会话 Cookie，不接触账号密码。
  */
 internal object SsoWarmup {

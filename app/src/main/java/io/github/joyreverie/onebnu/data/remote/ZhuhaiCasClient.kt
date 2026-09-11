@@ -71,9 +71,9 @@ class ZhuhaiCasClient(private val http: Http) : SessionAuthenticator {
 
     override fun hasSession(): Boolean = http.cookies.hasCasTicket()
 
-    override fun sso(service: String): HttpResult {
+    override fun sso(service: String): HttpResult = synchronized(io.github.joyreverie.onebnu.core.net.SsoCoordinator.lock) {
         val target = if (service.contains("jwxt.bnuzh.edu.cn")) service else "$PORTAL_BASE/nup/"
-        return http.get("$LOGIN?service=${encodedService(target)}")
+        http.get("$LOGIN?service=${encodedService(target)}")
     }
 
     override fun relogin(username: String, password: String): Boolean =

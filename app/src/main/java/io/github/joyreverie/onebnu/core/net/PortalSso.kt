@@ -1,5 +1,6 @@
 package io.github.joyreverie.onebnu.core.net
 
+import android.util.Log
 import io.github.joyreverie.onebnu.core.store.Campus
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -8,6 +9,7 @@ import org.json.JSONObject
 /** 两校区门户的 OAuth CAS 登录适配；门户不用普通 service ticket，而是消费 OAuth code。 */
 internal object PortalSso {
 
+    private const val TAG = "OneBNU/PortalSSO"
     private const val CAS_BEIJING = "cas.bnu.edu.cn"
     private const val CAS_ZHUHAI = "cas.bnuzh.edu.cn"
     private const val BEIJING_PORTAL = "one.bnu.edu.cn"
@@ -59,16 +61,48 @@ internal object PortalSso {
      * `cas.html` 中原本由 JavaScript 执行的 code 换 token；整个过程不需要再次提交密码。
      */
     fun establish(http: Http, auth: SessionAuthenticator, campus: Campus, service: String): Boolean {
+        return synchronized(SsoCoordinator.lock) {
+            establishLocked(http, auth, campus, service)
+        }
+    }
+
+    private fun establishLocked(http: Http, auth: SessionAuthenticator, campus: Campus, service: String): Boolean {
         val config = configs[campus] ?: return false
         if (!isPortalService(campus, service) || !auth.hasSession()) return false
 
-        val callback = findCallback(http, authorizationUrl(campus, service), config) ?: return false
+        val authorizeUrl = authorizationUrl(campus, service)
+        val authorize = authorizeUrl.toHttpUrlOrNull()
+        val redirect = authorize?.queryParameter("redirect_uri")?.toHttpUrlOrNull()
+        Log.i(
+            TAG,
+            "${config.portalHost} OAuth authorize=${safeLocation(authorize)} redirect=${safeLocation(redirect)} " +
+                "service=${safeLocation(redirect?.queryParameter("service")?.toHttpUrlOrNull())}",
+        )
+        val callback = findCallback(http, authorizeUrl, config) ?: return false
         val code = callback.queryParameter("code")?.takeIf { it.isNotBlank() } ?: return false
+        val casDelegate = callback.queryParameter("casDelegate")
 
-        val tokenResponse = http.getOnce(tokenUrl(config, code))
+        // 浏览器会先加载 cas.html，再由页面脚本调用 casToken；这一跳可能设置门户自己的
+        // JSESSIONID / redirectURL。只拿 Location 而跳过页面请求时，网关会偶发返回空响应。
+        val callbackPage = http.get(callback.toString(), referer = authorizeUrl)
+        if (callbackPage.code !in 200..299) return false
+
+        // 门户 cas.html 通过同源 AJAX 换 token，网关会校验这个 Referer；CAS code 本身仍是唯一凭证。
+        val tokenResponse = http.getOnce(
+            tokenUrl(config, code, casDelegate),
+            // 门户的 cas.html 用 jQuery 从当前回调页发同源请求；保留完整回调 URL，
+            // 某些网关会据此校验本次 OAuth code 的来源。
+            referer = callback.toString(),
+            headers = mapOf("X-Requested-With" to "XMLHttpRequest"),
+        )
         val token = parseAccessToken(tokenResponse.body)
             ?.takeIf { tokenResponse.code in 200..299 }
-            ?: return false
+        Log.i(
+            TAG,
+            "${config.portalHost} token HTTP ${tokenResponse.code} → ${safeLocation(tokenResponse.location)}, " +
+                "token=${token != null}",
+        )
+        token ?: return false
 
         synchronized(accessTokens) {
             accessTokens[campus] = token
@@ -106,15 +140,13 @@ internal object PortalSso {
             .toString()
     }
 
-    private fun tokenUrl(config: Config, code: String): String = HttpUrl.Builder()
+    private fun tokenUrl(config: Config, code: String, casDelegate: String?): String = HttpUrl.Builder()
         .scheme("https")
         .host(config.portalHost)
         .addPathSegments("gateway/sems-authc/oauth2/casToken")
         .addPathSegment(code)
         .addPathSegment(config.clientId)
-        .apply {
-            if (config.hasCasDelegate) addQueryParameter("casDelegate", "null")
-        }
+        .apply { addQueryParameter("casDelegate", casDelegate ?: if (config.hasCasDelegate) "null" else "") }
         .build()
         .toString()
 
@@ -127,18 +159,64 @@ internal object PortalSso {
         var current = authorizeUrl
         repeat(4) {
             val response = http.getOnce(current)
-            val location = response.location ?: return null
+            val location = response.location ?: run {
+                Log.i(TAG, "${config.portalHost} authorize HTTP ${response.code} → no-location")
+                return null
+            }
+            Log.i(
+                TAG,
+                "${config.portalHost} authorize HTTP ${response.code} → ${safeLocation(location)}?" +
+                    location.queryParameterNames.joinToString(","),
+            )
             if (isCallback(config, location)) return location
             if (
-                location.scheme != "https" || location.host != config.casHost ||
-                location.encodedPath != "/cas/oauth2.0/callbackAuthorize"
+                !isCallbackAuthorize(config, location) && !isCasLogin(config, location)
             ) {
                 return null
+            }
+
+            if (isCasLogin(config, location)) {
+                // OAuth authorize 先生成自己的 JSESSIONID，再把它交给 CAS login；
+                // 用同一个 Http 客户端跟随，才能保留这次 authorize 的 session_state。
+                Log.i(
+                    TAG,
+                    "${config.portalHost} CAS login target=" +
+                        safeLocation(location.queryParameter("service")?.toHttpUrlOrNull()),
+                )
+                return followAuthorization(http, location, config)
             }
             current = location.toString()
         }
         return null
     }
+
+    private fun followAuthorization(http: Http, login: HttpUrl, config: Config): HttpUrl? {
+        var current = login
+        repeat(8) {
+            val response = http.getOnce(current.toString())
+            val next = response.location ?: run {
+                Log.i(TAG, "${config.portalHost} OAuth hop HTTP ${response.code} → ${safeLocation(response.url)}")
+                return response.url.takeIf { isCallback(config, it) }
+            }
+            Log.i(TAG, "${config.portalHost} OAuth hop HTTP ${response.code} → ${safeLocation(next)}")
+            if (isCallback(config, next)) return next
+            if (!isCallbackAuthorize(config, next) && !isCasLogin(config, next)) return null
+            current = next
+        }
+        return null
+    }
+
+    private fun isCallbackAuthorize(config: Config, url: HttpUrl): Boolean =
+        url.scheme == "https" && url.host == config.casHost &&
+            url.encodedPath == "/cas/oauth2.0/callbackAuthorize"
+
+    private fun isCasLogin(config: Config, url: HttpUrl): Boolean {
+        if (url.scheme != "https" || url.host != config.casHost || url.encodedPath != "/cas/login") return false
+        val service = url.queryParameter("service")?.toHttpUrlOrNull() ?: return false
+        return isCallbackAuthorize(config, service)
+    }
+
+    private fun safeLocation(url: HttpUrl?): String = url?.let { "${it.host}${it.encodedPath}" } ?: "none"
 
     private fun parseAccessToken(body: String): String? = runCatching {
         val json = JSONObject(body)

@@ -1,25 +1,28 @@
 package io.github.joyreverie.onebnu.core.net
 
+import android.util.Log
 import io.github.joyreverie.onebnu.core.store.Campus
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
- * OneVPN 的官方 CAS 跳转识别。
+ * 课程中心的 CAS 会话建立。
  *
- * OneVPN 会先用一个匿名会话记住用户原本要打开的页面，再把浏览器带到其代理的
- * `cas/login?service=https://onevpn…/login?cas_login=true`。北京校区已有 CAS 会话时，
- * 可以把这一跳改为**直达 CAS** 的标准 SSO；密码永不进入 WebView。
+ * 北京课程中心当前优先使用官方直连域名，通过课程中心桥接页取得它自己的 CAS service；
+ * 旧版 OneVPN 代理地址仍保留严格白名单中转。已有 CAS 会话时可以把这些跳转改为**直达 CAS**
+ * 的标准 SSO；密码永不进入 WebView。
  *
  * 珠海当前使用独立的 `cas.bnuzh.edu.cn`，而这个 OneVPN 入口明确指向 `cas.bnu.edu.cn`。
  * 未经学校确认的跨认证域凭据复用不安全，所以珠海不做自动跨域登录，保留官方登录页。
  */
 internal object OneVpnSso {
+    private const val TAG = "OneBNU/OneVPN"
     private const val ONEVPN_HOST = "onevpn.bnu.edu.cn"
+    private const val COURSE_CENTER_HOST = "kczx.bnu.edu.cn"
     private const val ONEVPN_LOGIN_PATH = "/login"
     const val LOGIN_SERVICE = "https://onevpn.bnu.edu.cn/login?cas_login=true"
     const val COURSE_CENTER_BASE =
-        "https://onevpn.bnu.edu.cn/https/77726476706e69737468656265737421fbf45b8469326645300d8db9d6562d/www/dd/vue/spa/jw-pyfa#"
+        "https://kczx.bnu.edu.cn/www/dd/vue/spa/jw-pyfa#"
     const val COURSE_CENTER = "${COURSE_CENTER_BASE}/pyfa"
 
     /**
@@ -60,21 +63,172 @@ internal object OneVpnSso {
     }
 
     /**
-     * 在应用侧完成一次完整的 OneVPN 中转：先建立原页面的匿名返回状态，再通过现有 CAS
-     * 会话兑换 OneVPN ticket，最后访问目标页让 OneVPN 会话 Cookie 落地。
+     * 在应用侧完成一次完整的课程中心中转，并让目标站点会话 Cookie 落地。
      */
     fun establish(http: Http, auth: SessionAuthenticator, campus: Campus, target: String): Boolean {
+        return synchronized(SsoCoordinator.lock) {
+            establishLocked(http, auth, campus, target)
+        }
+    }
+
+    private fun establishLocked(http: Http, auth: SessionAuthenticator, campus: Campus, target: String): Boolean {
         if (campus != Campus.BEIJING || !auth.hasSession()) return false
+        val targetUrl = target.toHttpUrlOrNull() ?: return false
+        if (targetUrl.host == COURSE_CENTER_HOST) {
+            return establishDirectCourseCenter(http, auth, targetUrl)
+        }
         val initial = http.getOnce(target)
-        if (initial.code in 200..299 && initial.location == null) return true
+        Log.i(TAG, "课程中心 initial HTTP ${initial.code} → ${safeLocation(initial.location)}")
+        if (initial.code in 200..299 && initial.location == null) return !looksLikeLogin(initial.body)
 
         val login = initial.location?.takeIf { it.host == ONEVPN_HOST && it.pathSegments.lastOrNull() == "login" }
             ?: return false
         val relay = http.getOnce(login.toString())
-        val service = serviceForRelayRedirect(relay.location, campus, hasCasSession = true) ?: return false
-        auth.sso(service)
+        Log.i(TAG, "课程中心 login HTTP ${relay.code} → ${safeLocation(relay.location)}")
+        val relayUrl = relay.location ?: return false
+
+        // 先让北京 CAS 直接为 OneVPN service 签发 ST；访问 OneVPN 的代理 CAS 登录页
+        // 会重新显示登录表单，不能把那一页当成 CAS SSO 的结果。
+        val service = serviceForRelayRedirect(relayUrl, campus, hasCasSession = true) ?: return false
+        val casLogin = auth.ssoUrl(service)
+        val ticketResponse = http.getOnce(casLogin, referer = login.toString())
+        val ticketLogin = ticketResponse.location ?: return false
+        Log.i(TAG, "课程中心 CAS HTTP ${ticketResponse.code} → ${safeLocation(ticketLogin)}")
+        if (
+            ticketLogin.host != ONEVPN_HOST || ticketLogin.encodedPath != ONEVPN_LOGIN_PATH ||
+            ticketLogin.queryParameter("ticket").isNullOrBlank()
+        ) return false
+
+        val tokenResponse = http.getOnce(
+            ticketLogin.toString(),
+            referer = casLogin,
+            headers = mapOf("X-Requested-With" to "XMLHttpRequest"),
+        )
+        val tokenHop = tokenResponse.location ?: return false
+        if (!isVpnEndpoint(tokenHop, "wengine-vpn-token-login")) return false
+        Log.i(TAG, "课程中心 token hop 1 → ${safeLocation(tokenHop)}")
+
+        val nextResponse = http.getOnce(tokenHop.toString(), referer = ticketLogin.toString())
+        val tokenLogin = nextResponse.location ?: tokenHop.newBuilder()
+            .encodedPath("/token-login")
+            .build()
+        if (!isVpnEndpoint(tokenLogin, "token-login")) return false
+        Log.i(TAG, "课程中心 token hop 2 HTTP ${nextResponse.code} → ${safeLocation(tokenLogin)}")
+
+        val completed = http.getOnce(tokenLogin.toString(), referer = tokenHop.toString())
+        val root = completed.location
+        Log.i(TAG, "课程中心 token login HTTP ${completed.code} → ${safeLocation(root)}")
+        if (
+            root == null || root.host != ONEVPN_HOST ||
+            root.encodedPath != "/" && root.encodedPath != targetUrl.encodedPath
+        ) return false
+
+        // 课程中心自身还会为后端 CAS 建立一次应用会话。该 CAS 登录页仍在
+        // OneVPN 的受信代理路径下，使用同一份北京 CAS 会话完成这一层 ticket 兑换。
+        val firstLanding = http.getOnce(targetUrl.toString())
+        Log.i(TAG, "课程中心目标 HTTP ${firstLanding.code} → ${safeLocation(firstLanding.location)}")
+        if (firstLanding.code in 200..299 && firstLanding.location == null) {
+            return !looksLikeLogin(firstLanding.body)
+        }
+        val innerCasLogin = findInnerCasLogin(http, firstLanding) ?: return false
+        if (!isProxyCasLogin(innerCasLogin)) return false
+        // 先请求一次代理登录页，建立 OneVPN 为内层 CAS 维护的会话上下文。
+        http.getOnce(innerCasLogin.toString(), referer = targetUrl.toString())
+        val innerService = innerCasLogin.queryParameter("service")?.toHttpUrlOrNull() ?: return false
+        if (!BnuHosts.isBnu(innerService.host)) return false
+        val innerSso = auth.sso(innerService.toString())
+        Log.i(TAG, "课程中心内层 CAS HTTP ${innerSso.code} → ${safeLocation(innerSso.url.toHttpUrlOrNull())}")
+        if (innerSso.url.toHttpUrlOrNull()?.host == "cas.bnu.edu.cn" || looksLikeLogin(innerSso.body)) {
+            return false
+        }
 
         val landed = http.get(target)
-        return landed.code in 200..299 && landed.url.toHttpUrlOrNull()?.host == ONEVPN_HOST
+        val landedUrl = landed.url.toHttpUrlOrNull()
+        val ok = landedUrl?.host == ONEVPN_HOST && !looksLikeLogin(landed.body)
+        Log.i(TAG, "课程中心 landed HTTP ${landed.code} → ${safeLocation(landedUrl)}, ok=$ok")
+        return ok
     }
+
+    /** 课程中心本身公开提供 HTTPS 入口，优先使用它，避免 OneVPN 浏览器脚本的 Cookie 桥接。 */
+    private fun establishDirectCourseCenter(http: Http, auth: SessionAuthenticator, target: HttpUrl): Boolean {
+        val initial = http.getOnce(target.toString())
+        Log.i(TAG, "课程中心直连 initial HTTP ${initial.code} → ${safeLocation(initial.location)}")
+        if (initial.code in 200..299 && initial.location == null) return !looksLikeLogin(initial.body)
+
+        val first = initial.location ?: return false
+        val login = if (isDirectCourseCenterCasBridge(first)) {
+            http.getOnce(first.toString(), referer = target.toString()).location ?: return false
+        } else {
+            first
+        }
+        if (
+            login.scheme != "https" || login.host != "cas.bnu.edu.cn" ||
+            login.encodedPath != "/cas/login" || login.querySize != 1 ||
+            login.queryParameterName(0) != "service"
+        ) return false
+        val service = login.queryParameter("service")?.toHttpUrlOrNull() ?: return false
+        if (
+            service.host != COURSE_CENTER_HOST ||
+            service.encodedPath != "/www/public/home/cas-bnu" ||
+            service.querySize != 1 || service.queryParameterName(0) != "redirectUrl"
+        ) return false
+
+        val sso = auth.sso(service.toString())
+        val ssoUrl = sso.url.toHttpUrlOrNull()
+        Log.i(TAG, "课程中心直连 CAS HTTP ${sso.code} → ${safeLocation(ssoUrl)}")
+        if (ssoUrl?.host != COURSE_CENTER_HOST || looksLikeLogin(sso.body)) return false
+
+        val landed = http.get(target.toString())
+        val landedUrl = landed.url.toHttpUrlOrNull()
+        val ok = landed.code in 200..299 && landedUrl?.host == COURSE_CENTER_HOST && !looksLikeLogin(landed.body)
+        Log.i(TAG, "课程中心直连 landed HTTP ${landed.code} → ${safeLocation(landedUrl)}, ok=$ok")
+        return ok
+    }
+
+    private fun isDirectCourseCenterCasBridge(url: HttpUrl): Boolean =
+        url.scheme == "https" && url.host == COURSE_CENTER_HOST &&
+            url.encodedPath == "/www/public/home/cas-bnu" &&
+            url.querySize == 1 && url.queryParameterName(0) == "url" &&
+            !url.queryParameter("url").isNullOrBlank()
+
+    private fun safeLocation(url: HttpUrl?): String = url?.let {
+        val names = it.queryParameterNames.joinToString(",")
+        "${it.host}${it.encodedPath}${if (names.isBlank()) "" else "?$names"}"
+    } ?: "none"
+
+    private fun looksLikeLogin(body: String): Boolean =
+        body.contains("统一身份认证") || body.contains("id=\"loginForm\"") ||
+            body.contains("name=\"lt\"") && body.contains("name=\"execution\"")
+
+    private fun isVpnEndpoint(url: HttpUrl, path: String): Boolean =
+        url.scheme == "https" && url.host == ONEVPN_HOST &&
+            (url.encodedPath == "/" + path || url.encodedPath.endsWith("/" + path)) &&
+            url.querySize == 1 && url.queryParameterName(0) == "token"
+
+    private fun isProxyCasLogin(url: HttpUrl): Boolean =
+        url.scheme == "https" && url.host == ONEVPN_HOST &&
+            (url.encodedPath.startsWith("/http/") || url.encodedPath.startsWith("/https/")) &&
+            url.encodedPath.endsWith("/cas/login") &&
+            url.querySize == 1 && url.queryParameterName(0) == "service" &&
+            !url.queryParameter("service").isNullOrBlank()
+
+    private fun isCourseCenterCasBridge(url: HttpUrl): Boolean =
+        url.scheme == "https" && url.host == ONEVPN_HOST &&
+            (url.encodedPath.startsWith("/http/") || url.encodedPath.startsWith("/https/")) &&
+            url.encodedPath.endsWith("/www/public/home/cas-bnu") &&
+            url.querySize == 1 && url.queryParameterName(0) == "url" &&
+            !url.queryParameter("url").isNullOrBlank()
+
+    private fun findInnerCasLogin(http: Http, first: HttpOnceResult): HttpUrl? {
+        var response = first
+        repeat(4) {
+            val location = response.location ?: return null
+            if (isProxyCasLogin(location)) return location
+            if (!isCourseCenterCasBridge(location)) return null
+            response = http.getOnce(location.toString(), referer = response.url.toString())
+            Log.i(TAG, "课程中心目标桥接 HTTP ${response.code} → ${safeLocation(response.location)}")
+        }
+        return null
+    }
+
 }
