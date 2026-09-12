@@ -116,6 +116,9 @@ internal data class Tab(val route: String, val label: String, val icon: ImageVec
 /** NavigationRail 的标准宽度，用于把可用宽度从屏宽里扣掉。 */
 private const val RAIL_WIDTH = 80
 
+/** 手机底部导航栏的 Material 3 标准高度，提醒浮层需要停在它上方。 */
+private val BOTTOM_NAV_HEIGHT = 80.dp
+
 private val TABS = listOf(
     Tab(Routes.HOME, "首页", Icons.Filled.Home),
     Tab(Routes.SCHEDULE, "课表", Icons.Filled.CalendarMonth),
@@ -281,8 +284,13 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                 if (loggedIn && !networkAvailable) {
                     OfflineBanner(
                         Modifier
-                            .align(Alignment.TopCenter)
-                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                            .align(Alignment.BottomCenter)
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                            // 底部导航栏属于同一个根 Box，额外留出它的高度，
+                            // 这样提醒会落在导航栏上方的空白处；导航栏模式切到侧栏时不需要这段偏移。
+                            .padding(
+                                bottom = if (showNav && !screen.useNavRail) BOTTOM_NAV_HEIGHT else 0.dp,
+                            )
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
