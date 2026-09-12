@@ -1,9 +1,12 @@
 package io.github.joyreverie.onebnu.core.di
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import io.github.joyreverie.onebnu.core.net.CasClient
 import io.github.joyreverie.onebnu.core.net.Http
 import io.github.joyreverie.onebnu.core.net.NetworkDiagnostics
+import io.github.joyreverie.onebnu.core.net.OneVpnSso
 import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
 import io.github.joyreverie.onebnu.core.net.PortalSso
 import io.github.joyreverie.onebnu.core.notify.ClassReminder
@@ -93,7 +96,17 @@ object ServiceLocator {
                 auth = auth,
                 secure = secure,
                 settings = settings,
-                api = ZyfwApi(http, auth, if (isBeijing) ZyfwApi.BASE else ZhuhaiCasClient.JWXT_BASE),
+                api = if (isBeijing) {
+                    ZyfwApi(
+                        http = http,
+                        auth = auth,
+                        base = ZyfwApi.BASE,
+                        proxyBase = OneVpnSso.proxyBase("http", "zyfw.bnu.edu.cn"),
+                        preferProxy = { isCellularNetwork(app) },
+                    )
+                } else {
+                    ZyfwApi(http, auth, ZhuhaiCasClient.JWXT_BASE)
+                },
                 scheduleCache = ScheduleCache(app, campus, changed),
                 events = PersonalEventStore(app, campus, changed),
                 creditCategories = CreditCategoryStore(app, campus),
@@ -127,4 +140,11 @@ object ServiceLocator {
     }
 
     fun currentDevice(): DeviceIdentity? = if (activeCampus == Campus.BEIJING) beijingDevice else null
+
+    private fun isCellularNetwork(context: Context): Boolean {
+        val connectivity = context.getSystemService(ConnectivityManager::class.java) ?: return false
+        val network = connectivity.activeNetwork ?: return false
+        return connectivity.getNetworkCapabilities(network)
+            ?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+    }
 }

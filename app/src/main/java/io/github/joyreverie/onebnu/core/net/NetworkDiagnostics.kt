@@ -58,12 +58,21 @@ class NetworkDiagnostics(
 
     fun run(): Report = (if (campus == Campus.BEIJING) listOf(
         dns("域名解析 · 统一认证", "cas.bnu.edu.cn", critical = true),
-        dns("域名解析 · 教务系统", "zyfw.bnu.edu.cn", critical = true),
+        dns("域名解析 · 教务系统", "zyfw.bnu.edu.cn", critical = false),
+        dns("域名解析 · OneVPN", "onevpn.bnu.edu.cn", critical = true),
         httpCheck(
             "统一认证 (HTTPS)", "https://cas.bnu.edu.cn/cas/login", critical = true,
-        ) { body -> if (body.contains("name=\"lt\"")) null else "页面结构异常，可能被网络中间设备改写" },
+        ) { body ->
+            if (
+                body.contains("name=\"lt\"") || body.contains("name='lt'") ||
+                body.contains("id=\"loginForm\"")
+            ) null else "页面结构异常，可能被网络中间设备改写"
+        },
         httpCheck(
-            "教务系统 (HTTP)", "${ZyfwBase}/", critical = true,
+            "教务系统直连 (HTTP)", "${ZyfwBase}/", critical = false,
+        ) { null },
+        httpCheck(
+            "教务系统代理 (HTTPS)", "${ZyfwProxyBase}/", critical = true,
         ) { null },
         httpCheck(
             "图书馆 (HTTP)", "http://www.lib.bnu.edu.cn/", critical = false,
@@ -125,6 +134,8 @@ class NetworkDiagnostics(
 
     companion object {
         const val ZyfwBase = "http://zyfw.bnu.edu.cn"
+        val ZyfwProxyBase: String
+            get() = OneVpnSso.proxyBase("http", "zyfw.bnu.edu.cn")
 
         /** 把异常翻成用户能据以行动的说法。 */
         fun Throwable.describe(): String = when (this) {

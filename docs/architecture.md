@@ -33,7 +33,9 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 `http://zyfw.bnu.edu.cn/` 会 302 到 **明文的** `http://cas.bnu.edu.cn/cas/login?…`。应用默认禁止明文流量，
 只对确实没有 HTTPS 的教务与图书馆主机放行（`res/xml/network_security_config.xml`），跟随这一跳会被 Android
-的明文策略掐断，表现为登录最后一步失败、SSO 进教务读不到数据。
+的明文策略掐断，表现为登录最后一步失败、SSO 进教务读不到数据。校园网可直连教务时继续使用原地址；
+蜂窝网络或直连 80 端口不可达时，`ZyfwApi` 将教务请求切换到学校 OneVPN 的 HTTPS 代理，代理会话和内层 CAS
+票据都在应用侧完成。
 
 解决办法不是把认证站点也加进明文白名单，而是 `core/net/Http.kt` 自己接管重定向，在跟随之前做**单向协议升级**：
 能用 HTTPS 的北师大主机一律改走 HTTPS，只有 HTTP 的那几台保持原样（`BnuHosts`）。内嵌浏览器同样处理。
@@ -70,7 +72,8 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 教务系统等普通 CAS 入口不直接把 CAS 登录页交给 WebView：`WebScreen` 先用当前
 `SessionAuthenticator` 在应用侧完成一次标准 SSO，取得目标站点的会话 Cookie 后再加载最终地址。数字京师与珠海门户
 使用的是官方 OAuth CAS 流程，`PortalSso` 从 CAS authorize 回调中取一次性 code，再调用门户自己的 token 接口换取
-`accessToken`；token 只存在进程内并以门户专属 Cookie 交给网页脚本使用。如果会话已失效或预热失败，才回退到官方认证页面。
+`accessToken`；token 只存在进程内并以门户专属 Cookie 交给网页脚本使用。点击门户时优先使用这条已预热会话；
+如果会话已失效或预热失败，WebView 回退到官方 `cas.html`，用已同步的 CAS 会话完成 OAuth，不在网页中填写账号密码。
 整个过程复用应用已有的认证会话，不保存或向网页填写账号密码。
 
 认证网络请求使用有限连接、读取和总超时；超时会回到可重试的登录提示，避免弱网或代理异常时界面永久停在加载状态。门户 WebView

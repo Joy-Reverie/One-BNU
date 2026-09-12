@@ -6,6 +6,7 @@ import android.webkit.ConsoleMessage
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import org.json.JSONObject
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -90,8 +91,11 @@ fun WebScreen(
         } else {
             withContext(Dispatchers.IO) {
                 if (PortalSso.isPortalService(campus, url)) {
-                    runCatching { PortalSso.establish(http, auth, campus, url) }
-                    url
+                    // 先在应用侧兑换 accessToken，避免 WebView 先闪出登录页；若门户
+                    // 网关拒绝这次兑换，再回退到官方 cas.html，由门户自己完成 OAuth。
+                    val ready = runCatching { PortalSso.establish(http, auth, campus, url) }
+                        .getOrDefault(false)
+                    if (ready) url else PortalSso.authorizationUrl(campus, url)
                 } else {
                     runCatching { auth.sso(url).url }.getOrNull()
                 }
@@ -134,7 +138,7 @@ fun WebScreen(
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
-                        syncCookiesToWebView()
+                        syncCookiesToWebView(includeOneVpn = useOneVpnSso)
                         WebView(ctx).apply {
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
@@ -160,6 +164,8 @@ fun WebScreen(
                                 var portalCookieRetried = false
                                 var portalBlankRetried = false
                                 var portalGuideBypassed = false
+                                var portalRootRedirected = false
+                                var portalAuthRetried = false
 
                                 fun takeOneVpnSsoUrl(candidate: String?): String? {
                                     if (!useOneVpnSso || oneVpnSsoRedirected) return null
@@ -184,6 +190,7 @@ fun WebScreen(
                                         return true
                                     }
                                     val host = u.host.orEmpty()
+                                    if (redirectPortalRoot(view, u.toString())) return true
                                     // 校外链接交给系统浏览器，避免在内嵌页里输入账号
                                     if (!BnuHosts.isBnu(host)) {
                                         runCatching {
@@ -205,31 +212,45 @@ fun WebScreen(
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     progress = 100
                                     canGoBack = view?.canGoBack() == true
+                                    Log.i(TAG, "WebView 页面完成 host=${url?.toHttpUrlOrNull()?.host} path=${url?.toHttpUrlOrNull()?.encodedPath}")
                                     if (
                                         isCrossDeviceGuide(url) && !portalGuideBypassed &&
                                         PortalSso.accessToken(campus) != null
                                     ) {
                                         portalGuideBypassed = true
                                         // 这是门户官方引导页的“访问电脑端”状态，不涉及凭据；
-                                        // 由官方 H5 首页继续使用已同步的 accessToken。
+                                        // 由官方电脑端首页继续使用已同步的 accessToken，避免手机
+                                        // H5 页面再次触发同一跨设备引导。
                                         view?.evaluateJavascript(
-                                            "localStorage.setItem('cross_device_guide','true')",
+                                            "localStorage.setItem('cross_device_guide','true');" +
+                                                "localStorage.setItem('open_pc','true');" +
+                                                "localStorage.setItem('is_pc','true')",
                                         ) {
-                                            view.loadUrl(BEIJING_PORTAL_MOBILE_HOME)
+                                            view.loadUrl(
+                                                if (url?.toHttpUrlOrNull()?.host == "onevpn.bnu.edu.cn") {
+                                                    OneVpnSso.proxyUrl("https://one.bnu.edu.cn/tp_nup/index.html")
+                                                } else {
+                                                    "https://one.bnu.edu.cn/tp_nup/index.html"
+                                                },
+                                            )
                                         }
                                         return
                                     }
                                     if (isPortalPage(url)) {
                                         Log.i(TAG, "门户页面完成 host=${url?.toHttpUrlOrNull()?.host} path=${url?.toHttpUrlOrNull()?.encodedPath}")
                                     }
-                                    if (isPortalPage(url) && PortalSso.accessToken(campus) != null) {
+                                    if (isPortalHomePage(url)) {
                                         val cookieVisible = CookieManager.getInstance()
                                             .getCookie(url.orEmpty())
                                             ?.contains("accessToken=") == true
-                                        Log.i(TAG, "门户 WebView 页面完成，accessToken Cookie=$cookieVisible")
-                                        if (!cookieVisible && !portalCookieRetried) {
+                                        Log.i(
+                                            TAG,
+                                            "门户 WebView 页面完成，accessToken Cookie=$cookieVisible " +
+                                                "nativeToken=${PortalSso.accessToken(campus) != null}",
+                                        )
+                                        if (PortalSso.accessToken(campus) != null && !cookieVisible && !portalCookieRetried) {
                                             portalCookieRetried = true
-                                            syncCookiesToWebView()
+                                            syncCookiesToWebView(includeOneVpn = useOneVpnSso)
                                             view?.reload()
                                         }
                                         if (!portalBlankRetried) {
@@ -264,17 +285,55 @@ fun WebScreen(
 
                                 override fun onPageStarted(
                                     view: WebView?,
-                                    url: String?,
+                                    candidate: String?,
                                     favicon: android.graphics.Bitmap?,
                                 ) {
+                                    Log.i(TAG, "WebView 页面开始 host=${candidate?.toHttpUrlOrNull()?.host} path=${candidate?.toHttpUrlOrNull()?.encodedPath}")
+                                    if (redirectPortalRoot(view, candidate)) return
+                                    if (
+                                        isPortalLoginPage(candidate) &&
+                                        PortalSso.accessToken(campus) != null &&
+                                        !portalAuthRetried
+                                    ) {
+                                        portalAuthRetried = true
+                                        PortalSso.clear(campus)
+                                        syncCookiesToWebView(includeOneVpn = useOneVpnSso)
+                                        view?.stopLoading()
+                                        view?.loadUrl(PortalSso.authorizationUrl(campus, url))
+                                        return
+                                    }
+                                    if (isPortalPage(candidate)) {
+                                        syncCookiesToWebView(includeOneVpn = useOneVpnSso)
+                                        injectPortalCookie(view)
+                                    }
                                     // 部分 WebView 版本不会把服务端 302 交给 shouldOverrideUrlLoading；
                                     // 这里作为同一可信中转的兜底，不注入账号或密码。
-                                    takeOneVpnSsoUrl(url)?.let { target ->
+                                    takeOneVpnSsoUrl(candidate)?.let { target ->
                                         view?.stopLoading()
                                         view?.loadUrl(target)
                                         return
                                     }
                                     progress = 10
+                                }
+
+                                private fun redirectPortalRoot(view: WebView?, candidate: String?): Boolean {
+                                    val parsed = candidate?.toHttpUrlOrNull() ?: return false
+                                    if (
+                                        campus != Campus.BEIJING || portalRootRedirected ||
+                                        parsed.host != "one.bnu.edu.cn" || parsed.encodedPath != "/tp_nup/"
+                                    ) return false
+                                    portalRootRedirected = true
+                                    view?.stopLoading()
+                                    view?.loadUrl(BEIJING_PORTAL_MOBILE_HOME)
+                                    return true
+                                }
+
+                                private fun injectPortalCookie(view: WebView?) {
+                                    val cookie = PortalSso.webViewCookie(campus)?.second ?: return
+                                    view?.evaluateJavascript(
+                                        "document.cookie=${JSONObject.quote(cookie)}",
+                                        null,
+                                    )
                                 }
                             }
                             webChromeClient = object : android.webkit.WebChromeClient() {
@@ -289,7 +348,13 @@ fun WebScreen(
                                     return true
                                 }
                             }
-                            loadUrl(pageUrl)
+                            Log.i(
+                                TAG,
+                                "同步认证 Cookie，CASTGC=${CookieManager.getInstance().getCookie(
+                                    if (campus == Campus.BEIJING) "https://cas.bnu.edu.cn/" else "https://cas.bnuzh.edu.cn/",
+                                )?.contains("CASTGC=") == true}",
+                            )
+                            post { loadUrl(pageUrl) }
                             webView = this
                         }
                     },
@@ -310,9 +375,34 @@ private fun isPortalPage(url: String?): Boolean {
     return host == "one.bnu.edu.cn" || host == "one.bnuzh.edu.cn"
 }
 
+private fun isPortalHomePage(url: String?): Boolean {
+    val parsed = url?.toHttpUrlOrNull() ?: return false
+    return when (parsed.host) {
+        "one.bnu.edu.cn" -> parsed.encodedPath == "/tp_nup/" ||
+            parsed.encodedPath == "/tp_nup/index.html" ||
+            parsed.encodedPath.endsWith("/resource/defaults/html/h5/loginHome.html")
+        "one.bnuzh.edu.cn" -> parsed.encodedPath == "/nup/" ||
+            parsed.encodedPath == "/nup/index.html" ||
+            parsed.encodedPath.endsWith("/resource/defaults/html/h5/loginHome.html")
+        "onevpn.bnu.edu.cn" -> parsed.encodedPath.endsWith("/resource/defaults/html/h5/loginHome.html")
+        else -> false
+    }
+}
+
+private fun isPortalLoginPage(url: String?): Boolean {
+    val parsed = url?.toHttpUrlOrNull() ?: return false
+    return when (parsed.host) {
+        "one.bnu.edu.cn" -> parsed.encodedPath == "/tp_nup/index.html" ||
+            parsed.encodedPath == "/tp_nup/guide.html"
+        "one.bnuzh.edu.cn" -> parsed.encodedPath == "/nup/index.html" ||
+            parsed.encodedPath == "/nup/guide.html"
+        else -> false
+    }
+}
+
 private fun isCrossDeviceGuide(url: String?): Boolean =
     url?.toHttpUrlOrNull()?.let {
-        it.host == "one.bnu.edu.cn" &&
+        (it.host == "one.bnu.edu.cn" || it.host == "onevpn.bnu.edu.cn") &&
             it.encodedPath.endsWith("/resource/defaults/html/guide/crossDeviceGuide.html")
     } == true
 
@@ -326,7 +416,7 @@ private fun portalWebViewUrl(url: String): String {
 }
 
 /** 把 OkHttp 里的 CAS/教务会话写进 WebView，实现免密打开。 */
-private fun syncCookiesToWebView() {
+private fun syncCookiesToWebView(includeOneVpn: Boolean = true) {
     val cm = CookieManager.getInstance()
     cm.setAcceptCookie(true)
     val jar = ServiceLocator.http.cookies
@@ -351,29 +441,48 @@ private fun syncCookiesToWebView() {
         "https://$casHost/",
         "${BnuCookieJar.CAS_TICKET}=; Max-Age=0; Path=/; Domain=$parentDomain",
     )
+    cm.setCookie(
+        "https://$casHost/",
+        "${BnuCookieJar.CAS_TICKET}=; Max-Age=0; Path=/; Domain=$casHost",
+    )
     PortalSso.webViewCookieTarget(ServiceLocator.activeCampus)?.let { (url, cookie) ->
         cm.setCookie(url, cookie)
+    }
+    if (includeOneVpn) {
+        PortalSso.webViewProxyCookie(ServiceLocator.activeCampus)?.let { (url, cookie) ->
+            cm.setCookie(url, cookie)
+        }
     }
     PortalSso.webViewCookie(ServiceLocator.activeCampus)?.let { (url, cookie) ->
         cm.setCookie(url, cookie)
     }
-    for (domain in domains) {
+    for (domain in domains.filter { includeOneVpn || it != "https://onevpn.bnu.edu.cn/" }) {
         val url = domain.toHttpUrlOrNull() ?: continue
         for (c in jar.loadForRequest(url)) {
             val isCasTicket = c.name == BnuCookieJar.CAS_TICKET
             // CAS ticket 只交给认证主机；即使服务端给了 `.bnu.edu.cn` 域属性，也不能
             // 因同步到 WebView 而扩大到 OneVPN / 门户等其他子域。
             if (isCasTicket && url.host != casHost) continue
-            cm.setCookie(domain, c.webViewValue(hostOnly = isCasTicket))
+            cm.setCookie(
+                domain,
+                c.webViewValue(
+                    hostOnly = isCasTicket,
+                    hostOnlyDomain = if (isCasTicket) casHost else null,
+                ),
+            )
         }
     }
     cm.flush()
 }
 
 /** 保留服务端原有的 secure / HttpOnly 属性；CAS ticket 则故意省略 Domain 以成为 host-only Cookie。 */
-private fun Cookie.webViewValue(hostOnly: Boolean): String = buildString {
+private fun Cookie.webViewValue(hostOnly: Boolean, hostOnlyDomain: String? = null): String = buildString {
     append("$name=$value; Path=$path")
-    if (!hostOnly) append("; Domain=$domain")
+    if (hostOnly) {
+        hostOnlyDomain?.let { append("; Domain=$it") }
+    } else {
+        append("; Domain=$domain")
+    }
     if (secure) append("; Secure")
     if (httpOnly) append("; HttpOnly")
 }

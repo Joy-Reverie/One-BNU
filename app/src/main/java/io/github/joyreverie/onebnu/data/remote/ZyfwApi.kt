@@ -1,7 +1,9 @@
 package io.github.joyreverie.onebnu.data.remote
 
 import io.github.joyreverie.onebnu.core.net.Http
+import io.github.joyreverie.onebnu.core.net.OneVpnSso
 import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
+import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.data.model.Option
 import io.github.joyreverie.onebnu.data.parse.Parsers
 import org.json.JSONArray
@@ -19,19 +21,22 @@ class ZyfwApi(
     private val http: Http,
     private val auth: SessionAuthenticator,
     val base: String = BASE,
+    private val proxyBase: String? = null,
+    private val preferProxy: () -> Boolean = { false },
 ) {
 
     companion object {
         const val BASE = "http://zyfw.bnu.edu.cn"
 
-        /** 教务系统只提供 HTTP，没有 HTTPS 端口；已在 network_security_config 中单独放行。 */
-        const val NOTE_CLEARTEXT = "zyfw.bnu.edu.cn 仅支持 HTTP"
+        /** 教务系统只提供 HTTP；移动网络下由北京 OneVPN 以 HTTPS 代理访问。 */
+        const val NOTE_CLEARTEXT = "zyfw.bnu.edu.cn 仅支持 HTTP，流量网络使用 OneVPN 代理"
     }
 
     class SessionExpiredException : IOException("登录状态已失效")
 
     @Volatile private var ssoDone = false
     @Volatile private var cachedToken: String? = null
+    @Volatile private var activeBase: String = base
 
     /** 登录信息（来自 SetMainInfo.jsp），SSO 后可用。 */
     data class UserContext(
@@ -53,27 +58,68 @@ class ZyfwApi(
     @Synchronized
     @Throws(IOException::class)
     fun ensureSession(force: Boolean = false) {
-        if (ssoDone && !force) return
+        val shouldUseProxy = proxyBase != null && preferProxy()
+        if (
+            ssoDone && !force &&
+            ((shouldUseProxy && activeBase == proxyBase) || (!shouldUseProxy && activeBase == base))
+        ) return
         if (!auth.hasSession()) throw SessionExpiredException()
-        val service = if (base == BASE) "$base/" else "$base/caslogin"
-        val res = auth.sso(service)
-        if (isExpiredPage(res.body) || Parsers.looksLikeLoginPage(res.body)) {
-            ssoDone = false
-            throw SessionExpiredException()
+
+        if (shouldUseProxy) {
+            establishProxySession()
+            return
         }
-        ssoDone = true
-        cachedToken = null
-        loadUserContext()
+
+        try {
+            establishDirectSession()
+        } catch (e: SessionExpiredException) {
+            throw e
+        } catch (e: IOException) {
+            // 校园网通常可以直连旧教务；流量或校外 Wi-Fi 可能只是不通 80 端口，
+            // 这时把同一目标切到已认证的 OneVPN HTTPS 代理，不改变 CAS 登录状态。
+            if (proxyBase == null) throw e
+            establishProxySession()
+        }
     }
 
     fun invalidate() {
         ssoDone = false
         cachedToken = null
         userContext = null
+        activeBase = base
+    }
+
+    @Throws(IOException::class)
+    private fun establishDirectSession() {
+        activeBase = base
+        val service = if (base == BASE) "$base/" else "$base/caslogin"
+        val res = auth.sso(service)
+        if (isExpiredPage(res.body) || Parsers.looksLikeLoginPage(res.body)) {
+            ssoDone = false
+            throw SessionExpiredException()
+        }
+        ssoDone = false
+        cachedToken = null
+        loadUserContext()
+        ssoDone = true
+    }
+
+    @Throws(IOException::class)
+    private fun establishProxySession() {
+        val target = proxyBase ?: throw IOException("教务代理未配置")
+        if (!OneVpnSso.establish(http, auth, Campus.BEIJING, "$target/")) {
+            ssoDone = false
+            throw IOException("教务系统代理会话未能建立，请检查网络后重试")
+        }
+        activeBase = target
+        ssoDone = false
+        cachedToken = null
+        loadUserContext()
+        ssoDone = true
     }
 
     private fun loadUserContext() {
-        val js = guard(http.get("$base/frame/home/js/SetMainInfo.jsp", home).body)
+        val js = guard(http.get("$activeBase/frame/home/js/SetMainInfo.jsp", home).body)
         fun v(name: String) = Regex("""var\s+$name\s*=\s*['\"]([^'\"]*)['\"]""").find(js)?.groupValues?.get(1)
         val loginId = v("_loginid") ?: v("G_LOGIN_ID") ?: Regex("""\[([^\]]+)]""").find(js)?.groupValues?.get(1) ?: return
         userContext = UserContext(
@@ -90,7 +136,7 @@ class ZyfwApi(
     @Throws(IOException::class)
     private fun token(): String {
         cachedToken?.let { return it }
-        val t = http.get("$base/frame/menus/js/SetTokenkey.jsp", home).body
+        val t = http.get("$activeBase/frame/menus/js/SetTokenkey.jsp", home).body
             .replace(Regex("\\s"), "")
         cachedToken = t
         return t
@@ -122,7 +168,7 @@ class ZyfwApi(
     fun dropList(comboBoxName: String, paramValue: String = ""): List<Option> {
         ensureSession()
         val res = http.postForm(
-            "$base/frame/droplist/getDropLists.action",
+            "$activeBase/frame/droplist/getDropLists.action",
             mapOf(
                 "comboBoxName" to comboBoxName,
                 "paramValue" to paramValue,
@@ -174,7 +220,7 @@ class ZyfwApi(
     fun scheduleHtml(xn: String, xq: String): String {
         ensureSession()
         val params = b64("xn=$xn&xq=$xq")
-        val url = "$base/wsxk/xkjg.ckdgxsxdkchj_data10319.jsp?params=$params&t=${token()}"
+        val url = "$activeBase/wsxk/xkjg.ckdgxsxdkchj_data10319.jsp?params=$params&t=${token()}"
         return guard(http.get(url, home).body)
     }
 
@@ -200,7 +246,7 @@ class ZyfwApi(
             "xq" to xq,
         )
         return guard(
-            http.postForm("$base/student/$page", form, referer = "$base/student/xscj.stuckcj.jsp").body,
+            http.postForm("$activeBase/student/$page", form, referer = "$activeBase/student/xscj.stuckcj.jsp").body,
         )
     }
 
@@ -213,7 +259,7 @@ class ZyfwApi(
         val season = xq.ifBlank { context?.currentXq.orEmpty() }
         return guard(
             http.postForm(
-                "$base/taglib/DataTable.jsp?tableId=5327008",
+                "$activeBase/taglib/DataTable.jsp?tableId=5327008",
                 mapOf(
                     "xh" to (context?.userCode ?: context?.loginId).orEmpty(),
                     "xn" to year,
@@ -222,7 +268,7 @@ class ZyfwApi(
                     "_xq" to season,
                     "ck_px" to "akcmk",
                 ),
-                referer = "$base/student/wsxk.pyfadb.html",
+                referer = "$activeBase/student/wsxk.pyfadb.html",
             ).body,
         )
     }
@@ -244,9 +290,9 @@ class ZyfwApi(
         )
         return guard(
             http.postForm(
-                "$base/taglib/DataTable.jsp?tableId=2538",
+                "$activeBase/taglib/DataTable.jsp?tableId=2538",
                 form,
-                referer = "$base/student/ksap.ksapb.html",
+                referer = "$activeBase/student/ksap.ksapb.html",
             ).body,
         )
     }
@@ -288,9 +334,9 @@ class ZyfwApi(
         )
         return guard(
             http.postForm(
-                "$base/kbbp/dykb.jsikb_data.10027.jsp",
+                "$activeBase/kbbp/dykb.jsikb_data.10027.jsp",
                 form,
-                referer = "$base/student/dykb.jsikb.html",
+                referer = "$activeBase/student/dykb.jsikb.html",
             ).body,
         )
     }
@@ -302,8 +348,8 @@ class ZyfwApi(
     @Throws(IOException::class)
     fun studentInfoHtml(): String {
         ensureSession()
-        val url = "$base/STU_BaseInfoAction.do?hidOption=InitData&menucode_current=JW13020101"
-        return guard(http.get(url, "$base/student/stu.xsxj.xjda.jbxx.html").body)
+        val url = "$activeBase/STU_BaseInfoAction.do?hidOption=InitData&menucode_current=JW13020101"
+        return guard(http.get(url, "$activeBase/student/stu.xsxj.xjda.jbxx.html").body)
     }
 
     /** 毕业学分要求。 */
@@ -312,9 +358,9 @@ class ZyfwApi(
         ensureSession()
         return guard(
             http.postForm(
-                "$base/taglib/DataTable.jsp?tableId=6033",
+                "$activeBase/taglib/DataTable.jsp?tableId=6033",
                 mapOf("sysf" to ""),
-                referer = "$base/student/pyfa.byxfyq.html",
+                referer = "$activeBase/student/pyfa.byxfyq.html",
             ).body,
         )
     }
@@ -322,5 +368,5 @@ class ZyfwApi(
     /** 用于在 WebView 中免密打开教务/门户页面。 */
     fun ssoUrl(service: String): String = auth.ssoUrl(service)
 
-    private val home: String get() = "$base/frame/homes.html"
+    private val home: String get() = "$activeBase/frame/homes.html"
 }

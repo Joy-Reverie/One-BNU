@@ -16,6 +16,25 @@ class OneVpnSsoTest {
         assertEquals("/www/dd/vue/spa/jw-pyfa", courseCenter.encodedPath)
     }
 
+    @Test
+    fun `旧教务 HTTP 通过 OneVPN HTTPS 代理且保留路径查询参数`() {
+        assertEquals(
+            "https://onevpn.bnu.edu.cn/http/" +
+                "77726476706e69737468656265737421eaee478b69326645300d8db9d6562d" +
+                "/frame/homes.html?x=1&y=2",
+            OneVpnSso.proxyUrl("http://zyfw.bnu.edu.cn/frame/homes.html?x=1&y=2"),
+        )
+    }
+
+    @Test
+    fun `代理根地址不重复斜线`() {
+        assertEquals(
+            "https://onevpn.bnu.edu.cn/http/" +
+                "77726476706e69737468656265737421eaee478b69326645300d8db9d6562d",
+            OneVpnSso.proxyBase("http", "zyfw.bnu.edu.cn"),
+        )
+    }
+
     private val expectedService = "https://onevpn.bnu.edu.cn/login?cas_login=true"
     private val trustedRelay = (
         "https://onevpn.bnu.edu.cn/https/77726476706e69737468656265737421f3f652d2253e7d1e7b0c9ce29b5b/" +

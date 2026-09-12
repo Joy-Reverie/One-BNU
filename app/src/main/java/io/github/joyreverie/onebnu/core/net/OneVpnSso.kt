@@ -4,6 +4,11 @@ import android.util.Log
 import io.github.joyreverie.onebnu.core.store.Campus
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import java.nio.charset.StandardCharsets
+import java.util.Locale
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * 课程中心的 CAS 会话建立。
@@ -18,12 +23,53 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 internal object OneVpnSso {
     private const val TAG = "OneBNU/OneVPN"
     private const val ONEVPN_HOST = "onevpn.bnu.edu.cn"
+    private const val HOST_CRYPT_KEY = "wrdvpnisthebest!"
     private const val COURSE_CENTER_HOST = "kczx.bnu.edu.cn"
     private const val ONEVPN_LOGIN_PATH = "/login"
     const val LOGIN_SERVICE = "https://onevpn.bnu.edu.cn/login?cas_login=true"
     const val COURSE_CENTER_BASE =
         "https://kczx.bnu.edu.cn/www/dd/vue/spa/jw-pyfa#"
     const val COURSE_CENTER = "${COURSE_CENTER_BASE}/pyfa"
+
+    /**
+     * OneVPN 的 HTTPS 代理入口。学校旧教务只监听 HTTP 80 端口，移动网络经常无法直连；
+     * OneVPN 用 HTTPS 接收请求，再在校内转发到原始主机。
+     *
+     * Wengine 的主机段不是明文，而是「AES-CFB(host)」的十六进制结果，前面拼接同一份
+     * 16 字节 key 的十六进制值。该格式来自 OneVPN 返回页面中的公开配置，和浏览器入口保持一致。
+     */
+    internal fun proxyBase(scheme: String, host: String): String =
+        proxyUrl("$scheme://$host/").removeSuffix("/")
+
+    internal fun hasProxySession(http: Http): Boolean =
+        http.cookies.loadForRequest("https://$ONEVPN_HOST/".toHttpUrlOrNull()!!)
+            .any { it.name.startsWith("wengine_vpn_ticket") }
+
+    internal fun proxyUrl(url: String): String {
+        val target = url.toHttpUrlOrNull() ?: return url
+        if (target.scheme != "http" && target.scheme != "https") return url
+        if (!BnuHosts.isBnu(target.host)) return url
+
+        val path = target.encodedPath.ifBlank { "/" }
+        val query = target.encodedQuery?.let { "?$it" }.orEmpty()
+        return "https://$ONEVPN_HOST/${target.scheme}/${encryptedHost(target.host)}$path$query"
+    }
+
+    private fun encryptedHost(host: String): String {
+        val key = HOST_CRYPT_KEY.toByteArray(StandardCharsets.UTF_8)
+        val cipher = Cipher.getInstance("AES/CFB/NoPadding")
+        cipher.init(
+            Cipher.ENCRYPT_MODE,
+            SecretKeySpec(key, "AES"),
+            IvParameterSpec(key),
+        )
+        val encrypted = cipher.doFinal(host.toByteArray(StandardCharsets.UTF_8))
+        val hex = encrypted.joinToString(separator = "") { byte ->
+            String.format(Locale.US, "%02x", byte.toInt() and 0xff)
+        }
+        return HOST_CRYPT_KEY.toByteArray(StandardCharsets.UTF_8)
+            .joinToString(separator = "") { byte -> String.format(Locale.US, "%02x", byte.toInt() and 0xff) } + hex
+    }
 
     /**
      * 若 [redirect] 是已知、受信的 OneVPN → CAS 中转，则返回 OneVPN 要求的 CAS service。
@@ -136,9 +182,19 @@ internal object OneVpnSso {
         http.getOnce(innerCasLogin.toString(), referer = targetUrl.toString())
         val innerService = innerCasLogin.queryParameter("service")?.toHttpUrlOrNull() ?: return false
         if (!BnuHosts.isBnu(innerService.host)) return false
-        val innerSso = auth.sso(innerService.toString())
-        Log.i(TAG, "课程中心内层 CAS HTTP ${innerSso.code} → ${safeLocation(innerSso.url.toHttpUrlOrNull())}")
-        if (innerSso.url.toHttpUrlOrNull()?.host == "cas.bnu.edu.cn" || looksLikeLogin(innerSso.body)) {
+        // 旧教务的内层 CAS service 可能仍是明文 zyfw 地址；若把它原样交给 CAS，
+        // OkHttp 会再次直连移动网络不可达的 80 端口。让票据回到同一条 OneVPN 代理路径。
+        // 这里不能调用 auth.sso()：它会自动跟随 CAS 返回的明文 zyfw 地址，
+        // 在流量网络下再次落到不可达的 80 端口。只取 CAS 的一跳 Location，
+        // 再把票据落点改写成同一条 OneVPN HTTPS 代理路径。
+        val innerTicket = http.getOnce(auth.ssoUrl(innerService.toString()), referer = innerCasLogin.toString())
+        val ticketDestination = innerTicket.location ?: return false
+        val proxiedDestination = if (
+            ticketDestination.scheme == "http" && ticketDestination.host == "zyfw.bnu.edu.cn"
+        ) proxyUrl(ticketDestination.toString()) else ticketDestination.toString()
+        val innerSso = http.getOnce(proxiedDestination, referer = innerCasLogin.toString())
+        Log.i(TAG, "课程中心内层 CAS HTTP ${innerSso.code} → ${safeLocation(innerSso.url)}")
+        if (innerSso.url.host == "cas.bnu.edu.cn" || looksLikeLogin(innerSso.body)) {
             return false
         }
 

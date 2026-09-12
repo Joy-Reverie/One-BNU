@@ -44,6 +44,7 @@ internal object PortalSso {
     )
 
     private val accessTokens = mutableMapOf<Campus, String>()
+    private val proxyCampuses = mutableSetOf<Campus>()
 
     /** 判断入口是否是当前校区的门户页面。 */
     fun isPortalService(campus: Campus, service: String): Boolean {
@@ -77,36 +78,66 @@ internal object PortalSso {
         if (!isPortalService(campus, service) || !auth.hasSession()) return false
 
         val authorizeUrl = authorizationUrl(campus, service)
-        val authorize = authorizeUrl.toHttpUrlOrNull()
-        val redirect = authorize?.queryParameter("redirect_uri")?.toHttpUrlOrNull()
+        val authorize = authorizeUrl.toHttpUrlOrNull() ?: return false
+        val redirect = authorize.queryParameter("redirect_uri")?.toHttpUrlOrNull()
         Log.i(
             TAG,
             "${config.portalHost} OAuth authorize=${safeLocation(authorize)} redirect=${safeLocation(redirect)} " +
                 "service=${safeLocation(redirect?.queryParameter("service")?.toHttpUrlOrNull())}",
         )
+        // 官方网页流程会先访问门户入口，再进入 CAS OAuth；这一步负责建立门户自己的
+        // JSESSIONID。若直接从 CAS authorize 开始，casToken 接口会返回「会话已过期」。
+        val entry = http.getOnce(service)
+        Log.i(TAG, "${config.portalHost} entry HTTP ${entry.code} → ${safeLocation(entry.location)}")
+        val useOneVpnProxy = entry.location?.host == "onevpn.bnu.edu.cn" &&
+            entry.location?.encodedPath == "/login"
+        if (useOneVpnProxy && !OneVpnSso.hasProxySession(http)) {
+            runCatching {
+                OneVpnSso.establish(http, auth, campus, OneVpnSso.COURSE_CENTER)
+            }.onSuccess { ok -> Log.i(TAG, "门户 OAuth 前 OneVPN 会话预热=$ok") }
+                .onFailure { error -> Log.w(TAG, "门户 OAuth 前 OneVPN 预热失败=${error::class.java.simpleName}") }
+        }
+        val proxyPortal = useOneVpnProxy && OneVpnSso.hasProxySession(http)
         val callback = findCallback(http, authorizeUrl, config) ?: return false
         val code = callback.queryParameter("code")?.takeIf { it.isNotBlank() } ?: return false
         val casDelegate = callback.queryParameter("casDelegate")
 
         // 浏览器会先加载 cas.html，再由页面脚本调用 casToken；这一跳可能设置门户自己的
         // JSESSIONID / redirectURL。只拿 Location 而跳过页面请求时，网关会偶发返回空响应。
-        val callbackPage = http.get(callback.toString(), referer = authorizeUrl)
+        val callbackRequest = if (proxyPortal) OneVpnSso.proxyUrl(callback.toString()) else callback.toString()
+        val callbackPage = http.get(callbackRequest, referer = callbackRequest)
         if (callbackPage.code !in 200..299) return false
+        Log.i(
+            TAG,
+            "${config.portalHost} callback HTTP ${callbackPage.code}, cookies=" +
+                http.cookies.loadForRequest(callbackRequest.toHttpUrlOrNull()!!)
+                    .map { it.name }.distinct().joinToString(","),
+        )
 
         // 门户 cas.html 通过同源 AJAX 换 token，网关会校验这个 Referer；CAS code 本身仍是唯一凭证。
+        val tokenEndpoint = tokenUrl(config, code, casDelegate)
         val tokenResponse = http.getOnce(
-            tokenUrl(config, code, casDelegate),
+            if (proxyPortal) OneVpnSso.proxyUrl(tokenEndpoint) else tokenEndpoint,
             // 门户的 cas.html 用 jQuery 从当前回调页发同源请求；保留完整回调 URL，
             // 某些网关会据此校验本次 OAuth code 的来源。
-            referer = callback.toString(),
+            referer = callbackRequest,
             headers = mapOf("X-Requested-With" to "XMLHttpRequest"),
         )
         val token = parseAccessToken(tokenResponse.body)
             ?.takeIf { tokenResponse.code in 200..299 }
+        val tokenBody = tokenResponse.body.trim()
+        val tokenKeys = runCatching {
+            JSONObject(tokenBody).keys().asSequence().joinToString(",")
+        }.getOrDefault("non-json")
+        val tokenMessage = runCatching { JSONObject(tokenBody).optString("message") }
+            .getOrDefault("")
+            .replace(Regex("\\s+"), " ")
+            .take(80)
         Log.i(
             TAG,
             "${config.portalHost} token HTTP ${tokenResponse.code} → ${safeLocation(tokenResponse.location)}, " +
-                "token=${token != null}",
+                "token=${token != null}, body=${tokenBody.length}B/json=${tokenBody.startsWith("{")}, " +
+                "keys=$tokenKeys, message=$tokenMessage",
         )
         if (token == null && retryToken) {
             // code 是一次性的；接口瞬时返回非 token 响应时重新走一遍 authorize，
@@ -118,6 +149,7 @@ internal object PortalSso {
 
         synchronized(accessTokens) {
             accessTokens[campus] = token
+            if (proxyPortal) proxyCampuses += campus else proxyCampuses -= campus
         }
         return true
     }
@@ -128,7 +160,12 @@ internal object PortalSso {
     fun clear(campus: Campus) {
         synchronized(accessTokens) {
             accessTokens.remove(campus)
+            proxyCampuses.remove(campus)
         }
+    }
+
+    fun webViewUrl(campus: Campus, service: String): String = synchronized(accessTokens) {
+        if (campus in proxyCampuses) OneVpnSso.proxyUrl(service) else service
     }
 
     /** 暴露纯 URL 构造供单元测试锁定门户协议，避免将凭据写进测试样本。 */
@@ -250,5 +287,14 @@ internal object PortalSso {
         val config = configs[campus] ?: return null
         return "https://${config.portalHost}${config.portalPath}/" to
             "$TOKEN_COOKIE=; Max-Age=0; Path=${config.portalPath}; Secure"
+    }
+
+    /** OneVPN 页面使用自己的宿主名，Cookie 需要在代理宿主上再种一份。 */
+    fun webViewProxyCookie(campus: Campus): Pair<String, String>? = synchronized(accessTokens) {
+        if (campus !in proxyCampuses) return@synchronized null
+        val config = configs[campus] ?: return@synchronized null
+        val token = accessTokens[campus] ?: return@synchronized null
+        OneVpnSso.proxyUrl("https://${config.portalHost}${config.portalPath}/") to
+            "$TOKEN_COOKIE=$token; Path=/; Secure"
     }
 }
