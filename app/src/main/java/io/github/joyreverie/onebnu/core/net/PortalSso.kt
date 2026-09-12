@@ -173,7 +173,13 @@ internal object PortalSso {
     }
 
     fun webViewUrl(campus: Campus, service: String): String = synchronized(accessTokens) {
-        if (campus in proxyCampuses) OneVpnSso.proxyUrl(service) else service
+        // OAuth authorize URL 必须直接访问当前校区 CAS；只把真正的门户页面交给
+        // OneVPN 代理，否则会把 CAS 地址包装成门户代理路径，WebView 得到空页。
+        if (campus in proxyCampuses && isPortalService(campus, service)) {
+            OneVpnSso.proxyUrl(service)
+        } else {
+            service
+        }
     }
 
     /** 暴露纯 URL 构造供单元测试锁定门户协议，避免将凭据写进测试样本。 */
@@ -288,13 +294,15 @@ internal object PortalSso {
         val config = configs[campus] ?: return null
         val token = accessToken(campus) ?: return null
         return "https://${config.portalHost}${config.portalPath}/" to
-            "$TOKEN_COOKIE=$token; Path=${config.portalPath}; Secure"
+            // 官方 cas.html 用默认 Path=/ 写入；保持同样范围，避免首页与回调页
+            // 读取到不同的 accessToken 副本。
+            "$TOKEN_COOKIE=$token; Path=/; Secure"
     }
 
     fun webViewCookieTarget(campus: Campus): Pair<String, String>? {
         val config = configs[campus] ?: return null
         return "https://${config.portalHost}${config.portalPath}/" to
-            "$TOKEN_COOKIE=; Max-Age=0; Path=${config.portalPath}; Secure"
+            "$TOKEN_COOKIE=; Max-Age=0; Path=/; Secure"
     }
 
     /** OneVPN 页面使用自己的宿主名，Cookie 需要在代理宿主上再种一份。 */

@@ -100,17 +100,10 @@ fun WebScreen(
             }
             url
         } else if (portalService) {
-            // 门户入口即使没有显式要求 SSO 也必须先兑换 accessToken；否则
-            // 电脑端 index.html 只会留下空壳并一直显示加载层。失败时交给官方
-            // cas.html 在 WebView 中完成 OAuth，避免直接打开未认证空页面。
-            withContext(Dispatchers.IO) {
-                val ready = if (auth.hasSession()) {
-                    runCatching { PortalSso.establish(http, auth, campus, url) }.getOrDefault(false)
-                } else {
-                    false
-                }
-                if (ready) url else PortalSso.authorizationUrl(campus, url)
-            }
+            // 让门户自己的 cas.html 在 WebView 中完成 OAuth。它会在同一浏览器上下文
+            // 设置 accessToken，并按官方逻辑回到电脑端首页；OkHttp 侧预热只作为加速，
+            // 不能因为一次 token 兑换失败就把 index.html 留成空壳。
+            PortalSso.authorizationUrl(campus, url)
         } else if (useSso) {
             withContext(Dispatchers.IO) {
                 runCatching { auth.sso(url).url }.getOrNull()
@@ -172,7 +165,7 @@ fun WebScreen(
                             settings.javaScriptCanOpenWindowsAutomatically = false
                             // 教务系统只有 HTTP，门户是 HTTPS，允许混合内容会削弱 HTTPS 页面，故禁用
                             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                            if (isPortalPage(pageUrl)) {
+                            if (portalService || isPortalPage(pageUrl)) {
                                 settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
                             }
 

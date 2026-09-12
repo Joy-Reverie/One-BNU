@@ -98,7 +98,7 @@ private val BEIJING_ENTRIES = listOf(
     Entry(
         "数字京师",
         Icons.Outlined.Public,
-        Routes.portalWeb("数字京师门户", "https://one.bnu.edu.cn/tp_nup/index.html", false),
+        Routes.portalWeb("数字京师门户", "https://one.bnu.edu.cn/tp_nup/index.html", true),
         6,
     ),
     Entry("教务系统", Icons.Outlined.AccountBalance, Routes.web("教务系统", "http://zyfw.bnu.edu.cn/", true), 7),

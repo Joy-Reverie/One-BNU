@@ -268,4 +268,14 @@ class ParsersTest {
             Parsers.parseCourseCategories(html),
         )
     }
+
+    @Test
+    fun `课程类别解析不会选中布局统计表`() {
+        val html = """
+            <table><tr><td>课程名称</td><td>类型</td></tr><tr><td>总计</td><td>2</td></tr></table>
+            <table><tr><td>课程号</td><td>课程名称</td><td>课程类别</td></tr>
+              <tr><td>[AIS21100001]课程甲</td><td>课程甲</td><td>专业选修课</td></tr></table>
+        """.trimIndent()
+        assertEquals(mapOf("AIS21100001" to "专业选修课"), Parsers.parseCourseCategories(html))
+    }
 }

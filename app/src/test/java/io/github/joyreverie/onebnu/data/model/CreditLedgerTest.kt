@@ -83,14 +83,17 @@ class CreditLedgerTest {
     }
 
     @Test
-    fun `专业选修不会被误归为公共选修`() {
-        assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.fromGradeType("专业选修课"))
+    fun `专业选修归入专业拓展而不是公共选修`() {
+        assertEquals(CourseCategory.EXPANSION, CategoryRules.fromGradeType("专业选修课"))
+        assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.fromGradeType("专业必修课"))
         assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.fromGradeType("学位专业课"))
         assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.fromGradeType("学位必修课"))
+        assertEquals(CourseCategory.PUBLIC_ELECTIVE, CategoryRules.fromGradeType("公共选修课"))
+        assertEquals(CourseCategory.OTHER, CategoryRules.fromGradeType("非学位补修课"))
     }
 
     @Test
-    fun `选课结果官方类别优先于培养方案与成绩单`() {
+    fun `培养方案模块优先于不稳定选课结果与成绩单`() {
         val c = course("AIS21100001", "课程甲", 2.0)
         val schedule = Schedule(autumn, "1", "张三", "", listOf(c))
         val grade = Grade("2026", "0", "", "AIS21100001", "课程甲", 2.0, "90", 90.0, null, courseType = "学位基础课")
@@ -101,7 +104,26 @@ class CreditLedgerTest {
             modules = mapOf("AIS21100001" to CourseCategory.DEGREE_BASIC),
             selection = mapOf("AIS21100001" to CourseCategory.DEGREE_MAJOR),
         )
-        assertEquals(CourseCategory.DEGREE_MAJOR, ledger.entries.single().category)
-        assertEquals(CategorySource.SELECTION_RESULT, ledger.entries.single().source)
+        assertEquals(CourseCategory.DEGREE_BASIC, ledger.entries.single().category)
+        assertEquals(CategorySource.MODULE, ledger.entries.single().source)
+    }
+
+    @Test
+    fun `课表直接类别与带班号课程号都能匹配`() {
+        val c = course("AIS21100001-01", "课程甲", 2.0).copy(categoryLabel = "专业选修课")
+        val schedule = Schedule(autumn, "1", "张三", "", listOf(c))
+        val ledger = CategoryRules.build(
+            schedules = listOf(schedule),
+            grades = emptyList(),
+            manual = mapOf("AIS21100001" to CourseCategory.PUBLIC_REQUIRED),
+            modules = emptyMap(),
+        )
+        // 手动指定仍然最高优先级，且 -01 后缀应与课程本体号相等。
+        assertEquals(CourseCategory.PUBLIC_REQUIRED, ledger.entries.single().category)
+        assertEquals(CategorySource.MANUAL, ledger.entries.single().source)
+
+        val automatic = CategoryRules.build(listOf(schedule), emptyList(), emptyMap())
+        assertEquals(CourseCategory.EXPANSION, automatic.entries.single().category)
+        assertEquals(CategorySource.SCHEDULE, automatic.entries.single().source)
     }
 }

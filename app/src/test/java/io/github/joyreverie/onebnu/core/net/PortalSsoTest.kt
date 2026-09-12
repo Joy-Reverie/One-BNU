@@ -39,4 +39,15 @@ class PortalSsoTest {
         assertTrue(PortalSso.isPortalService(Campus.ZHUHAI, "https://one.bnuzh.edu.cn/"))
         assertFalse(PortalSso.isPortalService(Campus.ZHUHAI, "https://one.bnu.edu.cn/tp_nup/"))
     }
+
+    @Test
+    fun `代理门户不会改写 CAS OAuth 地址`() {
+        val authorize = PortalSso.authorizationUrl(
+            Campus.BEIJING,
+            "https://one.bnu.edu.cn/tp_nup/index.html",
+        )
+        // 即使上一轮预热发现了 OneVPN，OAuth 授权仍必须直接走 CAS。
+        assertEquals("cas.bnu.edu.cn", authorize.toHttpUrl().host)
+        assertEquals(authorize, PortalSso.webViewUrl(Campus.BEIJING, authorize))
+    }
 }

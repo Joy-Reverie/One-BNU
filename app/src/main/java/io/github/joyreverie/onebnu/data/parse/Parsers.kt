@@ -249,26 +249,31 @@ object Parsers {
      */
     fun parseCourseCategories(html: String): Map<String, String> {
         val doc = Jsoup.parse(html)
-        val table = doc.select("table").firstOrNull { candidate ->
-            val header = headerIndex(candidate)
-            header.findAny("课程代码", "课程号", "代码", "课程") >= 0 &&
-                header.findAny("课程类别", "课程性质", "课程模块", "类别", "类型") >= 0 &&
-                candidate.select("tr").size >= 2
-        } ?: return emptyMap()
-        val header = headerIndex(table)
-        val iCode = header.findAny("课程代码", "课程号", "代码", "课程")
-        val iCategory = header.findAny("课程类别", "课程性质", "课程模块", "类别", "类型")
-        if (iCode < 0 || iCategory < 0) return emptyMap()
-        return dataRows(table).mapNotNull { row ->
-            val cells = row.select("td").map { it.cleanText() }
-            val rawCode = cells.getOrNull(iCode).orEmpty()
-            val code = Regex("""\[([^\]]+)]""").find(rawCode)?.groupValues?.get(1)
-                ?: rawCode.takeIf { it.matches(Regex("[A-Za-z0-9_-]{5,}")) }
-                ?: return@mapNotNull null
-            val category = cells.getOrNull(iCategory).orEmpty()
-            if (category.isBlank() || category == "课程类别" || category == "课程性质") null
-            else code to category
-        }.toMap()
+        // 选课页面常有多个布局表格；不能取第一个碰巧含「课程」文字的表，
+        // 否则会把菜单/统计表中的列错当成课程类别。按有效课程号行数择优。
+        return doc.select("table").mapNotNull tableLoop@{ table ->
+            val header = headerIndex(table)
+            val iCode = header.findAny("课程代码", "课程号", "课程编号", "课程代号", "代码")
+            val iCategory = header.findAny("课程类别", "课程性质", "课程模块", "类别", "类型")
+            if (iCode < 0 || iCategory < 0) return@tableLoop null
+            val rows = dataRows(table).mapNotNull rowLoop@{ row ->
+                val cells = row.select("td").map { it.cleanText() }
+                val rawCode = cells.getOrNull(iCode).orEmpty()
+                val code = Regex("""\[([^\]]+)]""").find(rawCode)?.groupValues?.get(1)
+                    ?: rawCode.replace(Regex("\\s+"), "")
+                        .takeIf { it.matches(Regex("[A-Za-z0-9][A-Za-z0-9_-]{4,}")) }
+                    ?: return@rowLoop null
+                val category = cells.getOrNull(iCategory).orEmpty()
+                if (category.isBlank() || !looksLikeCourseCategory(category)) null else code to category
+            }.distinctBy { it.first }
+            rows.takeIf { it.isNotEmpty() }
+        }.maxByOrNull { it.size }?.toMap().orEmpty()
+    }
+
+    private fun looksLikeCourseCategory(value: String): Boolean {
+        val text = value.replace(Regex("\\s+"), "")
+        return listOf("公共", "通识", "全校", "学位", "专业", "基础", "拓展", "必修", "选修", "非学位", "补修", "其他")
+            .any(text::contains)
     }
 
     private fun buildTermLabel(xn: String, xq: String): String {

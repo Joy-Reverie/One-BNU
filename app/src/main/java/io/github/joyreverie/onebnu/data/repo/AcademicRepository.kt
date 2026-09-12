@@ -191,7 +191,7 @@ class AcademicRepository(
         shouldCache = { it.courses.isNotEmpty() },
     ).let { o ->
         if (o is Outcome.Ok) {
-            // 没有选课记录也要写：小组件据此显示「本学期没有选课记录」，而不是一直「正在获取」
+            // 空课表不覆盖上一次有效的小组件数据，避免教务瞬态空响应造成数据消失。
             if (isCurrentTerm(term) && o.data.courses.isNotEmpty()) runCatching { scheduleCache?.save(o.data) }
             if (o.data.courses.isEmpty()) Outcome.Empty("${term.name}没有查询到选课记录") else o
         } else o
@@ -224,13 +224,23 @@ class AcademicRepository(
     }
 
     /** 培养方案中的课程模块；没有发布时返回空映射而不是错误。 */
-    suspend fun courseModules(): Outcome<Map<String, String>> = cachedHtml(
-        key = OfflineCache.COURSE_MODULES,
-        request = { api.courseModulesHtml() },
-        parse = Parsers::parseCourseModules,
-        shouldCache = { it.isNotEmpty() },
-    ).let { o ->
+    suspend fun courseModules(term: Term? = null): Outcome<Map<String, String>> {
+        val year = term?.xn.orEmpty()
+        val season = term?.xq.orEmpty()
+        val key = if (term == null) {
+            OfflineCache.COURSE_MODULES
+        } else {
+            offlineCache?.key(OfflineCache.COURSE_MODULES, year, season)
+                ?: "course_modules_${year}_${season}"
+        }
+        return cachedHtml(
+            key = key,
+            request = { api.courseModulesHtml(year, season) },
+            parse = Parsers::parseCourseModules,
+            shouldCache = { it.isNotEmpty() },
+        ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未发布培养方案课程模块") else o
+        }
     }
 
     /** 网上选课「选课结果」里的官方课程类别；空表时由上层继续使用其他官方来源。 */
@@ -336,8 +346,12 @@ class AcademicRepository(
     suspend fun prefetchBasicData() {
         val allTerms = (terms() as? Outcome.Ok)?.data.orEmpty()
         allTerms.forEach { term -> runCatching { schedule(term) } }
+        if (allTerms.isNotEmpty()) {
+            allTerms.forEach { term -> runCatching { courseModules(term) } }
+        } else {
+            runCatching { courseModules() }
+        }
         runCatching { grades() }
-        runCatching { courseModules() }
         runCatching { selectionCategories() }
         runCatching { studentInfo() }
         runCatching { creditRequirement() }

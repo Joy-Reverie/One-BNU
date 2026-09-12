@@ -80,7 +80,7 @@ data class CreditsUiState(
 
 /**
  * 学分核算：把每个学期的选课课程表拼起来，按模块归类求和。
- * 归类依据依次是手动指定、选课结果官方类别、课程中心/培养方案模块、成绩单课程性质、最后才推断。
+ * 归类依据依次是手动指定、课表/培养方案官方模块、课程中心/成绩单课程性质、选课结果兜底、最后才推断。
  */
 class CreditsViewModel : ViewModel() {
     private val repo = ServiceLocator.repo
@@ -118,7 +118,13 @@ class CreditsViewModel : ViewModel() {
             }
             schedules = loaded
             grades = (repo.grades() as? Outcome.Ok)?.data.orEmpty()
-            modules = (repo.courseModules() as? Outcome.Ok)?.data.orEmpty().mapNotNull { (code, label) ->
+            val moduleLabels = LinkedHashMap<String, String>()
+            loaded.map { it.term }.distinctBy { it.code }.forEach { term ->
+                (repo.courseModules(term) as? Outcome.Ok)?.data.orEmpty().forEach { (code, label) ->
+                    moduleLabels.putIfAbsent(code, label)
+                }
+            }
+            modules = moduleLabels.mapNotNull { (code, label) ->
                 CategoryRules.fromGradeType(label)?.let { code to it }
             }.toMap()
             selection = (repo.selectionCategories() as? Outcome.Ok)?.data.orEmpty().mapNotNull { (code, label) ->
@@ -343,7 +349,8 @@ private fun CategoryDialog(entry: LedgerEntry, onDismiss: () -> Unit, onPick: (C
                             Text(
                                 when (entry.source) {
                                     CategorySource.MANUAL -> "手动"
-                                    CategorySource.SELECTION_RESULT -> "选课结果"
+                                    CategorySource.SCHEDULE -> "课表"
+                                    CategorySource.SELECTION_RESULT -> "选课结果（兜底）"
                                     CategorySource.COURSE_CENTER -> "课程中心"
                                     CategorySource.MODULE -> "培养方案"
                                     CategorySource.GRADE -> "成绩单"

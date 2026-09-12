@@ -17,10 +17,11 @@ enum class CourseCategory(val label: String, val short: String) {
 /** 归类来源；顺序同时表达可信度从高到低。 */
 enum class CategorySource {
     MANUAL,
-    SELECTION_RESULT,
-    COURSE_CENTER,
+    SCHEDULE,
     MODULE,
+    COURSE_CENTER,
     GRADE,
+    SELECTION_RESULT,
     INFERRED,
 }
 
@@ -48,10 +49,11 @@ data class CreditLedger(val terms: List<TermLedger>) {
 /**
  * 归类规则。教务的选课课程表没有课程类别列，所以：
  *  1. 用户在应用里手动指定过的最优先；
- *  2. 网上选课结果中的官方课程类别；
- *  3. 课程中心 / 教务培养方案对比页返回课程模块；
- *  4. 成绩单里给了「课程性质」的照抄；
- *  5. 都没有时先按课程名称识别公共课，再按课程号与学分推断。
+ *  2. 课表本身带有官方课程类别时使用该类别；
+ *  3. 教务培养方案对比页返回课程模块；
+ *  4. 课程中心与成绩单里给了课程性质时使用对应类别；
+ *  5. 网上选课结果只作为最后一个官方兜底，避免错误页面覆盖可靠数据；
+ *  6. 都没有时先按课程名称识别公共课，再按课程号与学分推断。
  *
  * 珠海校区的公共课课程号并不统一使用 GRA（例如政治理论课可能是 MAR），
  * 因此不能把「GRA 才是公共课」当成硬规则。
@@ -70,17 +72,19 @@ object CategoryRules {
         val t = normalizeLabel(type)
         if (t.isBlank()) return null
         return when {
-            t.contains("公共必修") || t.contains("公共学位必修") ||
-                t.contains("通识必修") || t.contains("全校必修") -> CourseCategory.PUBLIC_REQUIRED
+            t.contains("其他") || t.contains("非学位") || t.contains("补修") -> CourseCategory.OTHER
             t.contains("公共") || t.contains("通识") || t.contains("全校") ->
                 if (t.contains("必修")) CourseCategory.PUBLIC_REQUIRED else CourseCategory.PUBLIC_ELECTIVE
             t.contains("学位基础") || t.contains("专业基础") || t == "基础课" -> CourseCategory.DEGREE_BASIC
-            t.contains("拓展") || t.contains("自由选修") || t.contains("跨学科") || t.contains("专业任选") ->
+            t.contains("专业拓展") || t.contains("专业选修") || t.contains("专业任选") ||
+                t.contains("自由选修") || t.contains("跨学科") ->
                 CourseCategory.EXPANSION
-            // 「专业必修 / 专业选修 / 学位专业课」都属于专业模块，而非公共必修。
-            t.contains("专业") || t.contains("学位") || t.contains("方向") -> CourseCategory.DEGREE_MAJOR
-            t.contains("必修") -> CourseCategory.PUBLIC_REQUIRED
-            t.contains("选修") -> CourseCategory.PUBLIC_ELECTIVE
+            // 「专业必修 / 学位必修 / 学位专业课」属于学位专业模块。
+            t.contains("学位专业") || t.contains("专业必修") || t.contains("学位必修") ||
+                t.contains("方向") -> CourseCategory.DEGREE_MAJOR
+            // 没有公共/通识限定的「必修」「选修」在研究生教务中默认是专业模块。
+            t.contains("必修") -> CourseCategory.DEGREE_MAJOR
+            t.contains("选修") -> CourseCategory.EXPANSION
             else -> null
         }
     }
@@ -116,37 +120,37 @@ object CategoryRules {
         selection: Map<String, CourseCategory> = emptyMap(),
         courseCenter: Map<String, CourseCategory> = emptyMap(),
     ): CreditLedger {
-        val byModule = modules.mapKeys { normalizeCode(it.key) }
-        val bySelection = selection.mapKeys { normalizeCode(it.key) }
-        val byCourseCenter = courseCenter.mapKeys { normalizeCode(it.key) }
+        val byModule = normalizeCategoryMap(modules)
+        val bySelection = normalizeCategoryMap(selection)
+        val byCourseCenter = normalizeCategoryMap(courseCenter)
         val byGradeCode = HashMap<String, CourseCategory>()
         val byGradeName = HashMap<String, CourseCategory>()
         grades.forEach { g ->
             fromGradeType(g.courseType)?.let { category ->
-                normalizeCode(g.courseCode).takeIf { it.isNotBlank() }?.let { byGradeCode[it] = category }
+                codeAliases(g.courseCode).forEach { code -> byGradeCode.putIfAbsent(code, category) }
                 normalizeLabel(g.courseName).takeIf { it.isNotBlank() }?.let { byGradeName[it] = category }
             }
         }
-        val byManual = manual.mapKeys { normalizeCode(it.key) }
+        val byManual = normalizeCategoryMap(manual)
         val terms = schedules
             .sortedWith(compareBy({ it.term.xn }, { it.term.xq }))
             .map { s ->
                 val entries = s.courses
                     .sortedWith(compareBy<Course>({ CategoryRules.orderOf(it, byManual, bySelection, byCourseCenter, byModule, byGradeCode, byGradeName) }, { -it.credits }, { it.name }))
                         .map { c ->
-                            val code = normalizeCode(c.code)
-                            val m = byManual[code]
-                            val selectionCategory = bySelection[code]
-                                ?: fromGradeType(c.categoryLabel)
-                            val center = byCourseCenter[code]
-                            val module = byModule[code]
-                            val g = byGradeCode[code] ?: byGradeName[normalizeLabel(c.name)]
+                            val m = lookup(byManual, c.code)
+                            val direct = fromGradeType(c.categoryLabel)
+                            val center = lookup(byCourseCenter, c.code)
+                            val module = lookup(byModule, c.code)
+                            val g = lookup(byGradeCode, c.code) ?: byGradeName[normalizeLabel(c.name)]
+                            val selectionCategory = lookup(bySelection, c.code)
                             when {
                                 m != null -> LedgerEntry(s.term, c, m, CategorySource.MANUAL)
-                                selectionCategory != null -> LedgerEntry(s.term, c, selectionCategory, CategorySource.SELECTION_RESULT)
-                                center != null -> LedgerEntry(s.term, c, center, CategorySource.COURSE_CENTER)
+                                direct != null -> LedgerEntry(s.term, c, direct, CategorySource.SCHEDULE)
                                 module != null -> LedgerEntry(s.term, c, module, CategorySource.MODULE)
+                                center != null -> LedgerEntry(s.term, c, center, CategorySource.COURSE_CENTER)
                                 g != null -> LedgerEntry(s.term, c, g, CategorySource.GRADE)
+                                selectionCategory != null -> LedgerEntry(s.term, c, selectionCategory, CategorySource.SELECTION_RESULT)
                             else -> LedgerEntry(s.term, c, infer(c), CategorySource.INFERRED)
                         }
                     }
@@ -163,12 +167,29 @@ object CategoryRules {
         modules: Map<String, CourseCategory>,
         byGradeCode: Map<String, CourseCategory>,
         byGradeName: Map<String, CourseCategory>,
-    ): Int = (manual[normalizeCode(c.code)]
-        ?: selection[normalizeCode(c.code)]
+    ): Int = (lookup(manual, c.code)
         ?: fromGradeType(c.categoryLabel)
-        ?: courseCenter[normalizeCode(c.code)]
-        ?: modules[normalizeCode(c.code)]
-        ?: byGradeCode[normalizeCode(c.code)]
+        ?: lookup(modules, c.code)
+        ?: lookup(courseCenter, c.code)
+        ?: lookup(byGradeCode, c.code)
         ?: byGradeName[normalizeLabel(c.name)]
+        ?: lookup(selection, c.code)
         ?: infer(c)).ordinal
+
+    private fun normalizeCategoryMap(input: Map<String, CourseCategory>): Map<String, CourseCategory> =
+        buildMap {
+            input.forEach { (code, category) -> codeAliases(code).forEach { putIfAbsent(it, category) } }
+        }
+
+    private fun lookup(map: Map<String, CourseCategory>, code: String): CourseCategory? =
+        codeAliases(code).firstNotNullOfOrNull { map[it] }
+
+    private fun codeAliases(code: String): List<String> {
+        val normalized = normalizeCode(code)
+        if (normalized.isBlank()) return emptyList()
+        val aliases = linkedSetOf(normalized)
+        // 某些报表把课序号拼在课程号后面（如 CODE-01），课程本体仍应能匹配。
+        Regex("^(.+)[-_]\\d{2}$").matchEntire(normalized)?.groupValues?.get(1)?.let { aliases += it }
+        return aliases.toList()
+    }
 }
