@@ -278,4 +278,24 @@ class ParsersTest {
         """.trimIndent()
         assertEquals(mapOf("AIS21100001" to "专业选修课"), Parsers.parseCourseCategories(html))
     }
+
+    @Test
+    fun `解析教务选课结果的课程列和类别列`() {
+        val html = """
+            <table>
+              <tr><td>序号</td><td>课程</td><td>学分</td><td>类别</td><td>任课教师</td></tr>
+              <tr><td>1</td><td>[FGS21158302]中药资源学</td><td>2.0</td><td>学位专业</td><td>杜树山</td></tr>
+              <tr><td>2</td><td>[FGS21197082]高级遥感图像处理</td><td>3.0</td><td>学位基础</td><td>朱文泉</td></tr>
+              <tr><td>3</td><td>[GRA20225821]理论与实践课</td><td>2.0</td><td>公共必修</td><td>李娟</td></tr>
+            </table>
+        """.trimIndent()
+        assertEquals(
+            mapOf(
+                "FGS21158302" to "学位专业",
+                "FGS21197082" to "学位基础",
+                "GRA20225821" to "公共必修",
+            ),
+            Parsers.parseCourseCategories(html),
+        )
+    }
 }

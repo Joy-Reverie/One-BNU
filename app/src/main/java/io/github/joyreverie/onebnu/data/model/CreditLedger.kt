@@ -4,9 +4,9 @@ package io.github.joyreverie.onebnu.data.model
 enum class CourseCategory(val label: String, val short: String) {
     PUBLIC_REQUIRED("公共必修", "公必"),
     PUBLIC_ELECTIVE("公共选修", "公选"),
-    DEGREE_BASIC("学位基础课", "基础"),
-    DEGREE_MAJOR("学位专业课", "专业"),
-    EXPANSION("专业拓展课", "拓展"),
+    DEGREE_BASIC("学位基础", "基础"),
+    DEGREE_MAJOR("学位专业", "专业"),
+    EXPANSION("专业拓展", "拓展"),
     OTHER("其他", "其他");
 
     companion object {
@@ -79,7 +79,7 @@ object CategoryRules {
             t.contains("专业拓展") || t.contains("专业选修") || t.contains("专业任选") ||
                 t.contains("自由选修") || t.contains("跨学科") ->
                 CourseCategory.EXPANSION
-            // 「专业必修 / 学位必修 / 学位专业课」属于学位专业模块。
+            // 「专业必修 / 学位必修 / 学位专业」属于学位专业模块。
             t.contains("学位专业") || t.contains("专业必修") || t.contains("学位必修") ||
                 t.contains("方向") -> CourseCategory.DEGREE_MAJOR
             // 没有公共/通识限定的「必修」「选修」在研究生教务中默认是专业模块。

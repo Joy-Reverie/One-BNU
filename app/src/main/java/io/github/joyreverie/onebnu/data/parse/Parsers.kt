@@ -254,14 +254,20 @@ object Parsers {
         return doc.select("table").mapNotNull tableLoop@{ table ->
             val header = headerIndex(table)
             val iCode = header.findAny("课程代码", "课程号", "课程编号", "课程代号", "代码")
+            // 选课结果实表把课程号放在「课程」单元格中，例如 [FGS21158302]中药资源学。
+            val iCourse = if (iCode < 0) header.findAny("课程") else iCode
             val iCategory = header.findAny("课程类别", "课程性质", "课程模块", "类别", "类型")
-            if (iCode < 0 || iCategory < 0) return@tableLoop null
+            if (iCourse < 0 || iCategory < 0) return@tableLoop null
             val rows = dataRows(table).mapNotNull rowLoop@{ row ->
                 val cells = row.select("td").map { it.cleanText() }
-                val rawCode = cells.getOrNull(iCode).orEmpty()
+                val rawCode = cells.getOrNull(iCourse).orEmpty()
                 val code = Regex("""\[([^\]]+)]""").find(rawCode)?.groupValues?.get(1)
-                    ?: rawCode.replace(Regex("\\s+"), "")
-                        .takeIf { it.matches(Regex("[A-Za-z0-9][A-Za-z0-9_-]{4,}")) }
+                    ?: if (iCode >= 0) {
+                        rawCode.replace(Regex("\\s+"), "")
+                            .takeIf { it.matches(Regex("[A-Za-z0-9][A-Za-z0-9_-]{4,}")) }
+                    } else {
+                        null
+                    }
                     ?: return@rowLoop null
                 val category = cells.getOrNull(iCategory).orEmpty()
                 if (category.isBlank() || !looksLikeCourseCategory(category)) null else code to category

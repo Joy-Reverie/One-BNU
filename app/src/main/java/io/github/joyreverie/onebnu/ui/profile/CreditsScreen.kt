@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -190,6 +191,10 @@ internal fun CreditsContent(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { SummaryCard(s.ledger) }
+            val inferredCount = s.ledger.entries.count { it.source == CategorySource.INFERRED }
+            if (inferredCount > 0) {
+                item { UnconfirmedCategoryNotice(inferredCount) }
+            }
             s.ledger.terms.asReversed().forEach { term ->
                 item(key = term.term.code) { TermCard(term) { editing = it } }
             }
@@ -208,6 +213,41 @@ internal fun CreditsContent(
                 editing = null
             },
         )
+    }
+}
+
+@Composable
+private fun UnconfirmedCategoryNotice(count: Int) {
+    BnuCard(
+        Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                Icons.Outlined.Info,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    "$count 门课程待确认分类",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "教务暂未返回官方类别，当前按规则暂分；点击课程行即可手动调整。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+        }
     }
 }
 
