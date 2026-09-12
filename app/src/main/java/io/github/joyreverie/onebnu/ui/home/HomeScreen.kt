@@ -26,9 +26,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditCalendar
 import androidx.compose.material.icons.outlined.LocalLibrary
 import androidx.compose.material.icons.outlined.Map
@@ -57,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.net.OneVpnSso
 import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.data.model.PeriodMapper
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
@@ -82,6 +86,8 @@ private data class Entry(
     val tint: Int,
 )
 
+private const val COURSE_CENTER = OneVpnSso.COURSE_CENTER_BASE
+
 private val BEIJING_ENTRIES = listOf(
     Entry("考试安排", Icons.Outlined.EditCalendar, Routes.EXAM, 0),
     Entry("空闲教室", Icons.Outlined.MeetingRoom, Routes.CLASSROOM, 1),
@@ -92,10 +98,13 @@ private val BEIJING_ENTRIES = listOf(
     Entry(
         "数字京师",
         Icons.Outlined.Public,
-        Routes.portalWeb("数字京师门户", "https://one.bnu.edu.cn/tp_nup/index.html", true),
+        Routes.portalWeb("数字京师门户", "https://one.bnu.edu.cn/tp_nup/index.html", false),
         6,
     ),
     Entry("教务系统", Icons.Outlined.AccountBalance, Routes.web("教务系统", "http://zyfw.bnu.edu.cn/", true), 7),
+    Entry("培养方案", Icons.Outlined.AccountTree, Routes.oneVpnWeb("培养方案", "$COURSE_CENTER/pyfa"), 0),
+    Entry("教学手册", Icons.AutoMirrored.Outlined.MenuBook, Routes.oneVpnWeb("教学手册", "$COURSE_CENTER/jxsc"), 1),
+    Entry("教学大纲", Icons.Outlined.Description, Routes.oneVpnWeb("教学大纲", "$COURSE_CENTER/jxdg"), 2),
 )
 
 private val ZHUHAI_ENTRIES = listOf(

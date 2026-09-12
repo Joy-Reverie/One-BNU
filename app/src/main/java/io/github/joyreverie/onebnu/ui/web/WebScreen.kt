@@ -84,6 +84,8 @@ fun WebScreen(
     val campus = ServiceLocator.activeCampus
     val auth = ServiceLocator.auth
     val http = ServiceLocator.http
+    val portalService = PortalSso.isPortalService(campus, url)
+    val syncOneVpn = useOneVpnSso || portalService
     val target by produceState<String?>(if (useSso || useOneVpnSso) null else url, url, useSso, useOneVpnSso) {
         value = if (!useSso && !useOneVpnSso) {
             url
@@ -144,7 +146,7 @@ fun WebScreen(
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
-                        syncCookiesToWebView(includeOneVpn = useOneVpnSso)
+                        syncCookiesToWebView(includeOneVpn = syncOneVpn)
                         WebView(ctx).apply {
                             if (desktopMode) settings.userAgentString = DESKTOP_USER_AGENT
                             settings.javaScriptEnabled = true
@@ -257,7 +259,7 @@ fun WebScreen(
                                         )
                                         if (PortalSso.accessToken(campus) != null && !cookieVisible && !portalCookieRetried) {
                                             portalCookieRetried = true
-                                            syncCookiesToWebView(includeOneVpn = useOneVpnSso)
+                                            syncCookiesToWebView(includeOneVpn = syncOneVpn)
                                             view?.reload()
                                         }
                                         if (!portalBlankRetried) {
@@ -307,13 +309,13 @@ fun WebScreen(
                                     ) {
                                         portalAuthRetried = true
                                         PortalSso.clear(campus)
-                                        syncCookiesToWebView(includeOneVpn = useOneVpnSso)
+                                        syncCookiesToWebView(includeOneVpn = syncOneVpn)
                                         view?.stopLoading()
                                         view?.loadUrl(PortalSso.authorizationUrl(campus, url))
                                         return
                                     }
                                     if (isPortalPage(candidate)) {
-                                        syncCookiesToWebView(includeOneVpn = useOneVpnSso)
+                                        syncCookiesToWebView(includeOneVpn = syncOneVpn)
                                         injectPortalCookie(view)
                                     }
                                     // 部分 WebView 版本不会把服务端 302 交给 shouldOverrideUrlLoading；
