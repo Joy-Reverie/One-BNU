@@ -25,8 +25,12 @@ object Parsers {
         '一' to 1, '二' to 2, '三' to 3, '四' to 4, '五' to 5, '六' to 6, '日' to 7, '天' to 7,
     )
 
-    fun looksLikeLoginPage(html: String): Boolean =
-        html.contains("name=\"lt\"") || html.contains("统一身份认证") && html.contains("loginForm")
+    fun looksLikeLoginPage(html: String): Boolean {
+        // 教务不同入口会混用单双引号；只匹配双引号会把 CAS 登录页当成空报表缓存。
+        val hasLt = Regex("""name\s*=\s*['\"]lt['\"]""").containsMatchIn(html)
+        val hasLoginForm = Regex("""(?:id|name)\s*=\s*['\"]loginForm['\"]""").containsMatchIn(html)
+        return hasLt || html.contains("统一身份认证") && hasLoginForm
+    }
 
     fun isUnauthorized(html: String): Boolean =
         html.contains("未授权访问") || html.contains("请更换账号登陆")

@@ -86,26 +86,37 @@ fun WebScreen(
     val http = ServiceLocator.http
     val portalService = PortalSso.isPortalService(campus, url)
     val syncOneVpn = useOneVpnSso || portalService
-    val target by produceState<String?>(if (useSso || useOneVpnSso) null else url, url, useSso, useOneVpnSso) {
-        value = if (!useSso && !useOneVpnSso) {
-            url
-        } else if (useOneVpnSso) {
+    val target by produceState<String?>(
+        if (useSso || useOneVpnSso || portalService) null else url,
+        url,
+        useSso,
+        useOneVpnSso,
+        portalService,
+        campus,
+    ) {
+        value = if (useOneVpnSso) {
             withContext(Dispatchers.IO) {
                 runCatching { OneVpnSso.establish(http, auth, campus, url) }
             }
             url
-        } else {
+        } else if (portalService) {
+            // 门户入口即使没有显式要求 SSO 也必须先兑换 accessToken；否则
+            // 电脑端 index.html 只会留下空壳并一直显示加载层。失败时交给官方
+            // cas.html 在 WebView 中完成 OAuth，避免直接打开未认证空页面。
             withContext(Dispatchers.IO) {
-                if (PortalSso.isPortalService(campus, url)) {
-                    // 先在应用侧兑换 accessToken，避免 WebView 先闪出登录页；若门户
-                    // 网关拒绝这次兑换，再回退到官方 cas.html，由门户自己完成 OAuth。
-                    val ready = runCatching { PortalSso.establish(http, auth, campus, url) }
-                        .getOrDefault(false)
-                    if (ready) url else PortalSso.authorizationUrl(campus, url)
+                val ready = if (auth.hasSession()) {
+                    runCatching { PortalSso.establish(http, auth, campus, url) }.getOrDefault(false)
                 } else {
-                    runCatching { auth.sso(url).url }.getOrNull()
+                    false
                 }
+                if (ready) url else PortalSso.authorizationUrl(campus, url)
+            }
+        } else if (useSso) {
+            withContext(Dispatchers.IO) {
+                runCatching { auth.sso(url).url }.getOrNull()
             } ?: auth.ssoUrl(url)
+        } else {
+            url
         }
     }
 
@@ -173,7 +184,6 @@ fun WebScreen(
                                 var portalCookieRetried = false
                                 var portalBlankRetried = false
                                 var portalGuideBypassed = false
-                                var portalRootRedirected = false
                                 var portalAuthRetried = false
 
                                 fun takeOneVpnSsoUrl(candidate: String?): String? {
@@ -199,7 +209,6 @@ fun WebScreen(
                                         return true
                                     }
                                     val host = u.host.orEmpty()
-                                    if (redirectPortalRoot(view, u.toString())) return true
                                     // 校外链接交给系统浏览器，避免在内嵌页里输入账号
                                     if (!BnuHosts.isBnu(host)) {
                                         runCatching {
@@ -301,7 +310,6 @@ fun WebScreen(
                                     favicon: android.graphics.Bitmap?,
                                 ) {
                                     Log.i(TAG, "WebView 页面开始 host=${candidate?.toHttpUrlOrNull()?.host} path=${candidate?.toHttpUrlOrNull()?.encodedPath}")
-                                    if (redirectPortalRoot(view, candidate)) return
                                     if (
                                         isPortalLoginPage(candidate, desktopMode) &&
                                         PortalSso.accessToken(campus) != null &&
@@ -326,24 +334,6 @@ fun WebScreen(
                                         return
                                     }
                                     progress = 10
-                                }
-
-                                private fun redirectPortalRoot(view: WebView?, candidate: String?): Boolean {
-                                    val parsed = candidate?.toHttpUrlOrNull() ?: return false
-                                    if (
-                                        campus != Campus.BEIJING || !desktopMode || portalRootRedirected ||
-                                        parsed.host != "one.bnu.edu.cn" || parsed.encodedPath != "/tp_nup/"
-                                    ) return false
-                                    portalRootRedirected = true
-                                    view?.stopLoading()
-                                    view?.loadUrl(
-                                        if (url.toHttpUrlOrNull()?.host == "onevpn.bnu.edu.cn") {
-                                            OneVpnSso.proxyUrl(BEIJING_PORTAL_PC_HOME)
-                                        } else {
-                                            BEIJING_PORTAL_PC_HOME
-                                        },
-                                    )
-                                    return true
                                 }
 
                                 private fun injectPortalCookie(view: WebView?) {
@@ -389,8 +379,10 @@ fun WebScreen(
 }
 
 private fun isPortalPage(url: String?): Boolean {
-    val host = url?.toHttpUrlOrNull()?.host ?: return false
-    return host == "one.bnu.edu.cn" || host == "one.bnuzh.edu.cn"
+    val parsed = url?.toHttpUrlOrNull() ?: return false
+    return parsed.host == "one.bnu.edu.cn" || parsed.host == "one.bnuzh.edu.cn" ||
+        parsed.host == "onevpn.bnu.edu.cn" &&
+        (parsed.encodedPath.contains("/tp_nup/") || parsed.encodedPath.contains("/nup/"))
 }
 
 private fun isPortalHomePage(url: String?): Boolean {
@@ -402,7 +394,8 @@ private fun isPortalHomePage(url: String?): Boolean {
         "one.bnuzh.edu.cn" -> parsed.encodedPath == "/nup/" ||
             parsed.encodedPath == "/nup/index.html" ||
             parsed.encodedPath.endsWith("/resource/defaults/html/h5/loginHome.html")
-        "onevpn.bnu.edu.cn" -> parsed.encodedPath.endsWith("/resource/defaults/html/h5/loginHome.html")
+        "onevpn.bnu.edu.cn" -> parsed.encodedPath.contains("/tp_nup/") ||
+            parsed.encodedPath.contains("/nup/")
         else -> false
     }
 }
@@ -417,6 +410,10 @@ internal fun isPortalLoginPage(url: String?, desktopMode: Boolean = false): Bool
         }
         "one.bnuzh.edu.cn" -> parsed.encodedPath == "/nup/index.html" ||
             parsed.encodedPath == "/nup/guide.html"
+        "onevpn.bnu.edu.cn" -> parsed.encodedPath.endsWith("/tp_nup/index.html") ||
+            parsed.encodedPath.endsWith("/tp_nup/guide.html") ||
+            parsed.encodedPath.endsWith("/nup/index.html") ||
+            parsed.encodedPath.endsWith("/nup/guide.html")
         else -> false
     }
 }

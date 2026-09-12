@@ -157,6 +157,13 @@ class ParsersTest {
     // ---------------- 空结果 ----------------
 
     @Test
+    fun `单双引号登录页都不会被当成空报表`() {
+        assertTrue(Parsers.looksLikeLoginPage("<input name='lt' value='x'>"))
+        assertTrue(Parsers.looksLikeLoginPage("<form id=\"loginForm\"><span>统一身份认证</span></form>"))
+        assertTrue(Parsers.isUnauthorized("<div>未授权访问</div>"))
+    }
+
+    @Test
     fun `没有数据时返回空列表而不是崩溃`() {
         val html = fixture("grades_empty.html")
         assertTrue(Parsers.parseGrades(html).isEmpty())

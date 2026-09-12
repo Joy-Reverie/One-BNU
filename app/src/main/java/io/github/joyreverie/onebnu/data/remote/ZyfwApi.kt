@@ -82,6 +82,7 @@ class ZyfwApi(
         }
     }
 
+    @Synchronized
     fun invalidate() {
         ssoDone = false
         cachedToken = null
@@ -148,7 +149,7 @@ class ZyfwApi(
     /** 统一出口：命中登录页时清掉会话并抛出，让上层重新登录后重试一次。 */
     @Throws(IOException::class)
     private fun guard(body: String): String {
-        if (isExpiredPage(body) || Parsers.looksLikeLoginPage(body)) {
+        if (isExpiredPage(body) || Parsers.looksLikeLoginPage(body) || Parsers.isUnauthorized(body)) {
             invalidate()
             throw SessionExpiredException()
         }
@@ -165,6 +166,7 @@ class ZyfwApi(
 
     /** 教务通用下拉接口，直接返回 `[{"code":..,"name":..}]`。 */
     @Throws(IOException::class)
+    @Synchronized
     fun dropList(comboBoxName: String, paramValue: String = ""): List<Option> {
         ensureSession()
         val res = http.postForm(
@@ -193,6 +195,7 @@ class ZyfwApi(
      * 若该下拉暂未配置则回退到通用下拉，避免误报「没有发布任何学期课表」。
      */
     @Throws(IOException::class)
+    @Synchronized
     fun scheduleTerms(): List<Option> {
         val personalTerms = if (base != BASE) dropList("Ms_KBBP_FBXKJGXNXQ") else emptyList()
         return personalTerms.ifEmpty { dropList("Ms_KBBP_FBXQLLJXAP") }
@@ -200,15 +203,19 @@ class ZyfwApi(
 
     /** 已发布的考试轮次，code 形如 "2025,1,2"。 */
     @Throws(IOException::class)
+    @Synchronized
     fun examRounds(): List<Option> = dropList("Ms_KSSW_FBXNXQKSLC")
 
     @Throws(IOException::class)
+    @Synchronized
     fun campuses(): List<Option> = dropList("MsSchoolArea")
 
     @Throws(IOException::class)
+    @Synchronized
     fun buildings(campus: String): List<Option> = dropList("MsSchoolArea_LF", "ssxq=$campus")
 
     @Throws(IOException::class)
+    @Synchronized
     fun classroomTypes(): List<Option> = dropList("MsCodeset", "DM-JSLX")
 
     // ------------------------------------------------------------------
@@ -217,6 +224,7 @@ class ZyfwApi(
 
     /** 学生课表（列表视图，字段最全）。 */
     @Throws(IOException::class)
+    @Synchronized
     fun scheduleHtml(xn: String, xq: String): String {
         ensureSession()
         val params = b64("xn=$xn&xq=$xq")
@@ -229,6 +237,7 @@ class ZyfwApi(
      * 依次尝试页面入口和数据页，只有解析到官方类别才提前返回。
      */
     @Throws(IOException::class)
+    @Synchronized
     fun selectionResultHtml(): String {
         ensureSession()
         val params = b64("xn=${userContext?.currentXn.orEmpty()}&xq=${userContext?.currentXq.orEmpty()}")
@@ -257,6 +266,7 @@ class ZyfwApi(
      * @param xn 指定学年；为空表示全部学期
      */
     @Throws(IOException::class)
+    @Synchronized
     fun gradesHtml(validOnly: Boolean, xn: String = "", xq: String = ""): String {
         ensureSession()
         val page = if (validOnly) "xscj.chkdgxscjyxxjd_data.jsp" else "xscj.stuckcj_data.jsp"
@@ -276,6 +286,7 @@ class ZyfwApi(
 
     /** 教务培养方案对比报表；有课程模块时可为学分核算提供权威归类。 */
     @Throws(IOException::class)
+    @Synchronized
     fun courseModulesHtml(xn: String = "", xq: String = ""): String {
         ensureSession()
         val context = userContext
@@ -303,6 +314,7 @@ class ZyfwApi(
 
     /** @param round examRounds() 返回的 code，形如 "2025,1,2" */
     @Throws(IOException::class)
+    @Synchronized
     fun examsHtml(round: String): String {
         ensureSession()
         val parts = round.split(",")
@@ -330,6 +342,7 @@ class ZyfwApi(
      * 教务没有「空闲教室」接口，只能取占用表再取补集。
      */
     @Throws(IOException::class)
+    @Synchronized
     fun classroomsHtml(xn: String, xq: String, campus: String, building: String, roomType: String = ""): String {
         ensureSession()
         val form = mapOf(
@@ -370,6 +383,7 @@ class ZyfwApi(
     // ------------------------------------------------------------------
 
     @Throws(IOException::class)
+    @Synchronized
     fun studentInfoHtml(): String {
         ensureSession()
         val url = "$activeBase/STU_BaseInfoAction.do?hidOption=InitData&menucode_current=JW13020101"
@@ -378,6 +392,7 @@ class ZyfwApi(
 
     /** 毕业学分要求。 */
     @Throws(IOException::class)
+    @Synchronized
     fun creditRequirementHtml(): String {
         ensureSession()
         return guard(

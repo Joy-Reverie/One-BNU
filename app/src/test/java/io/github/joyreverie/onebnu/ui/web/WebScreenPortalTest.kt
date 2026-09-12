@@ -26,4 +26,14 @@ class WebScreenPortalTest {
             isPortalLoginPage("https://one.bnu.edu.cn/tp_nup/index.html", desktopMode = false),
         )
     }
+
+    @Test
+    fun `OneVPN 电脑端门户登录跳转仍可被识别`() {
+        assertTrue(
+            isPortalLoginPage(
+                "https://onevpn.bnu.edu.cn/https/proxy/tp_nup/guide.html",
+                desktopMode = true,
+            ),
+        )
+    }
 }

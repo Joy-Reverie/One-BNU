@@ -16,6 +16,8 @@ import io.github.joyreverie.onebnu.data.model.Term
 import io.github.joyreverie.onebnu.data.parse.Parsers
 import io.github.joyreverie.onebnu.data.remote.ZyfwApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.time.LocalDate
@@ -44,6 +46,9 @@ class AcademicRepository(
         data class Empty(val reason: String) : Outcome<Nothing>
         data class Error(val message: String, val needLogin: Boolean = false) : Outcome<Nothing>
     }
+
+    /** 首页预热、课表页和学分页可能同时触发查询；教务会话不是并发安全的。 */
+    private val dataMutex = Mutex()
 
     private suspend fun <T> call(block: () -> T): Outcome<T> = withContext(Dispatchers.IO) {
         try {
@@ -80,41 +85,70 @@ class AcademicRepository(
         key: String,
         request: () -> String,
         parse: (String) -> T,
-    ): Outcome<T> {
+        shouldCache: (T) -> Boolean = { true },
+    ): Outcome<T> = dataMutex.withLock {
         val live = call(request)
         if (live is Outcome.Ok) {
-            offlineCache?.let { cache -> withContext(Dispatchers.IO) { cache.saveText(key, live.data) } }
-            return runCatching { Outcome.Ok(parse(live.data)) }
-                .getOrElse { Outcome.Error(it.message ?: "解析教务数据失败") }
+            val parsed = runCatching { parse(live.data) }
+            if (parsed.isSuccess) {
+                val value = parsed.getOrThrow()
+                if (shouldCache(value)) {
+                    offlineCache?.let { cache ->
+                        withContext(Dispatchers.IO) { cache.saveText(key, live.data) }
+                    }
+                } else {
+                    // 空表/半截页面不能覆盖上一次有效快照；瞬态空响应时直接继续用旧数据。
+                    cachedParsed(key, parse)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
+                }
+                return@withLock Outcome.Ok(value)
+            }
+
+            cachedParsed(key, parse)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
+            return@withLock Outcome.Error(parsed.exceptionOrNull()?.message ?: "解析教务数据失败")
         }
-        val cached = offlineCache?.let { cache -> withContext(Dispatchers.IO) { cache.loadText(key) } }
-        if (cached != null) {
-            return runCatching { Outcome.Ok(parse(cached.text)) }
-                .getOrElse { Outcome.Error(it.message ?: "解析离线数据失败") }
-        }
+
+        cachedParsed(key, parse)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
         @Suppress("UNCHECKED_CAST")
-        return live as Outcome<T>
+        live as Outcome<T>
     }
 
     private suspend fun cachedOptions(
         key: String,
         request: () -> List<Option>,
-    ): Outcome<List<Option>> {
+        shouldCache: (List<Option>) -> Boolean = { it.isNotEmpty() },
+    ): Outcome<List<Option>> = dataMutex.withLock {
         val live = call(request)
         if (live is Outcome.Ok) {
-            offlineCache?.let { cache -> withContext(Dispatchers.IO) { cache.saveOptions(key, live.data) } }
-            return live
+            if (shouldCache(live.data)) {
+                offlineCache?.let { cache ->
+                    withContext(Dispatchers.IO) { cache.saveOptions(key, live.data) }
+                }
+            } else {
+                loadCachedOptions(key)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
+            }
+            return@withLock live
         }
-        val cached = offlineCache?.let { cache -> withContext(Dispatchers.IO) { cache.loadOptions(key) } }
-        if (cached != null) return Outcome.Ok(cached)
-        return live
+        loadCachedOptions(key)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
+        return@withLock live
     }
+
+    private suspend fun <T> cachedParsed(key: String, parse: (String) -> T): T? =
+        offlineCache?.let { cache ->
+            withContext(Dispatchers.IO) {
+                cache.loadText(key)?.let { snapshot -> runCatching { parse(snapshot.text) }.getOrNull() }
+            }
+        }
+
+    private suspend fun loadCachedOptions(key: String): List<Option>? =
+        offlineCache?.let { cache -> withContext(Dispatchers.IO) { cache.loadOptions(key) } }
 
     val userContext get() = api.userContext
 
-    suspend fun terms(): Outcome<List<Term>> = cachedOptions(OfflineCache.TERMS) {
-        api.scheduleTerms()
-    }.let { o ->
+    suspend fun terms(): Outcome<List<Term>> = cachedOptions(
+        OfflineCache.TERMS,
+        request = { api.scheduleTerms() },
+        shouldCache = { options -> options.any { Term.parse(it.code, it.name) != null } },
+    ).let { o ->
         val converted: Outcome<List<Term>> = when (o) {
             is Outcome.Ok -> Outcome.Ok(o.data.mapNotNull { Term.parse(it.code, it.name) })
             is Outcome.Empty -> Outcome.Empty(o.reason)
@@ -154,10 +188,11 @@ class AcademicRepository(
         key = offlineCache?.key(OfflineCache.SCHEDULE, term.code) ?: "schedule_${term.code}",
         request = { api.scheduleHtml(term.xn, term.xq) },
         parse = { html -> Parsers.parseSchedule(html, term) },
+        shouldCache = { it.courses.isNotEmpty() },
     ).let { o ->
         if (o is Outcome.Ok) {
             // 没有选课记录也要写：小组件据此显示「本学期没有选课记录」，而不是一直「正在获取」
-            if (isCurrentTerm(term)) runCatching { scheduleCache?.save(o.data) }
+            if (isCurrentTerm(term) && o.data.courses.isNotEmpty()) runCatching { scheduleCache?.save(o.data) }
             if (o.data.courses.isEmpty()) Outcome.Empty("${term.name}没有查询到选课记录") else o
         } else o
     }
@@ -171,12 +206,14 @@ class AcademicRepository(
             key = OfflineCache.GRADES_VALID,
             request = { api.gradesHtml(validOnly = true) },
             parse = Parsers::parseGrades,
+            shouldCache = { it.isNotEmpty() },
         )
         val result = if (valid is Outcome.Ok && valid.data.isNotEmpty()) valid else {
             cachedHtml(
                 key = OfflineCache.GRADES_ALL,
                 request = { api.gradesHtml(validOnly = false) },
                 parse = Parsers::parseGrades,
+                shouldCache = { it.isNotEmpty() },
             )
         }
         return result.let { o ->
@@ -191,6 +228,7 @@ class AcademicRepository(
         key = OfflineCache.COURSE_MODULES,
         request = { api.courseModulesHtml() },
         parse = Parsers::parseCourseModules,
+        shouldCache = { it.isNotEmpty() },
     ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未发布培养方案课程模块") else o
     }
@@ -200,11 +238,15 @@ class AcademicRepository(
         key = OfflineCache.SELECTION_CATEGORIES,
         request = { api.selectionResultHtml() },
         parse = Parsers::parseCourseCategories,
+        shouldCache = { it.isNotEmpty() },
     ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未返回选课结果课程类别") else o
     }
 
-    suspend fun examRounds(): Outcome<List<Option>> = cachedOptions(OfflineCache.EXAM_ROUNDS) { api.examRounds() }.let { o ->
+    suspend fun examRounds(): Outcome<List<Option>> = cachedOptions(
+        OfflineCache.EXAM_ROUNDS,
+        request = { api.examRounds() },
+    ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未发布考试安排") else o
     }
 
@@ -212,13 +254,14 @@ class AcademicRepository(
         key = offlineCache?.key(OfflineCache.EXAMS, round) ?: "exams_${round.hashCode()}",
         request = { api.examsHtml(round) },
         parse = Parsers::parseExams,
+        shouldCache = { it.isNotEmpty() },
     ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("该轮次下没有你的考试安排") else o
     }
 
     /** 当前登录入口对应的教务校区，用于查该校区的教室课表。 */
     suspend fun classroomCampus(): Outcome<Option> {
-        return when (val all = cachedOptions(OfflineCache.CAMPUSES) { api.campuses() }) {
+        return when (val all = cachedOptions(OfflineCache.CAMPUSES, request = { api.campuses() })) {
             is Outcome.Ok -> pickClassroomCampus(all.data)?.let { Outcome.Ok(it) }
                 ?: Outcome.Empty("教务系统没有返回${campus.label}信息")
             is Outcome.Empty -> all
@@ -239,7 +282,8 @@ class AcademicRepository(
 
     suspend fun buildings(campus: String): Outcome<List<Option>> = cachedOptions(
         offlineCache?.key(OfflineCache.BUILDINGS, campus) ?: "buildings_${campus.hashCode()}",
-    ) { api.buildings(campus) }.let { o ->
+        request = { api.buildings(campus) },
+    ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统没有返回楼房列表") else o
     }
 
@@ -248,29 +292,39 @@ class AcademicRepository(
             ?: "classrooms_${term.code.hashCode()}_${campus.hashCode()}_${building.hashCode()}",
         request = { api.classroomsHtml(term.xn, term.xq, campus, building) },
         parse = Parsers::parseClassrooms,
+        shouldCache = { it.isNotEmpty() },
     ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("这栋楼没有查询到教室课表") else o
     }
 
     suspend fun studentInfo(): Outcome<List<InfoItem>> {
-        val live = call { Parsers.parseInfoTable(api.studentInfoHtml()) }
-        if (live is Outcome.Ok) {
-            offlineCache?.let { cache ->
-                withContext(Dispatchers.IO) { cache.saveInfoItems(OfflineCache.STUDENT_INFO_ITEMS, live.data) }
+        return dataMutex.withLock {
+            val live = call { Parsers.parseInfoTable(api.studentInfoHtml()) }
+            if (live is Outcome.Ok) {
+                if (live.data.isNotEmpty()) {
+                    offlineCache?.let { cache ->
+                        withContext(Dispatchers.IO) { cache.saveInfoItems(OfflineCache.STUDENT_INFO_ITEMS, live.data) }
+                    }
+                } else {
+                    offlineCache?.let { cache ->
+                        withContext(Dispatchers.IO) { cache.loadInfoItems(OfflineCache.STUDENT_INFO_ITEMS) }
+                    }?.takeIf { it.isNotEmpty() }?.let { return@withLock Outcome.Ok(it) }
+                }
+                return@withLock if (live.data.isEmpty()) Outcome.Empty("没有查询到学籍信息") else live
             }
-            return if (live.data.isEmpty()) Outcome.Empty("没有查询到学籍信息") else live
+            val cached = offlineCache?.let { cache ->
+                withContext(Dispatchers.IO) { cache.loadInfoItems(OfflineCache.STUDENT_INFO_ITEMS) }
+            }
+            if (cached != null) return@withLock if (cached.isEmpty()) Outcome.Empty("没有查询到学籍信息") else Outcome.Ok(cached)
+            return@withLock live
         }
-        val cached = offlineCache?.let { cache ->
-            withContext(Dispatchers.IO) { cache.loadInfoItems(OfflineCache.STUDENT_INFO_ITEMS) }
-        }
-        if (cached != null) return if (cached.isEmpty()) Outcome.Empty("没有查询到学籍信息") else Outcome.Ok(cached)
-        return live
     }
 
     suspend fun creditRequirement(): Outcome<List<InfoItem>> = cachedHtml(
         key = OfflineCache.CREDIT_REQUIREMENTS,
         request = { api.creditRequirementHtml() },
         parse = Parsers::parseCreditRequirements,
+        shouldCache = { it.isNotEmpty() },
     ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("没有查询到毕业学分要求") else o
     }
