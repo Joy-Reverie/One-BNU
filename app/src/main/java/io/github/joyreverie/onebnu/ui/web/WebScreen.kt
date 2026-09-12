@@ -265,7 +265,10 @@ fun WebScreen(
                                                 view.evaluateJavascript(
                                                     "JSON.stringify({length:(document.body&&document.body.innerText||'').trim().length,children:document.body?document.body.children.length:0})",
                                                 ) { length ->
-                                                    val blank = length.contains("\"length\":0") || length == "null"
+                                                    // 电脑端门户先渲染壳再异步填充文本；只要 body 已有 DOM，
+                                                    // 就不能把它当成空白页重载，否则会和门户脚本互相触发刷新。
+                                                    val blank = length.contains("\"length\":0") &&
+                                                        length.contains("\"children\":0")
                                                     Log.i(TAG, "门户 WebView 主体文本为空=$blank")
                                                     if (blank && !portalBlankRetried) {
                                                         portalBlankRetried = true
@@ -298,7 +301,7 @@ fun WebScreen(
                                     Log.i(TAG, "WebView 页面开始 host=${candidate?.toHttpUrlOrNull()?.host} path=${candidate?.toHttpUrlOrNull()?.encodedPath}")
                                     if (redirectPortalRoot(view, candidate)) return
                                     if (
-                                        isPortalLoginPage(candidate) &&
+                                        isPortalLoginPage(candidate, desktopMode) &&
                                         PortalSso.accessToken(campus) != null &&
                                         !portalAuthRetried
                                     ) {
@@ -402,11 +405,14 @@ private fun isPortalHomePage(url: String?): Boolean {
     }
 }
 
-private fun isPortalLoginPage(url: String?): Boolean {
+internal fun isPortalLoginPage(url: String?, desktopMode: Boolean = false): Boolean {
     val parsed = url?.toHttpUrlOrNull() ?: return false
     return when (parsed.host) {
-        "one.bnu.edu.cn" -> parsed.encodedPath == "/tp_nup/index.html" ||
+        "one.bnu.edu.cn" -> if (desktopMode) {
             parsed.encodedPath == "/tp_nup/guide.html"
+        } else {
+            parsed.encodedPath == "/tp_nup/index.html" || parsed.encodedPath == "/tp_nup/guide.html"
+        }
         "one.bnuzh.edu.cn" -> parsed.encodedPath == "/nup/index.html" ||
             parsed.encodedPath == "/nup/guide.html"
         else -> false
