@@ -51,6 +51,13 @@ class SessionRepository(
         mutex.withLock {
             if (!force && _state.value is State.Ready) return
             if (_state.value is State.Loading) return
+            if (!force) {
+                // 学籍快照是可展示的稳定数据。弱网时先恢复它，用户点重试才重新请求教务。
+                offlineCache?.loadStudentProfile(OfflineCache.STUDENT_PROFILE)?.let {
+                    _state.value = State.Ready(it)
+                    return
+                }
+            }
             _state.value = State.Loading
 
             val result = withContext(Dispatchers.IO) { load() }

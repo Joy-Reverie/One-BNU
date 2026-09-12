@@ -38,4 +38,39 @@
         <item>@color/widget_course_7</item>
         <item>@color/widget_course_8</item>
     </array>
+
+    <!-- RemoteViews 不会跟随应用的 Compose 主题，下面两套颜色供渲染时按设置显式覆盖。 -->
+    <color name="widget_manual_light_bg">#FFFFFFFF</color>
+    <color name="widget_manual_light_text_primary">#FF14181F</color>
+    <color name="widget_manual_light_text_secondary">#FF767C89</color>
+    <color name="widget_manual_light_accent">#FF1B3C6E</color>
+    <color name="widget_manual_light_hero_start">#FF1B3C6E</color>
+    <color name="widget_manual_light_hero_center">#FF2F5CA8</color>
+    <color name="widget_manual_light_hero_end">#FF0E7C8C</color>
+    <color name="widget_manual_light_pill">#33FFFFFF</color>
+    <color name="widget_manual_light_course_1">#FF3A63B8</color>
+    <color name="widget_manual_light_course_2">#FF1E8A6B</color>
+    <color name="widget_manual_light_course_3">#FFC2702A</color>
+    <color name="widget_manual_light_course_4">#FF7A4CA8</color>
+    <color name="widget_manual_light_course_5">#FFBC4A72</color>
+    <color name="widget_manual_light_course_6">#FF4E8B36</color>
+    <color name="widget_manual_light_course_7">#FF2483A0</color>
+    <color name="widget_manual_light_course_8">#FFB5901F</color>
+
+    <color name="widget_manual_dark_bg">#FF161A21</color>
+    <color name="widget_manual_dark_text_primary">#FFE3E6ED</color>
+    <color name="widget_manual_dark_text_secondary">#FF8A909D</color>
+    <color name="widget_manual_dark_accent">#FF7FA0DA</color>
+    <color name="widget_manual_dark_hero_start">#FF16305C</color>
+    <color name="widget_manual_dark_hero_center">#FF1D4A78</color>
+    <color name="widget_manual_dark_hero_end">#FF0F5F6C</color>
+    <color name="widget_manual_dark_pill">#2EFFFFFF</color>
+    <color name="widget_manual_dark_course_1">#FF8FAEEA</color>
+    <color name="widget_manual_dark_course_2">#FF5FC9A5</color>
+    <color name="widget_manual_dark_course_3">#FFE0A468</color>
+    <color name="widget_manual_dark_course_4">#FFB68DE0</color>
+    <color name="widget_manual_dark_course_5">#FFE68CAB</color>
+    <color name="widget_manual_dark_course_6">#FF8FC873</color>
+    <color name="widget_manual_dark_course_7">#FF63BFD8</color>
+    <color name="widget_manual_dark_course_8">#FFE0C263</color>
 </resources>

@@ -106,13 +106,13 @@ class WidgetRefreshJob : JobService() {
                     return false
                 }
                 val repo = ServiceLocator.repo
-                val terms = when (val t = repo.terms()) {
+                val terms = when (val t = repo.terms(forceRefresh = true)) {
                     is Outcome.Ok -> t.data
                     is Outcome.Empty -> return fail(state, t.reason)
                     is Outcome.Error -> return fail(state, if (t.needLogin) LOGIN_EXPIRED else t.message)
                 }
                 val term = repo.currentTerm(terms) ?: return fail(state, "没有可用学期")
-                return when (val s = repo.schedule(term)) {
+                return when (val s = repo.schedule(term, forceRefresh = true)) {
                     // 空课表也算成功：缓存里已经写入了「没有选课记录」的课表
                     is Outcome.Ok, is Outcome.Empty -> {
                         state.lastError = null

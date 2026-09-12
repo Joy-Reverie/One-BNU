@@ -96,11 +96,12 @@ object ServiceLocator {
             val http = Http.create(device, if (isBeijing) "cas.bnu.edu.cn" else "cas.bnuzh.edu.cn")
             val auth: SessionAuthenticator = if (isBeijing) CasClient(http, beijingDevice) else ZhuhaiCasClient(http)
             val secure = SecureStore.create(app, campus)
-            val settings = Settings(app, campus)
+            val widgetChanged = { TodayWidgetProvider.updateAll(app) }
             val changed = {
-                TodayWidgetProvider.updateAll(app)
+                widgetChanged()
                 ClassReminder.reschedule(app)
             }
+            val settings = Settings(app, campus, onThemeChanged = widgetChanged)
             return CampusRuntime(
                 campus = campus,
                 http = http,
@@ -173,4 +174,7 @@ object ServiceLocator {
         return connectivity.getNetworkCapabilities(network)
             ?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
     }
+
+    /** 当前网络是否为蜂窝数据，供需要把 HTTP 教务页面切到 OneVPN 的 WebView 使用。 */
+    fun isCellularNetwork(): Boolean = isCellularNetwork(app)
 }

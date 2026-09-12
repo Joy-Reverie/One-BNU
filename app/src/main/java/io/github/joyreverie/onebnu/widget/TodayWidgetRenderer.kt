@@ -3,6 +3,7 @@ package io.github.joyreverie.onebnu.widget
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.Context
+import android.content.res.Configuration
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +14,7 @@ import androidx.core.content.ContextCompat
 import io.github.joyreverie.onebnu.MainActivity
 import io.github.joyreverie.onebnu.R
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.store.ThemeMode
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
 import java.time.LocalDate
@@ -33,6 +35,19 @@ object TodayWidgetRenderer {
         val refreshing: Boolean,
         val lastError: String?,
         val events: List<PersonalEvent> = emptyList(),
+    )
+
+    /** RemoteViews 会按启动器的系统夜间资源解析 XML，因此手动主题必须显式覆盖。 */
+    private data class Palette(
+        val backgroundRes: Int,
+        val heroRes: Int,
+        val pillRes: Int,
+        val primary: Int,
+        val secondary: Int,
+        val accent: Int,
+        val onHero: Int,
+        val onHeroDim: Int,
+        val courseColors: IntArray,
     )
 
     private const val DEFAULT_WIDTH_DP = 250
@@ -87,10 +102,12 @@ object TodayWidgetRenderer {
         today: LocalDate = LocalDate.now(),
         now: LocalTime = LocalTime.now(),
     ): RemoteViews {
-        if (widthDp < SMALL_BELOW_DP) return renderSmall(context, base, widthDp, today, now)
+        val palette = palette(context)
+        if (widthDp < SMALL_BELOW_DP) return renderSmall(context, base, widthDp, today, now, palette)
         val model = TodayWidgetModel.build(input(base, heightDp, today, now))
 
         val rv = RemoteViews(context.packageName, R.layout.widget_today)
+        applyLargePalette(rv, palette)
         rv.setTextViewText(R.id.widget_date, model.dateLabel)
         rv.setTextViewText(R.id.widget_weekday, model.weekdayLabel)
         rv.setTextViewText(R.id.widget_week, model.weekLabel)
@@ -106,7 +123,6 @@ object TodayWidgetRenderer {
         } else {
             rv.setViewVisibility(R.id.widget_empty, View.GONE)
             rv.setViewVisibility(R.id.widget_rows, View.VISIBLE)
-            val palette = coursePalette(context)
             model.rows.forEach { rv.addView(R.id.widget_rows, rowView(context, it, palette)) }
         }
 
@@ -123,9 +139,17 @@ object TodayWidgetRenderer {
     }
 
     /** 2×2：色带只放日期与星期，正文是当前 / 下一节的时间、课名、教室。 */
-    private fun renderSmall(context: Context, base: Base, widthDp: Int, today: LocalDate, now: LocalTime): RemoteViews {
+    private fun renderSmall(
+        context: Context,
+        base: Base,
+        widthDp: Int,
+        today: LocalDate,
+        now: LocalTime,
+        palette: Palette,
+    ): RemoteViews {
         val m = TodayWidgetModel.buildSmall(input(base, 10_000, today, now))
         val rv = RemoteViews(context.packageName, R.layout.widget_today_small)
+        applySmallPalette(rv, palette)
         rv.setTextViewText(R.id.widget_date, m.dateLabel)
         rv.setTextViewText(R.id.widget_weekday, m.weekdayLabel)
         rv.setViewVisibility(R.id.widget_weekday, View.VISIBLE)
@@ -139,23 +163,19 @@ object TodayWidgetRenderer {
             rv.setViewVisibility(R.id.widget_empty, View.VISIBLE)
             rv.setTextViewText(R.id.widget_empty, m.message ?: "")
         } else {
-            val primary = ContextCompat.getColor(context, R.color.widget_text_primary)
-            val secondary = ContextCompat.getColor(context, R.color.widget_text_secondary)
-            val accent = ContextCompat.getColor(context, R.color.widget_accent)
             val finished = focus.status == TodayWidgetModel.Status.FINISHED
-            val palette = coursePalette(context)
             rv.setViewVisibility(R.id.widget_empty, View.GONE)
             rv.setViewVisibility(R.id.small_body, View.VISIBLE)
             rv.setTextViewText(R.id.small_start, focus.start)
-            rv.setTextColor(R.id.small_start, if (finished) secondary else palette[focus.colorIndex % palette.size])
+            rv.setTextColor(R.id.small_start, if (finished) palette.secondary else palette.courseColors[focus.colorIndex % palette.courseColors.size])
             rv.setTextViewText(R.id.small_end, "– ${focus.end}")
             rv.setTextViewText(R.id.small_name, focus.name)
             rv.setTextColor(
                 R.id.small_name,
                 when (focus.status) {
-                    TodayWidgetModel.Status.FINISHED -> secondary
-                    TodayWidgetModel.Status.ONGOING -> accent
-                    TodayWidgetModel.Status.UPCOMING -> primary
+                    TodayWidgetModel.Status.FINISHED -> palette.secondary
+                    TodayWidgetModel.Status.ONGOING -> palette.accent
+                    TodayWidgetModel.Status.UPCOMING -> palette.primary
                 },
             )
             rv.setTextViewText(R.id.small_detail, focus.detail)
@@ -170,16 +190,13 @@ object TodayWidgetRenderer {
         return rv
     }
 
-    private fun rowView(context: Context, r: TodayWidgetModel.Row, palette: IntArray): RemoteViews {
-        val primary = ContextCompat.getColor(context, R.color.widget_text_primary)
-        val secondary = ContextCompat.getColor(context, R.color.widget_text_secondary)
-        val accent = ContextCompat.getColor(context, R.color.widget_accent)
+    private fun rowView(context: Context, r: TodayWidgetModel.Row, palette: Palette): RemoteViews {
         val finished = r.status == TodayWidgetModel.Status.FINISHED
         val ongoing = r.status == TodayWidgetModel.Status.ONGOING
         val emphasis = when {
-            finished -> secondary
-            ongoing -> accent
-            else -> primary
+            finished -> palette.secondary
+            ongoing -> palette.accent
+            else -> palette.primary
         }
 
         val rv = RemoteViews(context.packageName, R.layout.widget_row)
@@ -190,18 +207,90 @@ object TodayWidgetRenderer {
         rv.setTextColor(R.id.row_name, emphasis)
         rv.setTextViewText(R.id.row_detail, if (ongoing) "进行中 · ${r.detail}" else r.detail)
         // 课程色条：颜色与应用内课表一致，已结束的淡一些
-        rv.setInt(R.id.row_bar, "setColorFilter", palette[r.colorIndex % palette.size])
+        rv.setInt(R.id.row_bar, "setColorFilter", palette.courseColors[r.colorIndex % palette.courseColors.size])
         rv.setInt(R.id.row_bar, "setImageAlpha", if (finished) 90 else 255)
         return rv
     }
 
-    private fun coursePalette(context: Context): IntArray {
-        val ta = context.resources.obtainTypedArray(R.array.widget_course_colors)
-        try {
-            return IntArray(ta.length()) { ta.getColor(it, 0) }
-        } finally {
-            ta.recycle()
+    private fun applyLargePalette(rv: RemoteViews, p: Palette) {
+        rv.setInt(R.id.widget_root, "setBackgroundResource", p.backgroundRes)
+        rv.setInt(R.id.widget_header, "setBackgroundResource", p.heroRes)
+        rv.setInt(R.id.widget_weekday, "setBackgroundResource", p.pillRes)
+        rv.setInt(R.id.widget_week, "setBackgroundResource", p.pillRes)
+        rv.setTextColor(R.id.widget_date, p.onHero)
+        rv.setTextColor(R.id.widget_weekday, p.onHero)
+        rv.setTextColor(R.id.widget_week, p.onHero)
+        rv.setTextColor(R.id.widget_count, p.onHeroDim)
+        rv.setTextColor(R.id.widget_empty, p.secondary)
+        rv.setTextColor(R.id.widget_footer, p.secondary)
+    }
+
+    private fun applySmallPalette(rv: RemoteViews, p: Palette) {
+        rv.setInt(R.id.widget_root, "setBackgroundResource", p.backgroundRes)
+        rv.setInt(R.id.widget_header, "setBackgroundResource", p.heroRes)
+        rv.setInt(R.id.widget_weekday, "setBackgroundResource", p.pillRes)
+        rv.setTextColor(R.id.widget_date, p.onHero)
+        rv.setTextColor(R.id.widget_weekday, p.onHero)
+        rv.setTextColor(R.id.widget_count, p.onHeroDim)
+        rv.setTextColor(R.id.widget_empty, p.secondary)
+        rv.setTextColor(R.id.widget_footer, p.secondary)
+        rv.setTextColor(R.id.small_end, p.secondary)
+        rv.setTextColor(R.id.small_name, p.primary)
+        rv.setTextColor(R.id.small_detail, p.secondary)
+    }
+
+    private fun palette(context: Context): Palette {
+        val mode = runCatching { ServiceLocator.settings.themeMode.value }.getOrDefault(ThemeMode.SYSTEM)
+        val systemDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        val dark = when (mode) {
+            ThemeMode.SYSTEM -> systemDark
+            ThemeMode.LIGHT -> false
+            ThemeMode.DARK -> true
         }
+        val colors = if (dark) {
+            intArrayOf(
+                R.color.widget_manual_dark_course_1,
+                R.color.widget_manual_dark_course_2,
+                R.color.widget_manual_dark_course_3,
+                R.color.widget_manual_dark_course_4,
+                R.color.widget_manual_dark_course_5,
+                R.color.widget_manual_dark_course_6,
+                R.color.widget_manual_dark_course_7,
+                R.color.widget_manual_dark_course_8,
+            )
+        } else {
+            intArrayOf(
+                R.color.widget_manual_light_course_1,
+                R.color.widget_manual_light_course_2,
+                R.color.widget_manual_light_course_3,
+                R.color.widget_manual_light_course_4,
+                R.color.widget_manual_light_course_5,
+                R.color.widget_manual_light_course_6,
+                R.color.widget_manual_light_course_7,
+                R.color.widget_manual_light_course_8,
+            )
+        }
+        return Palette(
+            backgroundRes = if (dark) R.drawable.widget_bg_manual_dark else R.drawable.widget_bg_manual_light,
+            heroRes = if (dark) R.drawable.widget_hero_manual_dark else R.drawable.widget_hero_manual_light,
+            pillRes = if (dark) R.drawable.widget_pill_manual_dark else R.drawable.widget_pill_manual_light,
+            primary = ContextCompat.getColor(
+                context,
+                if (dark) R.color.widget_manual_dark_text_primary else R.color.widget_manual_light_text_primary,
+            ),
+            secondary = ContextCompat.getColor(
+                context,
+                if (dark) R.color.widget_manual_dark_text_secondary else R.color.widget_manual_light_text_secondary,
+            ),
+            accent = ContextCompat.getColor(
+                context,
+                if (dark) R.color.widget_manual_dark_accent else R.color.widget_manual_light_accent,
+            ),
+            onHero = ContextCompat.getColor(context, R.color.widget_on_hero),
+            onHeroDim = ContextCompat.getColor(context, R.color.widget_on_hero_dim),
+            courseColors = colors.map { ContextCompat.getColor(context, it) }.toIntArray(),
+        )
     }
 
     private fun openAppIntent(context: Context): PendingIntent {

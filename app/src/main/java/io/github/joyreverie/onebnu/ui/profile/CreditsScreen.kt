@@ -96,10 +96,10 @@ class CreditsViewModel : ViewModel() {
 
     init { load() }
 
-    fun load() {
+    fun load(forceRefresh: Boolean = false) {
         _state.value = CreditsUiState(loading = true)
         viewModelScope.launch {
-            val terms = when (val t = repo.terms()) {
+            val terms = when (val t = repo.terms(forceRefresh = forceRefresh)) {
                 is Outcome.Ok -> t.data
                 is Outcome.Empty -> { _state.value = CreditsUiState(loading = false, emptyReason = t.reason); return@launch }
                 is Outcome.Error -> { _state.value = CreditsUiState(loading = false, error = t.message); return@launch }
@@ -107,7 +107,7 @@ class CreditsViewModel : ViewModel() {
             val loaded = ArrayList<Schedule>()
             var firstError: String? = null
             for (term in terms) {
-                when (val s = repo.schedule(term)) {
+                when (val s = repo.schedule(term, forceRefresh = forceRefresh)) {
                     is Outcome.Ok -> loaded += s.data
                     is Outcome.Empty -> Unit
                     is Outcome.Error -> if (firstError == null) firstError = s.message
@@ -118,20 +118,20 @@ class CreditsViewModel : ViewModel() {
                 return@launch
             }
             schedules = loaded
-            grades = (repo.grades() as? Outcome.Ok)?.data.orEmpty()
+            grades = (repo.grades(forceRefresh = forceRefresh) as? Outcome.Ok)?.data.orEmpty()
             val moduleLabels = LinkedHashMap<String, String>()
             loaded.map { it.term }.distinctBy { it.code }.forEach { term ->
-                (repo.courseModules(term) as? Outcome.Ok)?.data.orEmpty().forEach { (code, label) ->
+                (repo.courseModules(term, forceRefresh = forceRefresh) as? Outcome.Ok)?.data.orEmpty().forEach { (code, label) ->
                     moduleLabels.putIfAbsent(code, label)
                 }
             }
             modules = moduleLabels.mapNotNull { (code, label) ->
                 CategoryRules.fromGradeType(label)?.let { code to it }
             }.toMap()
-            selection = (repo.selectionCategories() as? Outcome.Ok)?.data.orEmpty().mapNotNull { (code, label) ->
+            selection = (repo.selectionCategories(forceRefresh = forceRefresh) as? Outcome.Ok)?.data.orEmpty().mapNotNull { (code, label) ->
                 CategoryRules.fromGradeType(label)?.let { code to it }
             }.toMap()
-            val requirements = (repo.creditRequirement() as? Outcome.Ok)?.data.orEmpty()
+            val requirements = (repo.creditRequirement(forceRefresh = forceRefresh) as? Outcome.Ok)?.data.orEmpty()
             _state.value = CreditsUiState(
                 loading = false,
                 ledger = CategoryRules.build(
@@ -168,7 +168,7 @@ fun CreditsScreen(onBack: () -> Unit, vm: CreditsViewModel = viewModel()) {
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            CreditsContent(s, onRetry = { vm.load() }, onSetCategory = { code, c -> vm.setCategory(code, c) })
+            CreditsContent(s, onRetry = { vm.load(forceRefresh = true) }, onSetCategory = { code, c -> vm.setCategory(code, c) })
         }
     }
 }

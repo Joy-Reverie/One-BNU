@@ -92,11 +92,11 @@ fun ExamScreen(onBack: () -> Unit, vm: ExamViewModel = viewModel()) {
         Box(Modifier.fillMaxSize().padding(padding)) {
             when {
                 s.loading -> LoadingBox("正在查询考试安排…")
-                s.error != null -> ErrorBox(s.error!!) { vm.load() }
+                s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
                 s.emptyReason != null -> EmptyBox(
                     s.emptyReason!!,
                     hint = "考试安排由教务在考试周前统一发布",
-                    onRetry = { vm.load() },
+                    onRetry = { vm.load(forceRefresh = true) },
                 )
                 else -> LazyColumn(
                     Modifier.fillMaxSize(),

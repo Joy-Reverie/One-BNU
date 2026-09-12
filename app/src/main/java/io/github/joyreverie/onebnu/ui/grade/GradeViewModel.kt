@@ -37,10 +37,10 @@ class GradeViewModel : ViewModel() {
 
     init { load() }
 
-    fun load() {
+    fun load(forceRefresh: Boolean = false) {
         _state.value = _state.value.copy(loading = true, error = null, emptyReason = null)
         viewModelScope.launch {
-            when (val r = repo.grades()) {
+            when (val r = repo.grades(forceRefresh = forceRefresh)) {
                 is Outcome.Ok -> applyGrades(r.data)
                 is Outcome.Empty -> _state.value = _state.value.copy(
                     loading = false, grades = emptyList(), emptyReason = r.reason,

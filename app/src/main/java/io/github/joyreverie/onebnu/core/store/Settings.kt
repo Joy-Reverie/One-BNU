@@ -10,7 +10,11 @@ import java.time.LocalDate
 /**
  * 应用设置。用普通 SharedPreferences 即可 —— 这里不存任何凭据。
  */
-class Settings(context: Context, campus: Campus = Campus.BEIJING) {
+class Settings(
+    context: Context,
+    campus: Campus = Campus.BEIJING,
+    private val onThemeChanged: () -> Unit = {},
+) {
 
     private val prefs = context.getSharedPreferences(
         if (campus == Campus.BEIJING) "onebnu_settings" else "onebnu_settings_${campus.storageKey}",
@@ -87,6 +91,7 @@ class Settings(context: Context, campus: Campus = Campus.BEIJING) {
     fun setThemeMode(mode: ThemeMode) {
         prefs.edit().putString(KEY_THEME, mode.name).apply()
         _themeMode.value = mode
+        onThemeChanged()
     }
 
     /** 联网启动时自动检查更新。 */

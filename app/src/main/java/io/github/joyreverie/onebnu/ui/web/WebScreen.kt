@@ -110,13 +110,18 @@ fun WebScreen(
     val auth = ServiceLocator.auth
     val http = ServiceLocator.http
     val portalService = PortalSso.isPortalService(campus, url)
-    val syncOneVpn = useOneVpnSso || portalService
+    val academicService = isAcademicService(url)
+    // 教务系统只有 HTTP，蜂窝网络常常无法访问 80 端口。此时把整个 WebView
+    // 页面放到已经认证的 OneVPN HTTPS 代理上，避免看到空白页或无限加载。
+    val useAcademicProxy = campus == Campus.BEIJING && academicService && ServiceLocator.isCellularNetwork()
+    val syncOneVpn = useOneVpnSso || portalService || useAcademicProxy
     val target by produceState<String?>(
-        if (useSso || useOneVpnSso || portalService) null else url,
+        if (useSso || useOneVpnSso || portalService || useAcademicProxy) null else url,
         url,
         useSso,
         useOneVpnSso,
         portalService,
+        useAcademicProxy,
         campus,
     ) {
         value = if (useOneVpnSso) {
@@ -124,6 +129,18 @@ fun WebScreen(
                 runCatching { OneVpnSso.establish(http, auth, campus, url) }
             }
             url
+        } else if (useAcademicProxy) {
+            val established = withContext(Dispatchers.IO) {
+                runCatching { OneVpnSso.establish(http, auth, campus, url) }.getOrDefault(false)
+            }
+            if (established) {
+                OneVpnSso.proxyUrl(url)
+            } else {
+                // 代理临时失败时仍给出官方 SSO 地址；直连可用时不阻断页面。
+                withContext(Dispatchers.IO) {
+                    runCatching { auth.sso(url).url }.getOrNull()
+                } ?: auth.ssoUrl(url)
+            }
         } else if (portalService) {
             // 让门户自己的 cas.html 在 WebView 中完成 OAuth。它会在同一浏览器上下文
             // 设置 accessToken，并按官方逻辑回到电脑端首页；OkHttp 侧预热只作为加速，
@@ -205,7 +222,7 @@ fun WebScreen(
                                 var portalAuthRetried = false
 
                                 fun takeOneVpnSsoUrl(candidate: String?): String? {
-                                    if (!useOneVpnSso || oneVpnSsoRedirected) return null
+                                    if (!(useOneVpnSso || useAcademicProxy) || oneVpnSsoRedirected) return null
                                     val service = OneVpnSso.serviceForRelayRedirect(
                                         candidate?.toHttpUrlOrNull(),
                                         campus = ServiceLocator.activeCampus,
@@ -405,6 +422,9 @@ private fun isPortalPage(url: String?): Boolean {
         parsed.host == "onevpn.bnu.edu.cn" &&
         (parsed.encodedPath.contains("/tp_nup/") || parsed.encodedPath.contains("/nup/"))
 }
+
+private fun isAcademicService(url: String): Boolean =
+    url.toHttpUrlOrNull()?.host == "zyfw.bnu.edu.cn"
 
 private fun isPortalHomePage(url: String?): Boolean {
     val parsed = url?.toHttpUrlOrNull() ?: return false

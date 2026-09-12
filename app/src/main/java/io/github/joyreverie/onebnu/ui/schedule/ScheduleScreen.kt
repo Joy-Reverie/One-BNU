@@ -179,12 +179,12 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
         Box(Modifier.fillMaxSize().padding(padding)) {
             when {
                 s.loading -> LoadingBox("正在加载课表…")
-                s.error != null -> ErrorBox(s.error!!) { vm.load() }
-                s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.load() })
+                s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
+                s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.load(forceRefresh = true) })
                 else -> {
                     val schedule = s.schedule
                     if (schedule == null) {
-                        EmptyBox("暂无课表数据", onRetry = { vm.load() })
+                        EmptyBox("暂无课表数据", onRetry = { vm.load(forceRefresh = true) })
                     } else {
                         ScheduleGrid(
                             schedule = schedule,

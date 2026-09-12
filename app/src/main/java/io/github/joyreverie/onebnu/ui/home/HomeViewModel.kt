@@ -55,13 +55,13 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    fun refresh() {
+    fun refresh(forceRefresh: Boolean = false) {
         _state.value = _state.value.copy(loading = true, error = null)
         viewModelScope.launch {
             val week = currentWeek()
             val today = LocalDate.now().dayOfWeek.value
 
-            when (val t = repo.terms()) {
+            when (val t = repo.terms(forceRefresh = forceRefresh)) {
                 is Outcome.Ok -> {
                     val ctx = repo.userContext
                     val term = repo.currentTerm(t.data)
@@ -74,7 +74,7 @@ class HomeViewModel : ViewModel() {
                         )
                         return@launch
                     }
-                    when (val s = repo.schedule(term)) {
+                    when (val s = repo.schedule(term, forceRefresh = forceRefresh)) {
                         is Outcome.Ok -> {
                             val slots = s.data.slotsOn(week, today).map { TodayCourse(it.first, it.second) }
                             _state.value = HomeUiState(

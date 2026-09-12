@@ -77,14 +77,14 @@ class ClassroomViewModel : ViewModel() {
     /** 出错后的重试：学期或楼房还没拿到就重拉选项，否则重跑查询。 */
     fun retry() {
         val s = _state.value
-        if (s.term == null || s.buildings.isEmpty()) loadOptions() else query()
+        if (s.term == null || s.buildings.isEmpty()) loadOptions(forceRefresh = true) else query(forceRefresh = true)
     }
 
-    private fun loadOptions() {
+    private fun loadOptions(forceRefresh: Boolean = false) {
         _state.update { it.copy(loadingOptions = true, error = null) }
         viewModelScope.launch {
             // 学期：教务当前学期，其次最新的一个；周次基准跟着所查学期走
-            val terms = (repo.terms() as? Outcome.Ok)?.data
+            val terms = (repo.terms(forceRefresh = forceRefresh) as? Outcome.Ok)?.data
             val term = terms?.let { repo.currentTerm(it) }
             val official = term?.let { AcademicCalendar.official(it, useOfficial = true) }
             val start = term?.let { AcademicCalendar.firstMonday(it, useOfficial = true) }
@@ -106,10 +106,10 @@ class ClassroomViewModel : ViewModel() {
                 )
             }
 
-            when (val c = repo.classroomCampus()) {
+            when (val c = repo.classroomCampus(forceRefresh = forceRefresh)) {
                 is Outcome.Ok -> {
                     campus = c.data
-                    loadBuildings(c.data.code)
+                    loadBuildings(c.data.code, forceRefresh)
                 }
                 is Outcome.Empty -> _state.update { it.copy(loadingOptions = false, error = c.reason) }
                 is Outcome.Error -> _state.update { it.copy(loadingOptions = false, error = c.message) }
@@ -117,8 +117,8 @@ class ClassroomViewModel : ViewModel() {
         }
     }
 
-    private suspend fun loadBuildings(campusCode: String) {
-        when (val b = repo.buildings(campusCode)) {
+    private suspend fun loadBuildings(campusCode: String, forceRefresh: Boolean = false) {
+        when (val b = repo.buildings(campusCode, forceRefresh = forceRefresh)) {
             is Outcome.Ok -> _state.update { it.copy(loadingOptions = false, buildings = b.data) }
             is Outcome.Empty -> _state.update { it.copy(loadingOptions = false, error = b.reason) }
             is Outcome.Error -> _state.update { it.copy(loadingOptions = false, error = b.message) }
@@ -144,7 +144,7 @@ class ClassroomViewModel : ViewModel() {
         it.copy(startPeriod = a, endPeriod = b)
     }
 
-    fun query() {
+    fun query(forceRefresh: Boolean = false) {
         val s = _state.value
         val term = s.term
         val campusOpt = campus
@@ -159,7 +159,7 @@ class ClassroomViewModel : ViewModel() {
         }
         _state.value = s.copy(loading = true, error = null, emptyReason = null)
         viewModelScope.launch {
-            when (val r = repo.classrooms(term, campusOpt.code, building.code)) {
+            when (val r = repo.classrooms(term, campusOpt.code, building.code, forceRefresh = forceRefresh)) {
                 is Outcome.Ok -> _state.value = _state.value.copy(
                     loading = false, rooms = r.data, queried = true, error = null, emptyReason = null,
                 )

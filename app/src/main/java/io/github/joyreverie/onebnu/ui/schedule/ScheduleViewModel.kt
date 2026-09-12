@@ -63,7 +63,7 @@ class ScheduleViewModel : ViewModel() {
         }
     }
 
-    fun load(term: Term? = null) {
+    fun load(term: Term? = null, forceRefresh: Boolean = false) {
         _state.value = _state.value.copy(loading = true, error = null, emptyReason = null)
         viewModelScope.launch {
             var terms = _state.value.terms
@@ -71,7 +71,7 @@ class ScheduleViewModel : ViewModel() {
                 // 学期下限取自学籍里的年级。课表若比学籍先加载完，就会拿不到年级、
                 // 失去「入学之后」这道过滤，而 terms 之后是缓存的，一次错就一直错。
                 runCatching { session.ensureLoaded() }
-                when (val t = repo.terms()) {
+                when (val t = repo.terms(forceRefresh = forceRefresh)) {
                     is Outcome.Ok -> terms = filterTerms(t.data)
                     is Outcome.Empty -> {
                         _state.value = _state.value.copy(loading = false, emptyReason = t.reason)
@@ -101,7 +101,7 @@ class ScheduleViewModel : ViewModel() {
             )
             val cur = start?.let { currentWeekIn(it) }
 
-            when (val s = repo.schedule(target)) {
+            when (val s = repo.schedule(target, forceRefresh = forceRefresh)) {
                 is Outcome.Ok -> {
                     val max = maxOf(s.data.maxWeek, cur ?: 1, MIN_WEEKS)
                     _state.value = _state.value.copy(

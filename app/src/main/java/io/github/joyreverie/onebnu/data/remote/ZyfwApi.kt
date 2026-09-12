@@ -30,6 +30,9 @@ class ZyfwApi(
 
         /** 教务系统只提供 HTTP；移动网络下由北京 OneVPN 以 HTTPS 代理访问。 */
         const val NOTE_CLEARTEXT = "zyfw.bnu.edu.cn 仅支持 HTTP，流量网络使用 OneVPN 代理"
+
+        /** OneVPN 短暂故障时避免每个接口都重新等待一次代理超时。 */
+        private const val PROXY_BACKOFF_MS = 2 * 60 * 1000L
     }
 
     class SessionExpiredException : IOException("登录状态已失效")
@@ -37,6 +40,7 @@ class ZyfwApi(
     @Volatile private var ssoDone = false
     @Volatile private var cachedToken: String? = null
     @Volatile private var activeBase: String = base
+    @Volatile private var proxyFailureUntil: Long = 0L
 
     /** 登录信息（来自 SetMainInfo.jsp），SSO 后可用。 */
     data class UserContext(
@@ -58,7 +62,8 @@ class ZyfwApi(
     @Synchronized
     @Throws(IOException::class)
     fun ensureSession(force: Boolean = false) {
-        val shouldUseProxy = proxyBase != null && preferProxy()
+        val shouldUseProxy = proxyBase != null && preferProxy() &&
+            (force || System.currentTimeMillis() >= proxyFailureUntil)
         if (
             ssoDone && !force &&
             ((shouldUseProxy && activeBase == proxyBase) || (!shouldUseProxy && activeBase == base))
@@ -66,8 +71,28 @@ class ZyfwApi(
         if (!auth.hasSession()) throw SessionExpiredException()
 
         if (shouldUseProxy) {
-            establishProxySession()
-            return
+            try {
+                establishProxySession()
+                proxyFailureUntil = 0L
+                return
+            } catch (proxyError: SessionExpiredException) {
+                throw proxyError
+            } catch (proxyError: IOException) {
+                // 代理偶发不可用时仍尝试同一 CAS 会话的直连路径；若直连成功，后续请求
+                // 在退避窗口内不会再次等待代理；显式重试会主动绕过退避重新探测。
+                proxyFailureUntil = System.currentTimeMillis() + PROXY_BACKOFF_MS
+                try {
+                    establishDirectSession()
+                    return
+                } catch (directError: SessionExpiredException) {
+                    throw directError
+                } catch (directError: IOException) {
+                    throw IOException(
+                        "教务系统代理与直连均不可用：${proxyError.message ?: directError.message ?: "请检查网络"}",
+                        directError,
+                    )
+                }
+            }
         }
 
         try {
@@ -78,7 +103,13 @@ class ZyfwApi(
             // 校园网通常可以直连旧教务；流量或校外 Wi-Fi 可能只是不通 80 端口，
             // 这时把同一目标切到已认证的 OneVPN HTTPS 代理，不改变 CAS 登录状态。
             if (proxyBase == null) throw e
-            establishProxySession()
+            try {
+                establishProxySession()
+                proxyFailureUntil = 0L
+            } catch (proxyError: IOException) {
+                proxyFailureUntil = System.currentTimeMillis() + PROXY_BACKOFF_MS
+                throw proxyError
+            }
         }
     }
 
@@ -88,6 +119,7 @@ class ZyfwApi(
         cachedToken = null
         userContext = null
         activeBase = base
+        proxyFailureUntil = 0L
     }
 
     @Throws(IOException::class)

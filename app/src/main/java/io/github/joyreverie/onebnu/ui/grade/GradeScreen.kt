@@ -116,8 +116,8 @@ fun GradeScreen(vm: GradeViewModel = viewModel()) {
         Box(Modifier.fillMaxSize().padding(padding)) {
             when {
                 s.loading -> LoadingBox("正在查询成绩…")
-                s.error != null -> ErrorBox(s.error!!) { vm.load() }
-                s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.load() })
+                s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
+                s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.load(forceRefresh = true) })
                 else -> GradeContent(s, onSetIncludedCourses = vm::setIncludedCourses)
             }
         }

@@ -29,12 +29,12 @@ class ExamViewModel : ViewModel() {
 
     init { load() }
 
-    fun load() {
+    fun load(forceRefresh: Boolean = false) {
         _state.value = _state.value.copy(loading = true, error = null, emptyReason = null)
         viewModelScope.launch {
             var rounds = _state.value.rounds
             if (rounds.isEmpty()) {
-                when (val r = repo.examRounds()) {
+                when (val r = repo.examRounds(forceRefresh = forceRefresh)) {
                     is Outcome.Ok -> rounds = r.data
                     is Outcome.Empty -> {
                         _state.value = _state.value.copy(loading = false, emptyReason = r.reason)
@@ -51,18 +51,18 @@ class ExamViewModel : ViewModel() {
                 _state.value = _state.value.copy(loading = false, emptyReason = "教务系统暂未发布考试安排")
                 return@launch
             }
-            fetch(rounds, target)
+            fetch(rounds, target, forceRefresh)
         }
     }
 
     fun selectRound(r: Option) {
         if (r.code == _state.value.round?.code) return
         _state.value = _state.value.copy(loading = true, round = r, error = null, emptyReason = null)
-        viewModelScope.launch { fetch(_state.value.rounds, r) }
+        viewModelScope.launch { fetch(_state.value.rounds, r, forceRefresh = false) }
     }
 
-    private suspend fun fetch(rounds: List<Option>, round: Option) {
-        when (val e = repo.exams(round.code)) {
+    private suspend fun fetch(rounds: List<Option>, round: Option, forceRefresh: Boolean) {
+        when (val e = repo.exams(round.code, forceRefresh = forceRefresh)) {
             is Outcome.Ok -> _state.value = ExamUiState(
                 loading = false, rounds = rounds, round = round,
                 exams = e.data.sortedBy { it.date ?: "9999" },

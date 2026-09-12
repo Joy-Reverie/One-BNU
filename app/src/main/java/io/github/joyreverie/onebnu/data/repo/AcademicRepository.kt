@@ -80,13 +80,21 @@ class AcademicRepository(
         else -> message ?: "出现未知错误"
     }
 
-    /** 先走线上请求，失败时用同一解析器读取本地原始快照。 */
+    /**
+     * 默认先读有效快照，让弱网/代理故障不阻塞页面；显式重试和后台预热才绕过快照。
+     *
+     * 线上响应仍必须通过 [shouldCache] 才能写入，空表或半截响应绝不能覆盖旧快照。
+     */
     private suspend fun <T> cachedHtml(
         key: String,
         request: () -> String,
         parse: (String) -> T,
         shouldCache: (T) -> Boolean = { true },
+        forceRefresh: Boolean = false,
     ): Outcome<T> = dataMutex.withLock {
+        if (!forceRefresh) {
+            cachedParsed(key, parse)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
+        }
         val live = call(request)
         if (live is Outcome.Ok) {
             val parsed = runCatching { parse(live.data) }
@@ -116,7 +124,11 @@ class AcademicRepository(
         key: String,
         request: () -> List<Option>,
         shouldCache: (List<Option>) -> Boolean = { it.isNotEmpty() },
+        forceRefresh: Boolean = false,
     ): Outcome<List<Option>> = dataMutex.withLock {
+        if (!forceRefresh) {
+            loadCachedOptions(key)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
+        }
         val live = call(request)
         if (live is Outcome.Ok) {
             if (shouldCache(live.data)) {
@@ -144,10 +156,11 @@ class AcademicRepository(
 
     val userContext get() = api.userContext
 
-    suspend fun terms(): Outcome<List<Term>> = cachedOptions(
+    suspend fun terms(forceRefresh: Boolean = false): Outcome<List<Term>> = cachedOptions(
         OfflineCache.TERMS,
         request = { api.scheduleTerms() },
         shouldCache = { options -> options.any { Term.parse(it.code, it.name) != null } },
+        forceRefresh = forceRefresh,
     ).let { o ->
         val converted: Outcome<List<Term>> = when (o) {
             is Outcome.Ok -> Outcome.Ok(o.data.mapNotNull { Term.parse(it.code, it.name) })
@@ -184,11 +197,12 @@ class AcademicRepository(
         return AcademicCalendar.academicYear(term) == y && AcademicCalendar.season(term) == season
     }
 
-    suspend fun schedule(term: Term): Outcome<Schedule> = cachedHtml(
+    suspend fun schedule(term: Term, forceRefresh: Boolean = false): Outcome<Schedule> = cachedHtml(
         key = offlineCache?.key(OfflineCache.SCHEDULE, term.code) ?: "schedule_${term.code}",
         request = { api.scheduleHtml(term.xn, term.xq) },
         parse = { html -> Parsers.parseSchedule(html, term) },
         shouldCache = { it.courses.isNotEmpty() },
+        forceRefresh = forceRefresh,
     ).let { o ->
         if (o is Outcome.Ok) {
             // 空课表不覆盖上一次有效的小组件数据，避免教务瞬态空响应造成数据消失。
@@ -201,12 +215,13 @@ class AcademicRepository(
      * 优先取「有效成绩」——只有这个视图带教务官方绩点。
      * 该视图为空时回退到原始成绩，此时绩点需本地换算。
      */
-    suspend fun grades(): Outcome<List<Grade>> {
+    suspend fun grades(forceRefresh: Boolean = false): Outcome<List<Grade>> {
         val valid = cachedHtml(
             key = OfflineCache.GRADES_VALID,
             request = { api.gradesHtml(validOnly = true) },
             parse = Parsers::parseGrades,
             shouldCache = { it.isNotEmpty() },
+            forceRefresh = forceRefresh,
         )
         val result = if (valid is Outcome.Ok && valid.data.isNotEmpty()) valid else {
             cachedHtml(
@@ -214,6 +229,7 @@ class AcademicRepository(
                 request = { api.gradesHtml(validOnly = false) },
                 parse = Parsers::parseGrades,
                 shouldCache = { it.isNotEmpty() },
+                forceRefresh = forceRefresh,
             )
         }
         return result.let { o ->
@@ -224,7 +240,7 @@ class AcademicRepository(
     }
 
     /** 培养方案中的课程模块；没有发布时返回空映射而不是错误。 */
-    suspend fun courseModules(term: Term? = null): Outcome<Map<String, String>> {
+    suspend fun courseModules(term: Term? = null, forceRefresh: Boolean = false): Outcome<Map<String, String>> {
         val year = term?.xn.orEmpty()
         val season = term?.xq.orEmpty()
         val key = if (term == null) {
@@ -238,40 +254,44 @@ class AcademicRepository(
             request = { api.courseModulesHtml(year, season) },
             parse = Parsers::parseCourseModules,
             shouldCache = { it.isNotEmpty() },
+            forceRefresh = forceRefresh,
         ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未发布培养方案课程模块") else o
         }
     }
 
     /** 网上选课「选课结果」里的官方课程类别；空表时由上层继续使用其他官方来源。 */
-    suspend fun selectionCategories(): Outcome<Map<String, String>> = cachedHtml(
+    suspend fun selectionCategories(forceRefresh: Boolean = false): Outcome<Map<String, String>> = cachedHtml(
         key = OfflineCache.SELECTION_CATEGORIES,
         request = { api.selectionResultHtml() },
         parse = Parsers::parseCourseCategories,
         shouldCache = { it.isNotEmpty() },
+        forceRefresh = forceRefresh,
     ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未返回选课结果课程类别") else o
     }
 
-    suspend fun examRounds(): Outcome<List<Option>> = cachedOptions(
+    suspend fun examRounds(forceRefresh: Boolean = false): Outcome<List<Option>> = cachedOptions(
         OfflineCache.EXAM_ROUNDS,
         request = { api.examRounds() },
+        forceRefresh = forceRefresh,
     ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未发布考试安排") else o
     }
 
-    suspend fun exams(round: String): Outcome<List<Exam>> = cachedHtml(
+    suspend fun exams(round: String, forceRefresh: Boolean = false): Outcome<List<Exam>> = cachedHtml(
         key = offlineCache?.key(OfflineCache.EXAMS, round) ?: "exams_${round.hashCode()}",
         request = { api.examsHtml(round) },
         parse = Parsers::parseExams,
         shouldCache = { it.isNotEmpty() },
+        forceRefresh = forceRefresh,
     ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("该轮次下没有你的考试安排") else o
     }
 
     /** 当前登录入口对应的教务校区，用于查该校区的教室课表。 */
-    suspend fun classroomCampus(): Outcome<Option> {
-        return when (val all = cachedOptions(OfflineCache.CAMPUSES, request = { api.campuses() })) {
+    suspend fun classroomCampus(forceRefresh: Boolean = false): Outcome<Option> {
+        return when (val all = cachedOptions(OfflineCache.CAMPUSES, request = { api.campuses() }, forceRefresh = forceRefresh)) {
             is Outcome.Ok -> pickClassroomCampus(all.data)?.let { Outcome.Ok(it) }
                 ?: Outcome.Empty("教务系统没有返回${campus.label}信息")
             is Outcome.Empty -> all
@@ -280,8 +300,8 @@ class AcademicRepository(
     }
 
     /** 兼容北京校区平面图旧调用点；新功能请使用 [classroomCampus]。 */
-    suspend fun mainCampus(): Outcome<Option> = when (campus) {
-        Campus.BEIJING -> classroomCampus()
+    suspend fun mainCampus(forceRefresh: Boolean = false): Outcome<Option> = when (campus) {
+        Campus.BEIJING -> classroomCampus(forceRefresh)
         Campus.ZHUHAI -> Outcome.Empty("珠海校区没有内置北京校区平面图")
     }
 
@@ -290,25 +310,32 @@ class AcademicRepository(
         Campus.ZHUHAI -> all.firstOrNull { it.name.contains("珠海") } ?: all.singleOrNull()
     }
 
-    suspend fun buildings(campus: String): Outcome<List<Option>> = cachedOptions(
+    suspend fun buildings(campus: String, forceRefresh: Boolean = false): Outcome<List<Option>> = cachedOptions(
         offlineCache?.key(OfflineCache.BUILDINGS, campus) ?: "buildings_${campus.hashCode()}",
         request = { api.buildings(campus) },
+        forceRefresh = forceRefresh,
     ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统没有返回楼房列表") else o
     }
 
-    suspend fun classrooms(term: Term, campus: String, building: String): Outcome<List<Classroom>> = cachedHtml(
+    suspend fun classrooms(term: Term, campus: String, building: String, forceRefresh: Boolean = false): Outcome<List<Classroom>> = cachedHtml(
         key = offlineCache?.key(OfflineCache.CLASSROOMS, term.code, campus, building)
             ?: "classrooms_${term.code.hashCode()}_${campus.hashCode()}_${building.hashCode()}",
         request = { api.classroomsHtml(term.xn, term.xq, campus, building) },
         parse = Parsers::parseClassrooms,
         shouldCache = { it.isNotEmpty() },
+        forceRefresh = forceRefresh,
     ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("这栋楼没有查询到教室课表") else o
     }
 
-    suspend fun studentInfo(): Outcome<List<InfoItem>> {
+    suspend fun studentInfo(forceRefresh: Boolean = false): Outcome<List<InfoItem>> {
         return dataMutex.withLock {
+            if (!forceRefresh) {
+                offlineCache?.let { cache ->
+                    withContext(Dispatchers.IO) { cache.loadInfoItems(OfflineCache.STUDENT_INFO_ITEMS) }
+                }?.takeIf { it.isNotEmpty() }?.let { return@withLock Outcome.Ok(it) }
+            }
             val live = call { Parsers.parseInfoTable(api.studentInfoHtml()) }
             if (live is Outcome.Ok) {
                 if (live.data.isNotEmpty()) {
@@ -330,11 +357,12 @@ class AcademicRepository(
         }
     }
 
-    suspend fun creditRequirement(): Outcome<List<InfoItem>> = cachedHtml(
+    suspend fun creditRequirement(forceRefresh: Boolean = false): Outcome<List<InfoItem>> = cachedHtml(
         key = OfflineCache.CREDIT_REQUIREMENTS,
         request = { api.creditRequirementHtml() },
         parse = Parsers::parseCreditRequirements,
         shouldCache = { it.isNotEmpty() },
+        forceRefresh = forceRefresh,
     ).let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("没有查询到毕业学分要求") else o
     }
@@ -344,24 +372,24 @@ class AcademicRepository(
      * 而阻断其余快照；各方法自身仍会把成功响应写入本地并在断网时回退。
      */
     suspend fun prefetchBasicData() {
-        val allTerms = (terms() as? Outcome.Ok)?.data.orEmpty()
-        allTerms.forEach { term -> runCatching { schedule(term) } }
+        val allTerms = (terms(forceRefresh = true) as? Outcome.Ok)?.data.orEmpty()
+        allTerms.forEach { term -> runCatching { schedule(term, forceRefresh = true) } }
         if (allTerms.isNotEmpty()) {
-            allTerms.forEach { term -> runCatching { courseModules(term) } }
+            allTerms.forEach { term -> runCatching { courseModules(term, forceRefresh = true) } }
         } else {
-            runCatching { courseModules() }
+            runCatching { courseModules(forceRefresh = true) }
         }
-        runCatching { grades() }
-        runCatching { selectionCategories() }
-        runCatching { studentInfo() }
-        runCatching { creditRequirement() }
+        runCatching { grades(forceRefresh = true) }
+        runCatching { selectionCategories(forceRefresh = true) }
+        runCatching { studentInfo(forceRefresh = true) }
+        runCatching { creditRequirement(forceRefresh = true) }
 
-        val rounds = (examRounds() as? Outcome.Ok)?.data.orEmpty()
-        rounds.forEach { round -> runCatching { exams(round.code) } }
+        val rounds = (examRounds(forceRefresh = true) as? Outcome.Ok)?.data.orEmpty()
+        rounds.forEach { round -> runCatching { exams(round.code, forceRefresh = true) } }
 
-        val classroomCampus = classroomCampus()
+        val classroomCampus = classroomCampus(forceRefresh = true)
         if (classroomCampus is Outcome.Ok) {
-            runCatching { buildings(classroomCampus.data.code) }
+            runCatching { buildings(classroomCampus.data.code, forceRefresh = true) }
         }
     }
 }

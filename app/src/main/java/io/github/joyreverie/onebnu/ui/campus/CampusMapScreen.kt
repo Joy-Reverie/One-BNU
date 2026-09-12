@@ -91,8 +91,9 @@ fun CampusMapScreen(onBack: () -> Unit) {
     LaunchedEffect(attempt) {
         loading = true
         error = null
-        when (val c = repo.mainCampus()) {
-            is Outcome.Ok -> when (val b = repo.buildings(c.data.code)) {
+        val forceRefresh = attempt > 0
+        when (val c = repo.mainCampus(forceRefresh = forceRefresh)) {
+            is Outcome.Ok -> when (val b = repo.buildings(c.data.code, forceRefresh = forceRefresh)) {
                 is Outcome.Ok -> buildings = b.data
                 is Outcome.Empty -> error = b.reason
                 is Outcome.Error -> error = b.message

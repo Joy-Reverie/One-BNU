@@ -138,7 +138,7 @@ fun HomeScreen(nav: NavHostController, vm: HomeViewModel = viewModel()) {
     val store = ServiceLocator.events
     HomeContent(
         s = s,
-        onRetry = { vm.refresh() },
+        onRetry = { vm.refresh(forceRefresh = true) },
         onNavigate = { nav.navigate(it) },
         onSaveEvent = { store.upsert(it) },
         onDeleteEvent = { store.delete(it.id) },
