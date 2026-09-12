@@ -52,6 +52,31 @@ private const val DESKTOP_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
+/** 学校电脑端 CSS 在 Android WebView 中偶尔把 100vh 根容器算成 0px。 */
+private const val PORTAL_LAYOUT_FIX = """
+(function() {
+    var h = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0, 1);
+    var px = h + 'px';
+    document.documentElement.style.setProperty('height', px, 'important');
+    if (document.body) document.body.style.setProperty('height', px, 'important');
+    [
+        '#language_container',
+        '.ec-page-outside-container',
+        '.ec-page-main-container',
+        '.ec-page-nav-container',
+        '.ec-page-nav-bg',
+        '.ec-page-body',
+        '.ec-page-content-container'
+    ].forEach(function(selector) {
+        document.querySelectorAll(selector).forEach(function(element) {
+            element.style.setProperty('min-height', px, 'important');
+            element.style.setProperty('height', px, 'important');
+        });
+    });
+    window.dispatchEvent(new Event('resize'));
+})();
+"""
+
 /**
  * 内嵌浏览器。
  *
@@ -224,6 +249,9 @@ fun WebScreen(
                                     progress = 100
                                     canGoBack = view?.canGoBack() == true
                                     Log.i(TAG, "WebView 页面完成 host=${url?.toHttpUrlOrNull()?.host} path=${url?.toHttpUrlOrNull()?.encodedPath}")
+                                    if (isPortalHomePage(url)) {
+                                        view?.evaluateJavascript(PORTAL_LAYOUT_FIX, null)
+                                    }
                                     if (
                                         isCrossDeviceGuide(url) && !portalGuideBypassed &&
                                         PortalSso.accessToken(campus) != null
