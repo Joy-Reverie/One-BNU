@@ -1,6 +1,7 @@
 package io.github.joyreverie.onebnu.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -35,6 +36,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -67,7 +71,10 @@ import io.github.joyreverie.onebnu.ui.theme.ProvideScreenInfo
 import io.github.joyreverie.onebnu.ui.update.AutoUpdatePrompt
 import io.github.joyreverie.onebnu.ui.web.WebScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import io.github.joyreverie.onebnu.ui.components.OfflineBanner
 
 object Routes {
     const val LOGIN = "login"
@@ -123,15 +130,40 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
         ProvideScreenInfo(windowSizeClass) {
             val activeCampus by ServiceLocator.activeCampusFlow.collectAsState()
             val screen = LocalScreenInfo.current
+            val context = LocalContext.current
             val nav = rememberNavController()
             // rememberSaveable：旋转导致 Activity 重建时不要退回登录页
-            var loggedIn by rememberSaveable { mutableStateOf(ServiceLocator.auth.hasSession()) }
+            var loggedIn by rememberSaveable {
+                mutableStateOf(ServiceLocator.auth.hasSession() || ServiceLocator.hasOfflineData())
+            }
+            var networkAvailable by remember { mutableStateOf(hasInternet(context)) }
+
+            LaunchedEffect(Unit) {
+                while (isActive) {
+                    networkAvailable = hasInternet(context)
+                    delay(2_000)
+                }
+            }
 
             LaunchedEffect(loggedIn, activeCampus) {
-                if (loggedIn) {
+                if (loggedIn && ServiceLocator.auth.hasSession()) {
                     val auth = ServiceLocator.auth
                     withContext(Dispatchers.IO) {
                         SsoWarmup.warm(ServiceLocator.http, auth, activeCampus)
+                        ServiceLocator.repo.prefetchBasicData()
+                    }
+                }
+            }
+
+            // rememberSaveable 可能恢复上次的「登录页」状态；已有离线快照时，
+            // 启动后重新判定一次，确保断网仍能进入基本功能。
+            LaunchedEffect(activeCampus) {
+                if (ServiceLocator.auth.hasSession() || ServiceLocator.hasOfflineData()) {
+                    loggedIn = true
+                    if (nav.currentBackStackEntry?.destination?.route == Routes.LOGIN) {
+                        nav.navigate(Routes.HOME) {
+                            popUpTo(Routes.LOGIN) { inclusive = true }
+                        }
                     }
                 }
             }
@@ -183,65 +215,76 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                 }
             }
 
-            // 宽屏 / 横屏用侧边导航：横屏时底部栏会吃掉本就紧张的高度。
-            // 这条分支没有 Scaffold，背景要自己铺，否则会透出系统窗口底色（深色模式下就是一片白）。
-            if (showNav && screen.useNavRail) {
-                Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                    NavigationRail(
-                        modifier = Modifier.windowInsetsPadding(
-                            WindowInsets.safeDrawing.only(
-                                WindowInsetsSides.Start + WindowInsetsSides.Vertical,
+            Box(Modifier.fillMaxSize()) {
+                // 宽屏 / 横屏用侧边导航：横屏时底部栏会吃掉本就紧张的高度。
+                // 这条分支没有 Scaffold，背景要自己铺，否则会透出系统窗口底色（深色模式下就是一片白）。
+                if (showNav && screen.useNavRail) {
+                    Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                        NavigationRail(
+                            modifier = Modifier.windowInsetsPadding(
+                                WindowInsets.safeDrawing.only(
+                                    WindowInsetsSides.Start + WindowInsetsSides.Vertical,
+                                ),
                             ),
-                        ),
-                    ) {
-                        Spacer(Modifier.weight(1f))
-                        TABS.forEach { tab ->
-                            NavigationRailItem(
-                                selected = current == tab.route,
-                                onClick = { onTab(tab) },
-                                icon = { Icon(tab.icon, tab.label) },
-                                label = { Text(tab.label) },
+                        ) {
+                            Spacer(Modifier.weight(1f))
+                            TABS.forEach { tab ->
+                                NavigationRailItem(
+                                    selected = current == tab.route,
+                                    onClick = { onTab(tab) },
+                                    icon = { Icon(tab.icon, tab.label) },
+                                    label = { Text(tab.label) },
+                                )
+                            }
+                            Spacer(Modifier.weight(1f))
+                        }
+                        // 侧栏分支没有 Scaffold，必须自己做状态栏 / 手势区避让；
+                        // 同时把可用宽度告诉下游，限宽居中才不会被侧栏顶偏。
+                        CompositionLocalProvider(
+                            LocalScreenInfo provides screen.shrunkBy(RAIL_WIDTH),
+                        ) {
+                            graph(
+                                Modifier
+                                    .weight(1f)
+                                    .windowInsetsPadding(
+                                        WindowInsets.safeDrawing.only(
+                                            WindowInsetsSides.End + WindowInsetsSides.Vertical,
+                                        ),
+                                    ),
                             )
                         }
-                        Spacer(Modifier.weight(1f))
                     }
-                    // 侧栏分支没有 Scaffold，必须自己做状态栏 / 手势区避让；
-                    // 同时把可用宽度告诉下游，限宽居中才不会被侧栏顶偏。
-                    CompositionLocalProvider(
-                        LocalScreenInfo provides screen.shrunkBy(RAIL_WIDTH),
-                    ) {
-                        graph(
-                            Modifier
-                                .weight(1f)
-                                .windowInsetsPadding(
-                                    WindowInsets.safeDrawing.only(
-                                        WindowInsetsSides.End + WindowInsetsSides.Vertical,
-                                    ),
-                                ),
-                        )
-                    }
-                }
-            } else {
-                Scaffold(
-                    // 不在这里消费 window insets：首页的渐变要铺到状态栏下面，
-                    // 其余带 TopAppBar 的页面由各自的 Scaffold 处理。
-                    contentWindowInsets = WindowInsets(0),
-                    bottomBar = {
-                        if (showNav) {
-                            NavigationBar {
-                                TABS.forEach { tab ->
-                                    NavigationBarItem(
-                                        selected = current == tab.route,
-                                        onClick = { onTab(tab) },
-                                        icon = { Icon(tab.icon, tab.label) },
-                                        label = { Text(tab.label) },
-                                    )
+                } else {
+                    Scaffold(
+                        // 不在这里消费 window insets：首页的渐变要铺到状态栏下面，
+                        // 其余带 TopAppBar 的页面由各自的 Scaffold 处理。
+                        contentWindowInsets = WindowInsets(0),
+                        bottomBar = {
+                            if (showNav) {
+                                NavigationBar {
+                                    TABS.forEach { tab ->
+                                        NavigationBarItem(
+                                            selected = current == tab.route,
+                                            onClick = { onTab(tab) },
+                                            icon = { Icon(tab.icon, tab.label) },
+                                            label = { Text(tab.label) },
+                                        )
+                                    }
                                 }
                             }
-                        }
-                    },
-                ) { padding ->
-                    graph(Modifier.padding(padding))
+                        },
+                    ) { padding ->
+                        graph(Modifier.padding(padding))
+                    }
+                }
+
+                if (loggedIn && !networkAvailable) {
+                    OfflineBanner(
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
                 }
             }
 
@@ -249,6 +292,13 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
             AutoUpdatePrompt()
         }
     }
+}
+
+private fun hasInternet(context: android.content.Context): Boolean {
+    val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+    val network = connectivity.activeNetwork ?: return false
+    return connectivity.getNetworkCapabilities(network)
+        ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
 }
 
 private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus) {

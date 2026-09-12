@@ -1,6 +1,7 @@
 package io.github.joyreverie.onebnu.data.repo
 
 import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
+import io.github.joyreverie.onebnu.core.store.OfflineCache
 import io.github.joyreverie.onebnu.core.store.SecureStore
 import io.github.joyreverie.onebnu.data.model.InfoItem
 import io.github.joyreverie.onebnu.data.model.StudentProfile
@@ -28,6 +29,7 @@ class SessionRepository(
     private val api: ZyfwApi,
     private val auth: SessionAuthenticator,
     private val secure: SecureStore,
+    private val offlineCache: OfflineCache? = null,
 ) {
 
     sealed interface State {
@@ -57,14 +59,13 @@ class SessionRepository(
     }
 
     private fun load(): State {
-        if (!auth.hasSession() && !relogin()) {
-            return State.Failed("登录状态已失效，请重新登录", needLogin = true)
-        }
+        if (!auth.hasSession() && !relogin()) return cachedProfile()
         return try {
             api.ensureSession(force = true)
             val xml = api.studentInfoHtml()
             val parsed = Parsers.parseStudentProfile(xml)
             if (parsed != null) {
+                offlineCache?.saveStudentProfile(OfflineCache.STUDENT_PROFILE, parsed)
                 State.Ready(parsed)
             } else {
                 // 学籍接口没给出内容时，退回 SetMainInfo.jsp 里的基本身份，
@@ -91,17 +92,26 @@ class SessionRepository(
             if (relogin()) {
                 runCatching {
                     api.ensureSession(force = true)
-                    Parsers.parseStudentProfile(api.studentInfoHtml())
+                    val xml = api.studentInfoHtml()
+                    val parsed = Parsers.parseStudentProfile(xml)
+                    if (parsed != null) offlineCache?.saveStudentProfile(OfflineCache.STUDENT_PROFILE, parsed)
+                    parsed
                 }.getOrNull()?.let { return State.Ready(it) }
             }
-            State.Failed("登录状态已失效，请重新登录", needLogin = true)
+            cachedProfile("登录状态已失效，请重新登录")
         } catch (e: java.net.UnknownHostException) {
-            State.Failed("无法连接到教务系统，请检查网络", needLogin = false)
+            cachedProfile("无法连接到教务系统，请检查网络")
         } catch (e: java.net.SocketTimeoutException) {
-            State.Failed("教务系统响应超时，请稍后重试", needLogin = false)
+            cachedProfile("教务系统响应超时，请稍后重试")
         } catch (e: Exception) {
-            State.Failed(e.message ?: "读取用户信息失败", needLogin = false)
+            cachedProfile(e.message ?: "读取用户信息失败")
         }
+    }
+
+    private fun cachedProfile(fallbackMessage: String = "登录状态已失效，请重新登录"): State {
+        val profile = offlineCache?.loadStudentProfile(OfflineCache.STUDENT_PROFILE)
+        return profile?.let { State.Ready(it) }
+            ?: State.Failed(fallbackMessage, needLogin = !auth.hasSession())
     }
 
     private fun relogin(): Boolean {

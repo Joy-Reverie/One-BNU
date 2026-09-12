@@ -80,7 +80,7 @@ data class CreditsUiState(
 
 /**
  * 学分核算：把每个学期的选课课程表拼起来，按模块归类求和。
- * 归类依据依次是用户手动指定、培养方案课程模块、成绩单课程性质、名称与课程号推断（见 [CategoryRules]）。
+ * 归类依据依次是手动指定、选课结果官方类别、课程中心/培养方案模块、成绩单课程性质、最后才推断。
  */
 class CreditsViewModel : ViewModel() {
     private val repo = ServiceLocator.repo
@@ -91,6 +91,7 @@ class CreditsViewModel : ViewModel() {
     private var schedules: List<Schedule> = emptyList()
     private var grades: List<Grade> = emptyList()
     private var modules: Map<String, CourseCategory> = emptyMap()
+    private var selection: Map<String, CourseCategory> = emptyMap()
 
     init { load() }
 
@@ -120,6 +121,9 @@ class CreditsViewModel : ViewModel() {
             modules = (repo.courseModules() as? Outcome.Ok)?.data.orEmpty().mapNotNull { (code, label) ->
                 CategoryRules.fromGradeType(label)?.let { code to it }
             }.toMap()
+            selection = (repo.selectionCategories() as? Outcome.Ok)?.data.orEmpty().mapNotNull { (code, label) ->
+                CategoryRules.fromGradeType(label)?.let { code to it }
+            }.toMap()
             val requirements = (repo.creditRequirement() as? Outcome.Ok)?.data.orEmpty()
             _state.value = CreditsUiState(
                 loading = false,
@@ -128,6 +132,7 @@ class CreditsViewModel : ViewModel() {
                     grades,
                     manual.all(),
                     modules,
+                    selection,
                 ),
                 requirements = requirements,
             )
@@ -137,7 +142,7 @@ class CreditsViewModel : ViewModel() {
     /** 手动改一门课的模块；传 null 恢复自动归类。 */
     fun setCategory(courseCode: String, category: CourseCategory?) {
         manual.set(courseCode, category)
-        _state.value = _state.value.copy(ledger = CategoryRules.build(schedules, grades, manual.all(), modules))
+        _state.value = _state.value.copy(ledger = CategoryRules.build(schedules, grades, manual.all(), modules, selection))
     }
 }
 
@@ -338,6 +343,9 @@ private fun CategoryDialog(entry: LedgerEntry, onDismiss: () -> Unit, onPick: (C
                             Text(
                                 when (entry.source) {
                                     CategorySource.MANUAL -> "手动"
+                                    CategorySource.SELECTION_RESULT -> "选课结果"
+                                    CategorySource.COURSE_CENTER -> "课程中心"
+                                    CategorySource.MODULE -> "培养方案"
                                     CategorySource.GRADE -> "成绩单"
                                     CategorySource.INFERRED -> "推断"
                                 },

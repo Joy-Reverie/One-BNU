@@ -79,7 +79,7 @@ class CreditLedgerTest {
             mapOf("MAR20531801" to CourseCategory.PUBLIC_REQUIRED),
         )
         assertEquals(CourseCategory.PUBLIC_REQUIRED, ledger.entries.single().category)
-        assertEquals(CategorySource.GRADE, ledger.entries.single().source)
+        assertEquals(CategorySource.MODULE, ledger.entries.single().source)
     }
 
     @Test
@@ -87,5 +87,21 @@ class CreditLedgerTest {
         assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.fromGradeType("专业选修课"))
         assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.fromGradeType("学位专业课"))
         assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.fromGradeType("学位必修课"))
+    }
+
+    @Test
+    fun `选课结果官方类别优先于培养方案与成绩单`() {
+        val c = course("AIS21100001", "课程甲", 2.0)
+        val schedule = Schedule(autumn, "1", "张三", "", listOf(c))
+        val grade = Grade("2026", "0", "", "AIS21100001", "课程甲", 2.0, "90", 90.0, null, courseType = "学位基础课")
+        val ledger = CategoryRules.build(
+            schedules = listOf(schedule),
+            grades = listOf(grade),
+            manual = emptyMap(),
+            modules = mapOf("AIS21100001" to CourseCategory.DEGREE_BASIC),
+            selection = mapOf("AIS21100001" to CourseCategory.DEGREE_MAJOR),
+        )
+        assertEquals(CourseCategory.DEGREE_MAJOR, ledger.entries.single().category)
+        assertEquals(CategorySource.SELECTION_RESULT, ledger.entries.single().source)
     }
 }

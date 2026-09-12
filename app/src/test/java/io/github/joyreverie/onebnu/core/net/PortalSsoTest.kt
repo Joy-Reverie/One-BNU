@@ -26,7 +26,7 @@ class PortalSsoTest {
 
     @Test
     fun `珠海门户 OAuth 使用独立认证域和 testnup`() {
-        val service = "https://one.bnuzh.edu.cn/"
+        val service = "https://one.bnuzh.edu.cn/nup/"
         val authorize = PortalSso.authorizationUrl(Campus.ZHUHAI, service).toHttpUrl()
         val redirect = authorize.queryParameter("redirect_uri")!!.toHttpUrl()
 
@@ -36,6 +36,7 @@ class PortalSsoTest {
         assertEquals("/nup/cas.html", redirect.encodedPath)
         assertEquals(service, redirect.queryParameter("service"))
         assertTrue(PortalSso.isPortalService(Campus.ZHUHAI, service))
+        assertTrue(PortalSso.isPortalService(Campus.ZHUHAI, "https://one.bnuzh.edu.cn/"))
         assertFalse(PortalSso.isPortalService(Campus.ZHUHAI, "https://one.bnu.edu.cn/tp_nup/"))
     }
 }

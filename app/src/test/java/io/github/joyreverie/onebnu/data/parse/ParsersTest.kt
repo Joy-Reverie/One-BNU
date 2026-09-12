@@ -246,4 +246,19 @@ class ParsersTest {
             Parsers.parseCourseModules(fixture("course_modules_table.html")),
         )
     }
+
+    @Test
+    fun `解析选课结果官方课程类别`() {
+        val html = """
+            <table><thead><tr><td>课程号</td><td>课程名称</td><td>课程性质</td></tr></thead>
+            <tbody>
+              <tr><td>[AIS21100001]课程甲</td><td>课程甲</td><td>专业选修课</td></tr>
+              <tr><td>GRA20220001</td><td>课程乙</td><td>公共必修课</td></tr>
+            </tbody></table>
+        """.trimIndent()
+        assertEquals(
+            mapOf("AIS21100001" to "专业选修课", "GRA20220001" to "公共必修课"),
+            Parsers.parseCourseCategories(html),
+        )
+    }
 }

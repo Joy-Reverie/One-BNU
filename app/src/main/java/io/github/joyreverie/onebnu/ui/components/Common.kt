@@ -71,6 +71,26 @@ fun BnuCard(
     ) { content() }
 }
 
+@Composable
+fun OfflineBanner(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.96f),
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = RoundedCornerShape(10.dp),
+        tonalElevation = 3.dp,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.CloudOff, null, Modifier.size(17.dp))
+            Spacer(Modifier.width(7.dp))
+            Text("无网络连接，可能需要联网更新", style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
 /** 统一的轻投影，暗色下自动减弱（暗背景上强阴影会变成黑块）。 */
 @Composable
 fun Modifier.shadowSoft(shape: RoundedCornerShape, elevation: Dp = 2.dp): Modifier {

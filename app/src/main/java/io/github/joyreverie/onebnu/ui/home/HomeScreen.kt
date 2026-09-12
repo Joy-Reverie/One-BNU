@@ -98,9 +98,9 @@ private val ZHUHAI_ENTRIES = listOf(
     Entry("空闲教室", Icons.Outlined.MeetingRoom, Routes.CLASSROOM, 1),
     Entry("校历周次", Icons.Outlined.CalendarMonth, Routes.CALENDAR, 2),
     Entry("图书馆", Icons.Outlined.LocalLibrary, Routes.web("珠海图书馆", "https://library.bnuzh.edu.cn/", false), 3),
-    // 和北京数字京师、两校区教务一样，门户走当前珠海 CAS 的标准 service ticket；
-    // WebView 不填充密码，服务端只接收一次性票据。
-    Entry("珠海门户", Icons.Outlined.Public, Routes.web("珠海门户", "https://one.bnuzh.edu.cn/", true), 4),
+    // 珠海门户的 accessToken Cookie 作用域是 /nup；根路径会被 aTrust 网关接管，
+    // 因此入口必须落在 /nup/，WebView 仍复用当前珠海 CAS 会话免二次输入。
+    Entry("珠海门户", Icons.Outlined.Public, Routes.web("珠海门户", "https://one.bnuzh.edu.cn/nup/", true), 4),
     Entry("珠海教务", Icons.Outlined.AccountBalance, Routes.web("珠海教务系统", "https://jwxt.bnuzh.edu.cn/caslogin", true), 5),
 )
 

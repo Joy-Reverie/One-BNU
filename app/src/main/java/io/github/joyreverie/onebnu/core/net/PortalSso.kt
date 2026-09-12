@@ -14,6 +14,7 @@ internal object PortalSso {
     private const val CAS_ZHUHAI = "cas.bnuzh.edu.cn"
     private const val BEIJING_PORTAL = "one.bnu.edu.cn"
     private const val ZHUHAI_PORTAL = "one.bnuzh.edu.cn"
+    private const val ZHUHAI_PORTAL_PATH = "/nup"
     private const val BEIJING_CLIENT = "nup"
     private const val ZHUHAI_CLIENT = "testnup"
     private const val TOKEN_COOKIE = "accessToken"
@@ -37,9 +38,10 @@ internal object PortalSso {
         Campus.ZHUHAI to Config(
             casHost = CAS_ZHUHAI,
             portalHost = ZHUHAI_PORTAL,
-            portalPath = "/nup",
+            portalPath = ZHUHAI_PORTAL_PATH,
             clientId = ZHUHAI_CLIENT,
-            hasCasDelegate = false,
+            // cas.html 直接把缺省的 JS null 拼进查询串，官方请求实际是 casDelegate=null。
+            hasCasDelegate = true,
         ),
     )
 
@@ -77,6 +79,11 @@ internal object PortalSso {
         val config = configs[campus] ?: return false
         if (!isPortalService(campus, service) || !auth.hasSession()) return false
 
+        // 珠海门户入口现在由 aTrust 网关保护，入口与 cas.html 都需要执行官方
+        // JavaScript challenge。应用侧 OkHttp 无法代替这个 challenge；交给 WebView
+        // 走同一条官方 OAuth 回调，WebView 会复用下面同步进去的 CASTGC，不会再次填密码。
+        if (campus == Campus.ZHUHAI) return false
+
         val authorizeUrl = authorizationUrl(campus, service)
         val authorize = authorizeUrl.toHttpUrlOrNull() ?: return false
         val redirect = authorize.queryParameter("redirect_uri")?.toHttpUrlOrNull()
@@ -89,8 +96,9 @@ internal object PortalSso {
         // JSESSIONID。若直接从 CAS authorize 开始，casToken 接口会返回「会话已过期」。
         val entry = http.getOnce(service)
         Log.i(TAG, "${config.portalHost} entry HTTP ${entry.code} → ${safeLocation(entry.location)}")
-        val useOneVpnProxy = entry.location?.host == "onevpn.bnu.edu.cn" &&
-            entry.location?.encodedPath == "/login"
+        val useOneVpnProxy = entry.location?.let { location ->
+            location.host == "onevpn.bnu.edu.cn" && location.encodedPath == "/login"
+        } == true
         if (useOneVpnProxy && !OneVpnSso.hasProxySession(http)) {
             runCatching {
                 OneVpnSso.establish(http, auth, campus, OneVpnSso.COURSE_CENTER)

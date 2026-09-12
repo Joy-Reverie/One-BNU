@@ -52,6 +52,8 @@ data class Course(
     val studyType: String = "",
     /** 主修 / 辅修 / 微专业。 */
     val majorType: String = "",
+    /** 官方选课结果若直接返回课程性质/类别，保留原文供学分核算使用。 */
+    val categoryLabel: String = "",
 ) {
     val teacherLabel: String get() = teachers.joinToString("、")
 }

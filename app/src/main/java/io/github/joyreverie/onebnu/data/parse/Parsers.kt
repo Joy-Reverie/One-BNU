@@ -58,6 +58,7 @@ object Parsers {
         val iWhen = header.findAny("上课时间、地点", "上课时间", "时间、地点", "时间")
         val iStudy = header.findAny("修读性质", "修读")
         val iMajor = header.findAny("辅修标识", "辅修")
+        val iCategory = header.findAny("课程类别", "课程性质", "课程模块", "类别")
 
         val courses = ArrayList<Course>()
         for (row in dataRows(table)) {
@@ -84,6 +85,7 @@ object Parsers {
                 sessions = parseSessions(whenText),
                 studyType = cells.getOrNull(iStudy).orEmpty(),
                 majorType = cells.getOrNull(iMajor).orEmpty(),
+                categoryLabel = cells.getOrNull(iCategory).orEmpty(),
             )
         }
         return Schedule(term, studentId, studentName, className, courses)
@@ -234,6 +236,34 @@ object Parsers {
             val module = cells.getOrNull(iModule).orEmpty()
             val code = cells.getOrNull(iCode).orEmpty()
             if (module.isBlank() || code.isBlank() || module == "课程模块") null else code to module
+        }.toMap()
+    }
+
+    /**
+     * 解析网上选课「选课结果」等官方表格中的课程号 → 课程类别。
+     * 页面版本会把列名写成「类别」「课程性质」或「课程模块」，因此只按表头定位。
+     */
+    fun parseCourseCategories(html: String): Map<String, String> {
+        val doc = Jsoup.parse(html)
+        val table = doc.select("table").firstOrNull { candidate ->
+            val header = headerIndex(candidate)
+            header.findAny("课程代码", "课程号", "代码", "课程") >= 0 &&
+                header.findAny("课程类别", "课程性质", "课程模块", "类别", "类型") >= 0 &&
+                candidate.select("tr").size >= 2
+        } ?: return emptyMap()
+        val header = headerIndex(table)
+        val iCode = header.findAny("课程代码", "课程号", "代码", "课程")
+        val iCategory = header.findAny("课程类别", "课程性质", "课程模块", "类别", "类型")
+        if (iCode < 0 || iCategory < 0) return emptyMap()
+        return dataRows(table).mapNotNull { row ->
+            val cells = row.select("td").map { it.cleanText() }
+            val rawCode = cells.getOrNull(iCode).orEmpty()
+            val code = Regex("""\[([^\]]+)]""").find(rawCode)?.groupValues?.get(1)
+                ?: rawCode.takeIf { it.matches(Regex("[A-Za-z0-9_-]{5,}")) }
+                ?: return@mapNotNull null
+            val category = cells.getOrNull(iCategory).orEmpty()
+            if (category.isBlank() || category == "课程类别" || category == "课程性质") null
+            else code to category
         }.toMap()
     }
 

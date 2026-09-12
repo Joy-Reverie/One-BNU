@@ -26,7 +26,7 @@ internal object SsoWarmup {
             Target("课程中心", OneVpnSso.COURSE_CENTER, Kind.ONEVPN),
         )
         Campus.ZHUHAI -> listOf(
-            Target("珠海门户", "https://one.bnuzh.edu.cn/", Kind.PORTAL),
+            Target("珠海门户", "https://one.bnuzh.edu.cn/nup/", Kind.PORTAL),
             Target("珠海教务", "https://jwxt.bnuzh.edu.cn/caslogin", Kind.CAS),
         )
     }

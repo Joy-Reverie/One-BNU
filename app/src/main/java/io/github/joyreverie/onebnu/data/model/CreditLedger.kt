@@ -14,8 +14,15 @@ enum class CourseCategory(val label: String, val short: String) {
     }
 }
 
-/** 归类是怎么来的：用户手动指定 > 教务课程模块/成绩单性质 > 名称与课程号推断。 */
-enum class CategorySource { MANUAL, GRADE, INFERRED }
+/** 归类来源；顺序同时表达可信度从高到低。 */
+enum class CategorySource {
+    MANUAL,
+    SELECTION_RESULT,
+    COURSE_CENTER,
+    MODULE,
+    GRADE,
+    INFERRED,
+}
 
 data class LedgerEntry(
     val term: Term,
@@ -41,9 +48,10 @@ data class CreditLedger(val terms: List<TermLedger>) {
 /**
  * 归类规则。教务的选课课程表没有课程类别列，所以：
  *  1. 用户在应用里手动指定过的最优先；
- *  2. 教务「学业成绩与培养方案对比」返回课程模块时使用该模块；
- *  3. 成绩单里给了「课程性质」的照抄（成绩出来之后自动纠正推断）；
- *  4. 都没有时先按课程名称识别公共课，再按课程号与学分推断。
+ *  2. 网上选课结果中的官方课程类别；
+ *  3. 课程中心 / 教务培养方案对比页返回课程模块；
+ *  4. 成绩单里给了「课程性质」的照抄；
+ *  5. 都没有时先按课程名称识别公共课，再按课程号与学分推断。
  *
  * 珠海校区的公共课课程号并不统一使用 GRA（例如政治理论课可能是 MAR），
  * 因此不能把「GRA 才是公共课」当成硬规则。
@@ -105,8 +113,12 @@ object CategoryRules {
         grades: List<Grade>,
         manual: Map<String, CourseCategory>,
         modules: Map<String, CourseCategory> = emptyMap(),
+        selection: Map<String, CourseCategory> = emptyMap(),
+        courseCenter: Map<String, CourseCategory> = emptyMap(),
     ): CreditLedger {
         val byModule = modules.mapKeys { normalizeCode(it.key) }
+        val bySelection = selection.mapKeys { normalizeCode(it.key) }
+        val byCourseCenter = courseCenter.mapKeys { normalizeCode(it.key) }
         val byGradeCode = HashMap<String, CourseCategory>()
         val byGradeName = HashMap<String, CourseCategory>()
         grades.forEach { g ->
@@ -120,16 +132,21 @@ object CategoryRules {
             .sortedWith(compareBy({ it.term.xn }, { it.term.xq }))
             .map { s ->
                 val entries = s.courses
-                    .sortedWith(compareBy<Course>({ CategoryRules.orderOf(it, byManual, byModule, byGradeCode, byGradeName) }, { -it.credits }, { it.name }))
-                    .map { c ->
-                        val code = normalizeCode(c.code)
-                        val m = byManual[code]
-                        val module = byModule[code]
-                        val g = byGradeCode[code] ?: byGradeName[normalizeLabel(c.name)]
-                        when {
-                            m != null -> LedgerEntry(s.term, c, m, CategorySource.MANUAL)
-                            module != null -> LedgerEntry(s.term, c, module, CategorySource.GRADE)
-                            g != null -> LedgerEntry(s.term, c, g, CategorySource.GRADE)
+                    .sortedWith(compareBy<Course>({ CategoryRules.orderOf(it, byManual, bySelection, byCourseCenter, byModule, byGradeCode, byGradeName) }, { -it.credits }, { it.name }))
+                        .map { c ->
+                            val code = normalizeCode(c.code)
+                            val m = byManual[code]
+                            val selectionCategory = bySelection[code]
+                                ?: fromGradeType(c.categoryLabel)
+                            val center = byCourseCenter[code]
+                            val module = byModule[code]
+                            val g = byGradeCode[code] ?: byGradeName[normalizeLabel(c.name)]
+                            when {
+                                m != null -> LedgerEntry(s.term, c, m, CategorySource.MANUAL)
+                                selectionCategory != null -> LedgerEntry(s.term, c, selectionCategory, CategorySource.SELECTION_RESULT)
+                                center != null -> LedgerEntry(s.term, c, center, CategorySource.COURSE_CENTER)
+                                module != null -> LedgerEntry(s.term, c, module, CategorySource.MODULE)
+                                g != null -> LedgerEntry(s.term, c, g, CategorySource.GRADE)
                             else -> LedgerEntry(s.term, c, infer(c), CategorySource.INFERRED)
                         }
                     }
@@ -141,10 +158,15 @@ object CategoryRules {
     private fun orderOf(
         c: Course,
         manual: Map<String, CourseCategory>,
+        selection: Map<String, CourseCategory>,
+        courseCenter: Map<String, CourseCategory>,
         modules: Map<String, CourseCategory>,
         byGradeCode: Map<String, CourseCategory>,
         byGradeName: Map<String, CourseCategory>,
     ): Int = (manual[normalizeCode(c.code)]
+        ?: selection[normalizeCode(c.code)]
+        ?: fromGradeType(c.categoryLabel)
+        ?: courseCenter[normalizeCode(c.code)]
         ?: modules[normalizeCode(c.code)]
         ?: byGradeCode[normalizeCode(c.code)]
         ?: byGradeName[normalizeLabel(c.name)]

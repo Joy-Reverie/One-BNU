@@ -29,7 +29,7 @@ class SsoWarmupTest {
 
         assertEquals(
             listOf(
-                "https://one.bnuzh.edu.cn/",
+                "https://one.bnuzh.edu.cn/nup/",
                 "https://jwxt.bnuzh.edu.cn/caslogin",
             ),
             services,

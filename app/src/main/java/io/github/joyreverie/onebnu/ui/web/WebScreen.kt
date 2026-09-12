@@ -134,7 +134,9 @@ fun WebScreen(
             if (target == null) {
                 LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
             } else {
-                val pageUrl = portalWebViewUrl(requireNotNull(target))
+                val pageUrl = portalWebViewUrl(
+                    PortalSso.webViewUrl(campus, requireNotNull(target)),
+                )
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
@@ -351,7 +353,7 @@ fun WebScreen(
                             Log.i(
                                 TAG,
                                 "同步认证 Cookie，CASTGC=${CookieManager.getInstance().getCookie(
-                                    if (campus == Campus.BEIJING) "https://cas.bnu.edu.cn/" else "https://cas.bnuzh.edu.cn/",
+                                    if (campus == Campus.BEIJING) "https://cas.bnu.edu.cn/cas/login" else "https://cas.bnuzh.edu.cn/cas/login",
                                 )?.contains("CASTGC=") == true}",
                             )
                             post { loadUrl(pageUrl) }
@@ -424,7 +426,7 @@ private fun syncCookiesToWebView(includeOneVpn: Boolean = true) {
     val domains = if (ServiceLocator.activeCampus == Campus.BEIJING) {
         casHost = "cas.bnu.edu.cn"
         listOf(
-            "https://cas.bnu.edu.cn/",
+            "https://cas.bnu.edu.cn/cas/login",
             "https://one.bnu.edu.cn/",
             "https://onevpn.bnu.edu.cn/",
             "https://kczx.bnu.edu.cn/",
@@ -432,7 +434,7 @@ private fun syncCookiesToWebView(includeOneVpn: Boolean = true) {
         )
     } else {
         casHost = "cas.bnuzh.edu.cn"
-        listOf("https://cas.bnuzh.edu.cn/", "https://one.bnuzh.edu.cn/", "https://jwxt.bnuzh.edu.cn/")
+        listOf("https://cas.bnuzh.edu.cn/cas/login", "https://one.bnuzh.edu.cn/nup/", "https://jwxt.bnuzh.edu.cn/")
     }
     // 旧版本可能把 CASTGC 按 `.bnu.edu.cn` / `.bnuzh.edu.cn` 写入过 WebView。
     // 先清掉这个跨子域副本，再只为 CAS 主机种 host-only 票据，避免 OneVPN 等子域收到它。
@@ -464,11 +466,8 @@ private fun syncCookiesToWebView(includeOneVpn: Boolean = true) {
             // 因同步到 WebView 而扩大到 OneVPN / 门户等其他子域。
             if (isCasTicket && url.host != casHost) continue
             cm.setCookie(
-                domain,
-                c.webViewValue(
-                    hostOnly = isCasTicket,
-                    hostOnlyDomain = if (isCasTicket) casHost else null,
-                ),
+                                domain,
+                                c.webViewValue(hostOnly = isCasTicket),
             )
         }
     }
@@ -476,11 +475,9 @@ private fun syncCookiesToWebView(includeOneVpn: Boolean = true) {
 }
 
 /** 保留服务端原有的 secure / HttpOnly 属性；CAS ticket 则故意省略 Domain 以成为 host-only Cookie。 */
-private fun Cookie.webViewValue(hostOnly: Boolean, hostOnlyDomain: String? = null): String = buildString {
+private fun Cookie.webViewValue(hostOnly: Boolean): String = buildString {
     append("$name=$value; Path=$path")
-    if (hostOnly) {
-        hostOnlyDomain?.let { append("; Domain=$it") }
-    } else {
+    if (!hostOnly) {
         append("; Domain=$domain")
     }
     if (secure) append("; Secure")

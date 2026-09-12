@@ -38,6 +38,7 @@ object ScheduleJson {
         put("teachers", JSONArray(c.teachers))
         put("studyType", c.studyType)
         put("majorType", c.majorType)
+        put("categoryLabel", c.categoryLabel)
         put("sessions", JSONArray().also { arr -> c.sessions.forEach { arr.put(session(it)) } })
     }
 
@@ -51,6 +52,7 @@ object ScheduleJson {
         sessions = o.optJSONArray("sessions")?.objects { session(it) } ?: emptyList(),
         studyType = o.optString("studyType"),
         majorType = o.optString("majorType"),
+        categoryLabel = o.optString("categoryLabel"),
     )
 
     private fun session(s: ClassSession): JSONObject = JSONObject().apply {

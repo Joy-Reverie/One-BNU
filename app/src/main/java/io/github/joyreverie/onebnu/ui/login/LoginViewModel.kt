@@ -220,6 +220,11 @@ class LoginViewModel : ViewModel() {
 
     private fun onLoggedIn(onSuccess: () -> Unit) {
         val s = _state.value
+        val sameRememberedAccount = secure.hasCredentials && secure.username == s.username
+        if (!sameRememberedAccount) {
+            // 当前校区可能留有上一账号的离线快照；不把它展示给新账号。
+            ServiceLocator.clearAcademicData()
+        }
         secure.save(s.username, s.password, s.remember)
         countdown?.cancel()
         countdown = null

@@ -224,6 +224,30 @@ class ZyfwApi(
         return guard(http.get(url, home).body)
     }
 
+    /**
+     * 网上选课「选课结果」页面。不同校区与系统版本的菜单路径略有差异，
+     * 依次尝试页面入口和数据页，只有解析到官方类别才提前返回。
+     */
+    @Throws(IOException::class)
+    fun selectionResultHtml(): String {
+        ensureSession()
+        val params = b64("xn=${userContext?.currentXn.orEmpty()}&xq=${userContext?.currentXq.orEmpty()}")
+        val candidates = listOf(
+            "$activeBase/student/wsxk.xkjg.html",
+            "$activeBase/student/xkjg.xkjg.html",
+            "$activeBase/student/xkjg.xkjg_data.jsp",
+            "$activeBase/wsxk/xkjg.xkjg_data.jsp",
+            "$activeBase/wsxk/xkjg.ckdgxsxdkchj_data10319.jsp?params=$params&t=${token()}",
+        )
+        var last = ""
+        for (url in candidates) {
+            val body = guard(http.get(url, home).body)
+            last = body
+            if (Parsers.parseCourseCategories(body).isNotEmpty()) return body
+        }
+        return last
+    }
+
     // ------------------------------------------------------------------
     // 成绩
     // ------------------------------------------------------------------

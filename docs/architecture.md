@@ -46,14 +46,15 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 | 功能 | 接口 | 说明 |
 |---|---|---|
-| 课表 | `wsxk/xkjg.ckdgxsxdkchj_data10319.jsp` | 表格无课程类别列 |
+| 课表 | `wsxk/xkjg.ckdgxsxdkchj_data10319.jsp` | 课程类别列存在时保留官方原文；通常以选课结果补齐 |
+| 选课结果 | 网上选课结果页面的候选入口 | 解析官方课程号 → 课程类别，作为学分核算最高优先级的自动来源 |
 | 成绩 | `xscj.chkdgxscjyxxjd_data.jsp` | 按列名而非列序定位；含「课程性质」 |
 | 考试 | `DataTable.jsp?tableId=2538` | |
 | 空闲教室 | 教室课表取补集 | 北京、珠海均可用；只反映排课占用 |
 | 学籍 | `STU_BaseInfoAction.do`（XML） | 身份证号、准考证号等敏感字段不展示 |
 | 培养方案要求 | `DataTable.jsp?tableId=6033` | 学分核算里有数据时附带显示 |
 | 培养方案课程模块 | `DataTable.jsp?tableId=5327008` | 有数据时优先作为学分归类依据 |
-| 课程中心 | `kczx.bnu.edu.cn` `jw-pyfa` SPA | 北京校区；个人培养方案、教学手册、教学大纲实时展示 |
+| 课程中心 | `kczx.bnu.edu.cn` `jw-pyfa` SPA | 官方实时页面；用于查看个人培养方案、教学手册、教学大纲，不把网页内容复制进应用 |
 | 校历 | 无接口 | 手工录入，见 `data/model/OfficialCalendar.kt` |
 | 作息时间 | 无接口 | 默认 `Settings.PERIOD_TIMES` 按学校统一作息生成，可在设置里逐节自定义 |
 
@@ -71,9 +72,9 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 教务系统等普通 CAS 入口不直接把 CAS 登录页交给 WebView：`WebScreen` 先用当前
 `SessionAuthenticator` 在应用侧完成一次标准 SSO，取得目标站点的会话 Cookie 后再加载最终地址。数字京师与珠海门户
-使用的是官方 OAuth CAS 流程，`PortalSso` 从 CAS authorize 回调中取一次性 code，再调用门户自己的 token 接口换取
-`accessToken`；token 只存在进程内并以门户专属 Cookie 交给网页脚本使用。点击门户时优先使用这条已预热会话；
-如果会话已失效或预热失败，WebView 回退到官方 `cas.html`，用已同步的 CAS 会话完成 OAuth，不在网页中填写账号密码。
+使用的是官方 OAuth CAS 流程。北京门户可由 `PortalSso` 从 CAS authorize 回调中取一次性 code，再调用门户自己的 token 接口换取
+`accessToken`；珠海门户入口固定为 `/nup/`，因入口前有 aTrust challenge，改由 WebView 执行官方回调脚本。两者都只复用
+当前 CAS 会话，不在网页中填写账号密码；门户 token 若存在，只以门户专属 Cookie 交给网页脚本。
 整个过程复用应用已有的认证会话，不保存或向网页填写账号密码。
 
 认证网络请求使用有限连接、读取和总超时；超时会回到可重试的登录提示，避免弱网或代理异常时界面永久停在加载状态。门户 WebView
@@ -86,7 +87,13 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 仍严格限制在 CAS 主机。
 
 珠海当前使用独立的 `cas.bnuzh.edu.cn`，而课程中心的北京入口和旧 OneVPN 登录中转明确指向 `cas.bnu.edu.cn`。
-在学校没有明确提供跨域委托前，应用不会把珠海凭据或 CAS 票据送往北京认证域；珠海用户仍在学校官方页面完成课程中心登录。
+在学校没有明确提供跨域委托前，应用不会把珠海凭据或 CAS 票据送往北京认证域；珠海门户则使用珠海自己的 `/nup/` OAuth 回调。
+
+## 离线快照
+
+`core/store/OfflineCache.kt` 按校区保存应用私有快照。登录成功后，`OneBnuRoot` 后台预热学期、各学期课表、成绩、考试轮次与安排、
+教室索引、学籍、培养方案模块和毕业学分要求；每个请求成功才写入，失败时由 `AcademicRepository` 使用同一解析器回退最近快照。
+学籍缓存只保存已经过字段白名单处理的展示模型，不保存接口原始 XML。退出登录或切换账号会清除对应校区快照，系统备份与设备迁移也不包含这些文件。
 
 ## 成绩与绩点
 
@@ -161,8 +168,9 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 ## 学分核算
 
-教务的选课课程表没有课程类别列，归类依据按优先级：用户手动指定 > 培养方案对比页的「课程模块」> 成绩单的
-「课程性质」> 推断（`data/model/CreditLedger.kt` 的 `CategoryRules`）。公共课先按课程名称识别；这是为兼容珠海
+归类依据按优先级：用户手动指定 > 网上选课结果的官方课程类别 > 课程中心 / 培养方案模块 > 成绩单的
+「课程性质」> 推断（`data/model/CreditLedger.kt` 的 `CategoryRules`）。课程中心仍通过受限 WebView 查看官方个人内容，
+教务选课结果是原生学分核算的自动分类入口。公共课先按课程名称识别；这是为兼容珠海
 校区公共课不统一使用 `GRA` 前缀的情况。院系课再按学分推断学位基础 / 专业课。「重修」显示但不计学分，手动归类存本机
 （`CreditCategoryStore`）。
 
