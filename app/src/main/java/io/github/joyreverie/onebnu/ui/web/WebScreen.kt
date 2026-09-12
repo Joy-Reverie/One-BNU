@@ -47,8 +47,10 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import android.util.Log
 
 private const val TAG = "OneBNU/WebView"
-private const val BEIJING_PORTAL_MOBILE_HOME =
-    "https://one.bnu.edu.cn/tp_nup/resource/defaults/html/h5/loginHome.html#menu=home"
+private const val BEIJING_PORTAL_PC_HOME = "https://one.bnu.edu.cn/tp_nup/index.html"
+private const val DESKTOP_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 /**
  * 内嵌浏览器。
@@ -69,6 +71,8 @@ fun WebScreen(
     onBack: () -> Unit,
     /** 课程中心使用：优先走官方直连 CAS；历史 OneVPN 代理跳转也只接受白名单中转。 */
     useOneVpnSso: Boolean = false,
+    /** 数字京师校园服务入口使用电脑端页面与桌面浏览器 UA。 */
+    desktopMode: Boolean = false,
 ) {
     val context = LocalContext.current
     var progress by remember { mutableStateOf(0) }
@@ -142,6 +146,7 @@ fun WebScreen(
                     factory = { ctx ->
                         syncCookiesToWebView(includeOneVpn = useOneVpnSso)
                         WebView(ctx).apply {
+                            if (desktopMode) settings.userAgentString = DESKTOP_USER_AGENT
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.useWideViewPort = true
@@ -230,9 +235,9 @@ fun WebScreen(
                                         ) {
                                             view.loadUrl(
                                                 if (url?.toHttpUrlOrNull()?.host == "onevpn.bnu.edu.cn") {
-                                                    OneVpnSso.proxyUrl("https://one.bnu.edu.cn/tp_nup/index.html")
+                                                    OneVpnSso.proxyUrl(BEIJING_PORTAL_PC_HOME)
                                                 } else {
-                                                    "https://one.bnu.edu.cn/tp_nup/index.html"
+                                                    BEIJING_PORTAL_PC_HOME
                                                 },
                                             )
                                         }
@@ -321,12 +326,18 @@ fun WebScreen(
                                 private fun redirectPortalRoot(view: WebView?, candidate: String?): Boolean {
                                     val parsed = candidate?.toHttpUrlOrNull() ?: return false
                                     if (
-                                        campus != Campus.BEIJING || portalRootRedirected ||
+                                        campus != Campus.BEIJING || !desktopMode || portalRootRedirected ||
                                         parsed.host != "one.bnu.edu.cn" || parsed.encodedPath != "/tp_nup/"
                                     ) return false
                                     portalRootRedirected = true
                                     view?.stopLoading()
-                                    view?.loadUrl(BEIJING_PORTAL_MOBILE_HOME)
+                                    view?.loadUrl(
+                                        if (url.toHttpUrlOrNull()?.host == "onevpn.bnu.edu.cn") {
+                                            OneVpnSso.proxyUrl(BEIJING_PORTAL_PC_HOME)
+                                        } else {
+                                            BEIJING_PORTAL_PC_HOME
+                                        },
+                                    )
                                     return true
                                 }
 
@@ -411,7 +422,7 @@ private fun isCrossDeviceGuide(url: String?): Boolean =
 private fun portalWebViewUrl(url: String): String {
     val parsed = url.toHttpUrlOrNull() ?: return url
     return if (parsed.host == "one.bnu.edu.cn" && parsed.encodedPath == "/tp_nup/") {
-        BEIJING_PORTAL_MOBILE_HOME
+        BEIJING_PORTAL_PC_HOME
     } else {
         url
     }

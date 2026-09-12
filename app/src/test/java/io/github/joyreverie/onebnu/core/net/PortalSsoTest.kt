@@ -11,7 +11,7 @@ class PortalSsoTest {
 
     @Test
     fun `北京门户 OAuth 使用 nup 回调和 service`() {
-        val service = "https://one.bnu.edu.cn/tp_nup/"
+        val service = "https://one.bnu.edu.cn/tp_nup/index.html"
         val authorize = PortalSso.authorizationUrl(Campus.BEIJING, service).toHttpUrl()
         val redirect = authorize.queryParameter("redirect_uri")!!.toHttpUrl()
 

@@ -21,7 +21,7 @@ internal object SsoWarmup {
 
     fun targetsFor(campus: Campus): List<Target> = when (campus) {
         Campus.BEIJING -> listOf(
-            Target("数字京师", "https://one.bnu.edu.cn/tp_nup/", Kind.PORTAL),
+            Target("数字京师", "https://one.bnu.edu.cn/tp_nup/index.html", Kind.PORTAL),
             Target("教务系统", "http://zyfw.bnu.edu.cn/", Kind.CAS),
             Target("课程中心", OneVpnSso.COURSE_CENTER, Kind.ONEVPN),
         )

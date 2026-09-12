@@ -14,7 +14,7 @@ class SsoWarmupTest {
 
         assertEquals(
             listOf(
-                "https://one.bnu.edu.cn/tp_nup/",
+                "https://one.bnu.edu.cn/tp_nup/index.html",
                 "http://zyfw.bnu.edu.cn/",
                 OneVpnSso.COURSE_CENTER,
             ),

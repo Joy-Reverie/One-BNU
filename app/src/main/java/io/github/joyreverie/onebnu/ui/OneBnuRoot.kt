@@ -95,12 +95,20 @@ object Routes {
     const val DIAGNOSTICS = "diagnostics"
     const val INFO = "info"
     const val WEB = "web"
+    const val PORTAL_WEB = "portal_web"
     const val ONEVPN_WEB = "onevpn_web"
 
     fun web(title: String, url: String, sso: Boolean): String {
         val t = android.net.Uri.encode(title)
         val u = android.net.Uri.encode(url)
         return "$WEB/$t/$u/$sso"
+    }
+
+    /** 数字京师专用电脑端入口；只影响校园服务里的北京门户按钮。 */
+    fun portalWeb(title: String, url: String, sso: Boolean): String {
+        val t = android.net.Uri.encode(title)
+        val u = android.net.Uri.encode(url)
+        return "$PORTAL_WEB/$t/$u/$sso"
     }
 
     /** 课程中心专用：OneVPN 的可信 CAS 中转使用当前北京 CAS 会话，不向网页传递密码。 */
@@ -338,6 +346,15 @@ private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus)
             title = android.net.Uri.decode(entry.arguments?.getString("title").orEmpty()),
             url = android.net.Uri.decode(entry.arguments?.getString("url").orEmpty()),
             useSso = entry.arguments?.getString("sso") == "true",
+            onBack = { nav.popBackStack() },
+        )
+    }
+    composable("${Routes.PORTAL_WEB}/{title}/{url}/{sso}") { entry ->
+        WebScreen(
+            title = android.net.Uri.decode(entry.arguments?.getString("title").orEmpty()),
+            url = android.net.Uri.decode(entry.arguments?.getString("url").orEmpty()),
+            useSso = entry.arguments?.getString("sso") == "true",
+            desktopMode = true,
             onBack = { nav.popBackStack() },
         )
     }

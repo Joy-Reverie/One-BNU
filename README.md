@@ -77,7 +77,7 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 - 关闭云备份与设备迁移（`allowBackup=false`）。内嵌浏览器不注入 JS 接口、禁用文件域访问与混合内容，站外链接交给系统浏览器。
 - 北京、珠海教务系统通过当前校区已有 CAS 会话取得标准的一次性 SSO service ticket；北京数字京师与珠海门户按各自官方 OAuth CAS 流程复用现有会话。珠海门户入口固定使用 `/nup/`，其 aTrust challenge 和 `cas.html` 由 WebView 执行，应用不会在网页中自动填写或注入账号、密码。
 - 北京校区打开课程中心时，内嵌页通过现有 CAS 会话取得课程中心会话，绝不把密码填入网页；`CASTGC` 在 WebView 中强制为 CAS 主机专属 Cookie，不会同步给 OneVPN 或其他子域。珠海使用独立认证域，未确认跨域委托前保留官方登录页。
-- 北京数字京师在手机内嵌浏览器中使用学校官方 H5 首页，绕过移动端引导页的 WebView 兼容问题；门户 accessToken 仍只存在进程内。
+- 校园服务里的北京数字京师固定打开学校官方电脑端门户首页，并使用桌面浏览器 UA；若服务端经过 OneVPN 代理，仍复用同一套门户会话。门户 accessToken 仍只存在进程内。
 - 数字京师入口优先走应用侧 OAuth 预热，WebView 仅接收门户专属 accessToken；预热失败时回退学校官方 `cas.html`，不在网页中填入账号密码。
 - 登录网络异常时，应用会在有限时间内结束认证请求并提示检查校园网、代理或 VPN，不会无限停留在登录中；门户页面若因 WebView Cookie 或脚本加载瞬态为空，会自动重试一次。
 - 权限：`INTERNET`、`ACCESS_NETWORK_STATE`；`POST_NOTIFICATIONS`、`USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM`、

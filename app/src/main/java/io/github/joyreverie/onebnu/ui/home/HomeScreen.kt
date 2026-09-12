@@ -89,7 +89,12 @@ private val BEIJING_ENTRIES = listOf(
     Entry("图书馆", Icons.Outlined.LocalLibrary, Routes.web("图书馆", "http://www.lib.bnu.edu.cn/", false), 3),
     Entry("校园平面图", Icons.Outlined.Map, Routes.MAP, 4),
     Entry("校内联系", Icons.Outlined.Phone, Routes.PHONE, 5),
-    Entry("数字京师", Icons.Outlined.Public, Routes.web("数字京师门户", "https://one.bnu.edu.cn/tp_nup/", true), 6),
+    Entry(
+        "数字京师",
+        Icons.Outlined.Public,
+        Routes.portalWeb("数字京师门户", "https://one.bnu.edu.cn/tp_nup/index.html", true),
+        6,
+    ),
     Entry("教务系统", Icons.Outlined.AccountBalance, Routes.web("教务系统", "http://zyfw.bnu.edu.cn/", true), 7),
 )
 
