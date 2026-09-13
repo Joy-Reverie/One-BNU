@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.BrightnessAuto
+import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.NetworkCheck
@@ -79,6 +80,7 @@ import java.time.LocalTime
 fun SettingsScreen(
     onBack: () -> Unit,
     onDiagnostics: () -> Unit = {},
+    onAnnouncements: () -> Unit = {},
     currentVersion: String = BuildConfig.VERSION_NAME,
 ) {
     val settings = ServiceLocator.settings
@@ -197,6 +199,27 @@ fun SettingsScreen(
             }
 
             item { UpdateCard(currentVersion, checker) }
+
+            item {
+                SectionCard("公告") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onAnnouncements)
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Outlined.Campaign, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Text("历史公告", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Icon(
+                            Icons.AutoMirrored.Outlined.ArrowForward,
+                            null,
+                            tint = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                }
+            }
         }
     }
 }

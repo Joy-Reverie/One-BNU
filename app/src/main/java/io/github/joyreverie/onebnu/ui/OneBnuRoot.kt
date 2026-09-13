@@ -70,6 +70,7 @@ import io.github.joyreverie.onebnu.ui.theme.OneBnuTheme
 import io.github.joyreverie.onebnu.ui.theme.ProvideScreenInfo
 import io.github.joyreverie.onebnu.ui.update.AutoUpdatePrompt
 import io.github.joyreverie.onebnu.ui.announcement.AnnouncementPrompt
+import io.github.joyreverie.onebnu.ui.announcement.AnnouncementHistoryScreen
 import io.github.joyreverie.onebnu.ui.web.WebScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -95,6 +96,7 @@ object Routes {
     const val CREDITS = "credits"
     const val DIAGNOSTICS = "diagnostics"
     const val INFO = "info"
+    const val ANNOUNCEMENT_HISTORY = "announcement_history"
     const val WEB = "web"
     const val PORTAL_WEB = "portal_web"
     const val ONEVPN_WEB = "onevpn_web"
@@ -331,9 +333,11 @@ private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus)
         SettingsScreen(
             onBack = { nav.popBackStack() },
             onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) },
+            onAnnouncements = { nav.navigate(Routes.ANNOUNCEMENT_HISTORY) },
         )
     }
     composable(Routes.INFO) { InfoScreen(onBack = { nav.popBackStack() }) }
+    composable(Routes.ANNOUNCEMENT_HISTORY) { AnnouncementHistoryScreen(onBack = { nav.popBackStack() }) }
     composable(Routes.STUDENT_INFO) { StudentInfoScreen(onBack = { nav.popBackStack() }) }
     composable(Routes.CULTIVATION_PLAN) {
         CultivationPlanScreen(
