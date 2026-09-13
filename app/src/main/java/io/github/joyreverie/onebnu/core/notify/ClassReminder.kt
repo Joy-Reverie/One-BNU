@@ -57,7 +57,7 @@ object ClassReminder {
     private const val LOOKAHEAD_DAYS = 8 // 仅用于到点时取出同一时刻的事项，不限制排程范围。
     private const val NOTIFICATION_BASE_ID = 3000
     private const val NOTIFICATION_PREFS = "onebnu_notification_settings"
-    private const val KEY_POPUP_SETTINGS_OPENED = "popup_settings_opened"
+    private const val KEY_POPUP_SETTINGS_OPENED = "popup_settings_opened_v3"
 
     private val vendorNotificationSettings = setOf(
         "huawei", "honor", "xiaomi", "redmi", "poco", "oppo", "realme", "vivo",
@@ -68,6 +68,10 @@ object ClassReminder {
 
     fun ensureChannel(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        // Android keeps every channel forever. Remove the two pre-v3 channels
+        // so users see one actionable "上课提醒" entry with the fresh sound.
+        listOf("class_reminder", "class_reminder_popup_v2")
+            .forEach { nm.deleteNotificationChannel(it) }
         if (nm.getNotificationChannel(CHANNEL_ID) != null) return
         val channel = NotificationChannel(CHANNEL_ID, "上课提醒", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "每节课开始前提前提醒"
@@ -109,15 +113,14 @@ object ClassReminder {
     /** 国产系统可能还有独立的「悬浮通知」开关，标准 API 无法读取，只需引导一次。 */
     fun floatingNotificationSetupRequired(context: Context): Boolean {
         if (!notificationsAllowed(context)) return false
-        if (!isVendorNotificationUi()) return !notificationsReady(context)
         val opened = context.getSharedPreferences(NOTIFICATION_PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_POPUP_SETTINGS_OPENED, false)
-        return !notificationsReady(context) || !opened
+        return (!notificationsReady(context) || isVendorNotificationUi()) && !opened
     }
 
     /** 打开应用通知设置，用户可恢复悬浮通知、声音和震动。 */
     fun openNotificationSettings(context: Context) {
-        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isVendorNotificationUi()) {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
                 putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
                 putExtra(Settings.EXTRA_CHANNEL_ID, CHANNEL_ID)

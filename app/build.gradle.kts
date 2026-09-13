@@ -34,8 +34,8 @@ android {
         applicationId = "io.github.joyreverie.onebnu"
         minSdk = 26
         targetSdk = 35
-        versionCode = 49
-        versionName = "1.9.29"
+        versionCode = 50
+        versionName = "1.9.30"
 
         // 「检查更新」查询的 GitHub 仓库；fork 后改这里即可指向自己的 Releases
         buildConfigField("String", "GITHUB_REPO", "\"Joy-Reverie/One-BNU\"")

@@ -12,7 +12,7 @@ enum class ColorTheme(
     private val darkSecondary: Int,
     private val darkTertiary: Int,
 ) {
-    INDIGO("靛蓝", 0xFF2F5CA8.toInt(), 0xFF1B3C6E.toInt(), 0xFF0E7C8C.toInt(), 0xFFB07D16.toInt(), 0xFF7FA0DA.toInt(), 0xFF63C6D4.toInt(), 0xFFE5BC5C.toInt()),
+    INDIGO("靛蓝", 0xFF2F5CA8.toInt(), 0xFF1B3C6E.toInt(), 0xFF315D9A.toInt(), 0xFFB07D16.toInt(), 0xFF7FA0DA.toInt(), 0xFF78A6E0.toInt(), 0xFFE5BC5C.toInt()),
     TEAL("青碧", 0xFF1F7A7A.toInt(), 0xFF116466.toInt(), 0xFF2D7A78.toInt(), 0xFFA06A20.toInt(), 0xFF83D8D2.toInt(), 0xFF81CFC5.toInt(), 0xFFE9B96E.toInt()),
     EMERALD("松绿", 0xFF2E815C.toInt(), 0xFF1F6B4C.toInt(), 0xFF3D8064.toInt(), 0xFFA16C26.toInt(), 0xFF81D5AB.toInt(), 0xFF93D6B3.toInt(), 0xFFEDBE76.toInt()),
     CORAL("珊瑚", 0xFFC65B55.toInt(), 0xFFA5433A.toInt(), 0xFFB7654D.toInt(), 0xFF8D6A2A.toInt(), 0xFFFFB4A9.toInt(), 0xFFF4B7A1.toInt(), 0xFFE9C27A.toInt()),
