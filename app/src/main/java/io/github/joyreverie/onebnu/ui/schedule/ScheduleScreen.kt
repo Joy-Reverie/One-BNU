@@ -86,7 +86,6 @@ import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PeriodMapper
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
-import io.github.joyreverie.onebnu.ui.components.CacheBanner
 import io.github.joyreverie.onebnu.ui.components.EmptyBox
 import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.InfoRow
@@ -223,13 +222,8 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             Column(Modifier.fillMaxSize()) {
-                // 缓存优先渲染时给一行说明；后台取到新数据这行自己消失
-                if (s.fromCache) {
-                    CacheBanner(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-                        refreshing = s.refreshing,
-                    )
-                }
+                // 课表不显示「为本地缓存」：一个学期里课表基本不变，这行提示天天挂着只是噪音。
+                // 成绩和考试安排会随时出新的，那两页才需要。后台刷新照常在跑。
                 Box(Modifier.weight(1f)) {
                     when {
                         s.loading -> LoadingBox("正在加载课表…")

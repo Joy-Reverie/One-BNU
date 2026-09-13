@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,7 +32,6 @@ import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
 import io.github.joyreverie.onebnu.data.model.Term
-import io.github.joyreverie.onebnu.ui.components.CacheBanner
 import io.github.joyreverie.onebnu.ui.event.EventEditorSheet
 import io.github.joyreverie.onebnu.ui.schedule.SchedulePager
 import io.github.joyreverie.onebnu.ui.schedule.ScheduleLayout
@@ -45,7 +43,7 @@ import kotlinx.coroutines.launch
 
 /**
  * 开发用：不登录直接看课表网格在当前屏幕（含横屏）下的行高与缩放效果。
- * 启动：adb shell am start -n io.github.joyreverie.onebnu/.widget.SchedulePreviewActivity [--ef zoom 1.3] [--ez cached true]
+ * 启动：adb shell am start -n io.github.joyreverie.onebnu/.widget.SchedulePreviewActivity [--ef zoom 1.3]
  * 只在 debug 包里。
  */
 class SchedulePreviewActivity : ComponentActivity() {
@@ -55,7 +53,6 @@ class SchedulePreviewActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val initialZoom = intent.getFloatExtra("zoom", 1f)
-        val cached = intent.getBooleanExtra("cached", false)
         val state = ScheduleUiState(
             loading = false,
             term = Term("2026", "0", "2026-2027学年秋季学期"),
@@ -112,12 +109,6 @@ class SchedulePreviewActivity : ComponentActivity() {
                         },
                     ) { padding ->
                         Column(Modifier.fillMaxSize().padding(padding)) {
-                            if (cached) {
-                                CacheBanner(
-                                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-                                    refreshing = false,
-                                )
-                            }
                             Box(Modifier.weight(1f)) {
                             SchedulePager(
                                 schedule = state.schedule!!,

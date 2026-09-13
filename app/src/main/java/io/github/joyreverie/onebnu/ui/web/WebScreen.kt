@@ -44,6 +44,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Cookie
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import android.util.Log
 
@@ -232,6 +233,18 @@ fun WebScreen(
                                 var portalGuideBypassed = false
                                 var portalAuthRetried = false
 
+                                /**
+                                 * OneVPN 的 CAS service 是它自己的 `/login?cas_login=true`，不是我们要的资源。
+                                 * 票据兑换完成后，wengine 会把浏览器留在它自己的门户 / 拒绝页上，原本要开的
+                                 * 教务地址就丢了 —— 用户看到的就是「访问被拒绝」。OkHttp 那条链路
+                                 * （`OneVpnSso.establishLocked`）在这一步之后会显式再取一次目标地址，
+                                 * WebView 这边以前没有这一步，这里补上，只补一次以免来回打转。
+                                 */
+                                var academicTargetReloaded = false
+
+                                /** wengine 的 token 兑换最后一跳只补一次。 */
+                                var oneVpnTokenLoginFollowed = false
+
                                 fun takeOneVpnSsoUrl(candidate: String?): String? {
                                     if (!(useOneVpnSso || useAcademicProxy) || oneVpnSsoRedirected) return null
                                     val service = OneVpnSso.serviceForRelayRedirect(
@@ -277,6 +290,26 @@ fun WebScreen(
                                     progress = 100
                                     canGoBack = view?.canGoBack() == true
                                     Log.i(TAG, "WebView 页面完成 host=${url?.toHttpUrlOrNull()?.host} path=${url?.toHttpUrlOrNull()?.encodedPath}")
+                                    // wengine 把 WebView 当成了 AJAX 客户端，票据兑换的最后一跳得自己走
+                                    oneVpnTokenLoginFollowUp(url)?.let { next ->
+                                        if (!oneVpnTokenLoginFollowed) {
+                                            oneVpnTokenLoginFollowed = true
+                                            Log.i(TAG, "OneVPN 续走 token-login")
+                                            view?.loadUrl(next)
+                                            return
+                                        }
+                                    }
+                                    // OneVPN 登录完成后会停在它自己的页面上，要自己走回教务那条代理路径
+                                    if (
+                                        useAcademicProxy && !academicTargetReloaded &&
+                                        leftAcademicProxyPath(url, pageUrl)
+                                    ) {
+                                        academicTargetReloaded = true
+                                        Log.i(TAG, "OneVPN 登录后回到教务代理地址")
+                                        syncCookiesToWebView(includeOneVpn = true)
+                                        view?.loadUrl(pageUrl)
+                                        return
+                                    }
                                     if (isPortalHomePage(url)) {
                                         view?.evaluateJavascript(PORTAL_LAYOUT_FIX, null)
                                     }
@@ -444,6 +477,50 @@ internal fun isAcademicService(url: String): Boolean =
  * `OneVpnSso.establish`，它会先直连 80 端口，在流量网络下必然超时，最后落到 CAS 登录页 → 白屏。
  */
 internal fun academicProxyUrl(url: String): String = OneVpnSso.proxyUrl(url)
+
+/**
+ * WebView 是不是已经从教务的代理路径上掉下来、并且可以走回去了。
+ *
+ * OneVPN 的 CAS service 写死成它自己的 `/login?cas_login=true`：票据换完之后 wengine 把浏览器
+ * 留在自己的门户页上，我们真正要打开的 `/http/<加密主机>/…` 就丢了。
+ * 判据是**代理前缀**（`/http/<加密主机>`）而不是整条地址 —— 教务自己在这个前缀下跳转是正常的。
+ *
+ * 但**停在登录页上时一定不能走回去**：那一页正等着用户输账号，把它顶掉只会在
+ * 「目标地址 → 登录页 → 目标地址」之间来回打转，谁也登不进去。
+ */
+internal fun leftAcademicProxyPath(current: String?, target: String): Boolean {
+    val now = current?.toHttpUrlOrNull() ?: return false
+    val want = target.toHttpUrlOrNull() ?: return false
+    if (now.host != want.host) return false
+    if (isOneVpnLoginPage(now)) return false
+    // /http/<加密主机>/… → 取前两段作为前缀
+    val prefix = want.pathSegments.take(2)
+    if (prefix.size < 2) return false
+    return now.pathSegments.take(2) != prefix
+}
+
+/**
+ * OneVPN 票据兑换的最后一跳，WebView 需要自己走。
+ *
+ * Android WebView 默认会带 `X-Requested-With: <包名>`，wengine 因此把这次跳转当成 AJAX，
+ * 回的是 XHR 版本的链路：`/wengine-vpn-token-login?token=…` 返回 **200、空 body、无跳转**，
+ * 页面就停在那里一片空白（系统浏览器不发这个头，所以在浏览器里打开是好的）。
+ * 真正让会话落地的是同一个 token 的 `/token-login`，OkHttp 那条链路也是自己拼出来的。
+ *
+ * @return 要接着加载的地址；当前页不是这一跳时为 null
+ */
+internal fun oneVpnTokenLoginFollowUp(current: String?): String? {
+    val url = current?.toHttpUrlOrNull() ?: return null
+    if (url.host != "onevpn.bnu.edu.cn") return null
+    if (!url.encodedPath.endsWith("/wengine-vpn-token-login")) return null
+    if (url.queryParameter("token").isNullOrBlank()) return null
+    return url.newBuilder().encodedPath("/token-login").build().toString()
+}
+
+/** OneVPN 自己的登录入口，或它代理出来的统一认证登录页。 */
+private fun isOneVpnLoginPage(url: HttpUrl): Boolean =
+    url.encodedPath == "/login" || url.encodedPath.endsWith("/cas/login") ||
+        url.encodedPath.endsWith("/wengine-vpn-token-login") || url.encodedPath.endsWith("/token-login")
 
 private fun isPortalHomePage(url: String?): Boolean {
     val parsed = url?.toHttpUrlOrNull() ?: return false

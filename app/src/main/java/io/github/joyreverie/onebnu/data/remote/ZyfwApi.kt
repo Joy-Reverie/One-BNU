@@ -68,20 +68,23 @@ class ZyfwApi(
     @Synchronized
     @Throws(IOException::class)
     fun ensureSession(force: Boolean = false) {
-        val preferProxyNow = proxyBase != null && preferProxy()
-        if (
-            ssoDone && !force &&
-            ((preferProxyNow && activeBase == proxyBase) || (!preferProxyNow && activeBase == base))
-        ) return
+        // 代理这条路现在值不值得试：要求偏好代理，且不在退避窗口内。
+        val proxyReady = proxyBase != null && preferProxy() &&
+            (force || System.currentTimeMillis() >= proxyFailureUntil)
+        // 手上已经有可用会话就直接用。
+        //
+        // **OneVPN 是单会话**：每做一次 CAS→OneVPN 握手，服务端就把上一次踢下线
+        // （下一个请求会收到 `/login?logoutByOther`）。旧写法在「该走代理、现在却是直连会话」时
+        // 会为**每一个接口**重跑整套握手 —— 一秒之内三次，自己把自己、连同 WebView 里那一份
+        // 一起踢掉，用户看到的就是「访问被拒绝」。所以退避期内保留已有的直连会话，不要再碰代理。
+        if (ssoDone && !force && (activeBase == proxyBase || (activeBase == base && !proxyReady))) return
         if (!auth.hasSession()) throw SessionExpiredException()
 
-        if (preferProxyNow) {
+        if (proxyBase != null && preferProxy()) {
             // 上一轮代理 + 直连都失败过：退避窗口内**立刻**报错，不要再各等一次超时。
             // 一次完整的失败尝试可能花掉好几分钟，界面已经在显示本地缓存，
             // 后台刷新没必要一直挂着。显式重试（force）会绕过退避重新探测。
-            if (!force && System.currentTimeMillis() < proxyFailureUntil) {
-                throw IOException(UNREACHABLE_MESSAGE)
-            }
+            if (!proxyReady) throw IOException(UNREACHABLE_MESSAGE)
             try {
                 establishProxySession()
                 proxyFailureUntil = 0L
@@ -89,15 +92,15 @@ class ZyfwApi(
             } catch (proxyError: SessionExpiredException) {
                 throw proxyError
             } catch (proxyError: IOException) {
-                // 代理偶发不可用时仍给直连一次机会：并非所有运营商都拦 80 端口
+                // 代理偶发不可用时仍给直连一次机会：并非所有运营商都拦 80 端口。
+                // 但**不要清掉退避**——代理刚刚失败过，接下来每个接口都重试一遍只会继续互相踢。
+                proxyFailureUntil = System.currentTimeMillis() + PROXY_BACKOFF_MS
                 try {
                     establishDirectSession()
-                    proxyFailureUntil = 0L
                     return
                 } catch (directError: SessionExpiredException) {
                     throw directError
                 } catch (directError: IOException) {
-                    proxyFailureUntil = System.currentTimeMillis() + PROXY_BACKOFF_MS
                     throw IOException(UNREACHABLE_MESSAGE, directError)
                 }
             }
