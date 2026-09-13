@@ -46,9 +46,10 @@ import java.util.Locale
  */
 object ClassReminder {
 
-    // v2 ensures users who previously lowered the old channel importance get
-    // a fresh high-importance channel for heads-up reminder popups.
-    const val CHANNEL_ID = "class_reminder_popup_v2"
+    // A new channel is required because Android permanently preserves a user's
+    // sound choice on an existing channel. v3 restores the default alert sound
+    // for users whose previous reminder channel had become silent.
+    const val CHANNEL_ID = "class_reminder_popup_v3"
     const val ACTION_ALARM = "io.github.joyreverie.onebnu.reminder.ALARM"
     private const val EXTRA_START = "start_epoch"
     private const val REQUEST_ALARM = 2001

@@ -4,17 +4,18 @@ import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.res.Configuration
+import android.content.res.ColorStateList
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.SizeF
 import android.view.View
 import android.widget.RemoteViews
-import androidx.core.content.ContextCompat
 import io.github.joyreverie.onebnu.MainActivity
 import io.github.joyreverie.onebnu.R
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.store.ThemeMode
+import io.github.joyreverie.onebnu.core.store.ColorTheme
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
 import java.time.LocalDate
@@ -39,9 +40,9 @@ object TodayWidgetRenderer {
 
     /** RemoteViews 会按启动器的系统夜间资源解析 XML，因此手动主题必须显式覆盖。 */
     private data class Palette(
-        val backgroundRes: Int,
-        val heroRes: Int,
-        val pillRes: Int,
+        val backgroundColor: Int,
+        val heroColor: Int,
+        val pillColor: Int,
         val primary: Int,
         val secondary: Int,
         val accent: Int,
@@ -213,10 +214,7 @@ object TodayWidgetRenderer {
     }
 
     private fun applyLargePalette(rv: RemoteViews, p: Palette) {
-        rv.setInt(R.id.widget_root, "setBackgroundResource", p.backgroundRes)
-        rv.setInt(R.id.widget_header, "setBackgroundResource", p.heroRes)
-        rv.setInt(R.id.widget_weekday, "setBackgroundResource", p.pillRes)
-        rv.setInt(R.id.widget_week, "setBackgroundResource", p.pillRes)
+        applyPaletteBackgrounds(rv, p)
         rv.setTextColor(R.id.widget_date, p.onHero)
         rv.setTextColor(R.id.widget_weekday, p.onHero)
         rv.setTextColor(R.id.widget_week, p.onHero)
@@ -226,9 +224,7 @@ object TodayWidgetRenderer {
     }
 
     private fun applySmallPalette(rv: RemoteViews, p: Palette) {
-        rv.setInt(R.id.widget_root, "setBackgroundResource", p.backgroundRes)
-        rv.setInt(R.id.widget_header, "setBackgroundResource", p.heroRes)
-        rv.setInt(R.id.widget_weekday, "setBackgroundResource", p.pillRes)
+        applyPaletteBackgrounds(rv, p)
         rv.setTextColor(R.id.widget_date, p.onHero)
         rv.setTextColor(R.id.widget_weekday, p.onHero)
         rv.setTextColor(R.id.widget_count, p.onHeroDim)
@@ -237,6 +233,25 @@ object TodayWidgetRenderer {
         rv.setTextColor(R.id.small_end, p.secondary)
         rv.setTextColor(R.id.small_name, p.primary)
         rv.setTextColor(R.id.small_detail, p.secondary)
+    }
+
+    private fun applyPaletteBackgrounds(rv: RemoteViews, p: Palette) {
+        // Tint the existing rounded drawables so shape, padding and clipping stay
+        // launcher-compatible while the selected app color propagates to widgets.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val bg = ColorStateList.valueOf(p.backgroundColor)
+            val hero = ColorStateList.valueOf(p.heroColor)
+            val pill = ColorStateList.valueOf(p.pillColor)
+            rv.setColorStateList(R.id.widget_root, "setBackgroundTintList", bg)
+            rv.setColorStateList(R.id.widget_header, "setBackgroundTintList", hero)
+            rv.setColorStateList(R.id.widget_weekday, "setBackgroundTintList", pill)
+            rv.setColorStateList(R.id.widget_week, "setBackgroundTintList", pill)
+        } else {
+            rv.setInt(R.id.widget_root, "setBackgroundColor", p.backgroundColor)
+            rv.setInt(R.id.widget_header, "setBackgroundColor", p.heroColor)
+            rv.setInt(R.id.widget_weekday, "setBackgroundColor", p.pillColor)
+            rv.setInt(R.id.widget_week, "setBackgroundColor", p.pillColor)
+        }
     }
 
     private fun palette(context: Context): Palette {
@@ -248,48 +263,18 @@ object TodayWidgetRenderer {
             ThemeMode.LIGHT -> false
             ThemeMode.DARK -> true
         }
-        val colors = if (dark) {
-            intArrayOf(
-                R.color.widget_manual_dark_course_1,
-                R.color.widget_manual_dark_course_2,
-                R.color.widget_manual_dark_course_3,
-                R.color.widget_manual_dark_course_4,
-                R.color.widget_manual_dark_course_5,
-                R.color.widget_manual_dark_course_6,
-                R.color.widget_manual_dark_course_7,
-                R.color.widget_manual_dark_course_8,
-            )
-        } else {
-            intArrayOf(
-                R.color.widget_manual_light_course_1,
-                R.color.widget_manual_light_course_2,
-                R.color.widget_manual_light_course_3,
-                R.color.widget_manual_light_course_4,
-                R.color.widget_manual_light_course_5,
-                R.color.widget_manual_light_course_6,
-                R.color.widget_manual_light_course_7,
-                R.color.widget_manual_light_course_8,
-            )
-        }
+        val theme = runCatching { ServiceLocator.settings.colorTheme }.getOrDefault(ColorTheme.INDIGO)
+        val themePalette = theme.palette(dark)
         return Palette(
-            backgroundRes = if (dark) R.drawable.widget_bg_manual_dark else R.drawable.widget_bg_manual_light,
-            heroRes = if (dark) R.drawable.widget_hero_manual_dark else R.drawable.widget_hero_manual_light,
-            pillRes = if (dark) R.drawable.widget_pill_manual_dark else R.drawable.widget_pill_manual_light,
-            primary = ContextCompat.getColor(
-                context,
-                if (dark) R.color.widget_manual_dark_text_primary else R.color.widget_manual_light_text_primary,
-            ),
-            secondary = ContextCompat.getColor(
-                context,
-                if (dark) R.color.widget_manual_dark_text_secondary else R.color.widget_manual_light_text_secondary,
-            ),
-            accent = ContextCompat.getColor(
-                context,
-                if (dark) R.color.widget_manual_dark_accent else R.color.widget_manual_light_accent,
-            ),
-            onHero = ContextCompat.getColor(context, R.color.widget_on_hero),
-            onHeroDim = ContextCompat.getColor(context, R.color.widget_on_hero_dim),
-            courseColors = colors.map { ContextCompat.getColor(context, it) }.toIntArray(),
+            backgroundColor = themePalette.widgetBackground,
+            heroColor = themePalette.heroCenter,
+            pillColor = themePalette.widgetPill,
+            primary = themePalette.primary,
+            secondary = if (dark) themePalette.secondary else 0xFF767C89.toInt(),
+            accent = themePalette.secondary,
+            onHero = if (dark) 0xFFF5F7FB.toInt() else 0xFFFFFFFF.toInt(),
+            onHeroDim = if (dark) 0xFFD0D7E3.toInt() else 0xFFDCE6F8.toInt(),
+            courseColors = themePalette.courseColors,
         )
     }
 

@@ -7,6 +7,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -26,12 +27,15 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.store.ThemeMode
+import io.github.joyreverie.onebnu.core.store.ColorTheme
+import io.github.joyreverie.onebnu.core.store.ThemePalette
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * 视觉体系。
@@ -169,6 +173,88 @@ data class BnuAccents(
     val courseAccents: List<Color>,
 )
 
+private fun argb(value: Int): Color = Color(value.toLong() and 0xFFFFFFFFL)
+
+private fun ThemePalette.toAccents(): BnuAccents = BnuAccents(
+    heroGradient = Brush.linearGradient(listOf(argb(heroStart), argb(heroCenter), argb(heroEnd))),
+    heroGradientSoft = Brush.linearGradient(listOf(argb(heroSoftStart), argb(heroSoftEnd))),
+    wordmarkGradient = Brush.linearGradient(listOf(argb(heroStart), argb(heroCenter), argb(heroEnd))),
+    wordmarkOne = argb(wordmarkOne),
+    wordmarkBnu = argb(wordmarkBnu),
+    raised = argb(raised),
+    hairline = argb(hairline),
+    success = argb(success),
+    warning = argb(warning),
+    courseColors = courseColors.map(::argb),
+    courseAccents = courseAccents.map(::argb),
+)
+
+private fun ThemePalette.toColorScheme(dark: Boolean): ColorScheme = if (dark) {
+    darkColorScheme(
+        primary = argb(primary),
+        onPrimary = argb(onPrimary),
+        primaryContainer = argb(primaryContainer),
+        onPrimaryContainer = argb(onPrimaryContainer),
+        inversePrimary = argb(inversePrimary),
+        secondary = argb(secondary),
+        onSecondary = argb(onSecondary),
+        secondaryContainer = argb(secondaryContainer),
+        onSecondaryContainer = argb(onSecondaryContainer),
+        tertiary = argb(tertiary),
+        onTertiary = argb(onTertiary),
+        tertiaryContainer = argb(tertiaryContainer),
+        onTertiaryContainer = argb(onTertiaryContainer),
+        background = Color(0xFF0E1116),
+        onBackground = Color(0xFFE3E6ED),
+        surface = Color(0xFF161A21),
+        onSurface = Color(0xFFE3E6ED),
+        surfaceVariant = Color(0xFF2A303B),
+        onSurfaceVariant = Color(0xFFC0C6D3),
+        surfaceTint = argb(primary),
+        inverseSurface = Color(0xFFE3E6ED),
+        inverseOnSurface = Color(0xFF20242C),
+        outline = Color(0xFF8A909D),
+        outlineVariant = Color(0xFF39404C),
+        error = Rose300,
+        onError = Color(0xFF601410),
+        errorContainer = Color(0xFF8C1D18),
+        onErrorContainer = Color(0xFFFCE0DE),
+        scrim = Color.Black,
+    )
+} else {
+    lightColorScheme(
+        primary = argb(primary),
+        onPrimary = argb(onPrimary),
+        primaryContainer = argb(primaryContainer),
+        onPrimaryContainer = argb(onPrimaryContainer),
+        inversePrimary = argb(inversePrimary),
+        secondary = argb(secondary),
+        onSecondary = argb(onSecondary),
+        secondaryContainer = argb(secondaryContainer),
+        onSecondaryContainer = argb(onSecondaryContainer),
+        tertiary = argb(tertiary),
+        onTertiary = argb(onTertiary),
+        tertiaryContainer = argb(tertiaryContainer),
+        onTertiaryContainer = argb(onTertiaryContainer),
+        background = Color(0xFFF4F6FB),
+        onBackground = Color(0xFF14181F),
+        surface = Color.White,
+        onSurface = Color(0xFF14181F),
+        surfaceVariant = Color(0xFFE6EAF3),
+        onSurfaceVariant = Color(0xFF454B57),
+        surfaceTint = argb(primary),
+        inverseSurface = Color(0xFF20242C),
+        inverseOnSurface = Color(0xFFF1F3F8),
+        outline = Color(0xFF767C89),
+        outlineVariant = Color(0xFFCBD1DE),
+        error = Rose600,
+        onError = Color.White,
+        errorContainer = Color(0xFFFCE0DE),
+        onErrorContainer = Color(0xFF410E0B),
+        scrim = Color.Black,
+    )
+}
+
 private val LightAccents = BnuAccents(
     heroGradient = Brush.linearGradient(listOf(Indigo700, Indigo500, Teal600)),
     heroGradientSoft = Brush.linearGradient(listOf(Indigo100, Teal100)),
@@ -262,8 +348,12 @@ fun OneBnuTheme(
     darkTheme: Boolean = resolveDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    val colors = if (darkTheme) DarkColors else LightColors
-    val accents = if (darkTheme) DarkAccents else LightAccents
+    val settings = runCatching { ServiceLocator.settings }.getOrNull()
+    val themeFlow = settings?.colorThemeFlow ?: flowOf(ColorTheme.INDIGO)
+    val colorTheme by themeFlow.collectAsState(initial = ColorTheme.INDIGO)
+    val palette = colorTheme.palette(darkTheme)
+    val colors = palette.toColorScheme(darkTheme)
+    val accents = palette.toAccents()
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {

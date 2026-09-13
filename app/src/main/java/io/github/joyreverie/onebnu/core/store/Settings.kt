@@ -88,6 +88,22 @@ class Settings(
     /** 深浅色模式。以流的形式暴露，主题在设置页改动后整个界面立即重绘，不重建 Activity。 */
     val themeMode: StateFlow<ThemeMode> get() = _themeMode
 
+    private val _colorTheme = MutableStateFlow(
+        runCatching { ColorTheme.valueOf(prefs.getString(KEY_COLOR_THEME, null) ?: "") }
+            .getOrDefault(ColorTheme.INDIGO),
+    )
+
+    /** 应用主色系；与深浅色独立，切换后立即重绘页面并刷新桌面小组件。 */
+    val colorThemeFlow: StateFlow<ColorTheme> get() = _colorTheme
+
+    val colorTheme: ColorTheme get() = _colorTheme.value
+
+    fun setColorTheme(theme: ColorTheme) {
+        prefs.edit().putString(KEY_COLOR_THEME, theme.name).apply()
+        _colorTheme.value = theme
+        onThemeChanged()
+    }
+
     fun setThemeMode(mode: ThemeMode) {
         prefs.edit().putString(KEY_THEME, mode.name).apply()
         _themeMode.value = mode
@@ -167,6 +183,7 @@ class Settings(
         private const val KEY_REMIND_STYLE = "reminder_style"
         private const val KEY_REMIND_DONE = "reminder_last_start"
         private const val KEY_THEME = "theme_mode"
+        private const val KEY_COLOR_THEME = "color_theme"
         private const val KEY_AUTO_UPDATE = "auto_check_updates"
         private const val KEY_PERIODS = "period_times"
         private const val PERIOD_SEP = "|"

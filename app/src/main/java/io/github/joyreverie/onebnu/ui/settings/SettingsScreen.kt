@@ -2,6 +2,7 @@ package io.github.joyreverie.onebnu.ui.settings
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -46,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -53,6 +56,7 @@ import io.github.joyreverie.onebnu.BuildConfig
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.notify.ClassReminder
 import io.github.joyreverie.onebnu.core.store.Settings
+import io.github.joyreverie.onebnu.core.store.ColorTheme
 import io.github.joyreverie.onebnu.core.store.ThemeMode
 import io.github.joyreverie.onebnu.core.update.UpdateChecker
 import io.github.joyreverie.onebnu.data.model.GpaScale
@@ -81,6 +85,7 @@ fun SettingsScreen(
     var scale by remember { mutableStateOf(settings.gpaScale) }
     val checker = remember(currentVersion) { UpdateChecker(currentVersion) }
     val themeMode by settings.themeMode.collectAsState()
+    val colorTheme by settings.colorThemeFlow.collectAsState()
 
     Scaffold(
         topBar = {
@@ -108,6 +113,30 @@ fun SettingsScreen(
                                 icon = { Icon(mode.icon, null, Modifier.size(SegmentedButtonDefaults.IconSize)) },
                                 label = { Text(mode.label) },
                             )
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text("色系", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        ColorTheme.entries.forEach { theme ->
+                            Column(
+                                Modifier.weight(1f).clickable { settings.setColorTheme(theme) },
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                androidx.compose.material3.Surface(
+                                    modifier = Modifier.size(32.dp),
+                                    shape = CircleShape,
+                                    color = Color(theme.swatch),
+                                    border = if (theme == colorTheme) BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface)
+                                    else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                ) {}
+                                Spacer(Modifier.height(4.dp))
+                                Text(theme.label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                            }
                         }
                     }
                 }
