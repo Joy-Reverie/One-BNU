@@ -77,11 +77,33 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 北京校区已有 CAS 会话时，`OneVpnSso` 先访问课程中心的 `www/public/home/cas-bnu` 桥接页，
 再从其中提取并校验课程中心自己的 CAS service，调用当前 CAS 的标准 `sso(service)` 建立会话，最后加载官方直连地址。
-这样不依赖 OneVPN 网页端的 JavaScript Cookie 桥接，也不会把密码传给 WebView。OneVPN 的 HTTPS 代理地址不再只是历史调试入口：旧教务只监听 HTTP 80，蜂窝网络下常常不通，
-因此数据接口（`ZyfwApi`）与「教务系统」网页入口在蜂窝网络下都走 `OneVpnSso.proxyUrl(...)` 这条代理路径 ——
-建会话与加载页面必须用同一个代理地址，交原始明文地址会先直连 80 端口、超时后落回 CAS 登录页（白屏）。
-同步 Cookie 时，`CASTGC` 强制为 `cas.bnu.edu.cn` 的 host-only Cookie，并清除旧版可能遗留的
-`.bnu.edu.cn` 跨子域副本，不能发送给 OneVPN 或门户。
+这样不依赖 OneVPN 网页端的 JavaScript Cookie 桥接，也不会把密码传给 WebView。
+
+### 校外与流量：OneVPN（wengine）代理
+
+旧教务只监听 HTTP 80，蜂窝网络下常常不通；门户在校外也会把访问者送去 OneVPN。因此数据接口（`ZyfwApi`）、
+「教务系统」与「数字京师」网页入口在这些网络下都走 `OneVpnSso.proxyUrl(...)` 这条代理路径。以下规则来自 2026-09-13 用真实账号逐跳实测：
+
+- **两层登录。** 取代理地址被送到 `/login`，表示还没有 VPN 会话；VPN 登录后再取同一地址，被送到代理路径下的
+  `…/cas/login?service=…`，表示 VPN 已通、是上游教务自己在要求 CAS 登录（wengine 把它的跳转改写成了代理地址）。
+  `OneVpnSso.establishLocked` 围着目标地址循环，按跳转补哪一层（`loginToVpn` / `loginUpstream`），
+  代理路径内部的普通跳转（`casLogon` → `frame/homes.html`）照常跟随。
+- **VPN 登录的成功标志是一个 200 空响应。** `/login` → 代理 CAS 中转 → 北京 CAS 直接为
+  `https://onevpn.bnu.edu.cn/login?cas_login=true` 签票 → `/login?cas_login=true&ticket=…` →
+  `/wengine-vpn-token-login?token=…` 返回 200、空 body、没有 Set-Cookie——会话此刻已经挂在客户端手里那枚
+  `wengine_vpn_ticket` 上。**绝不能再请求 `/token-login`**：同一个 token 会被消费第二次，而 OneVPN 是单会话，
+  第二次登录把第一次踢掉，手里的票据就成了 `/login?logoutByOther`。1.9.14–1.9.36 的「代理会话未能建立」、
+  网页「访问被拒绝」、门户「登录后又回到登录页」都是它。
+- **建会话与加载页面必须用同一个代理地址。** 交原始明文地址会先直连 80 端口、超时后落回 CAS 登录页（白屏）。
+- **WebView 与 OkHttp 共用同一枚票据。** `syncCookiesToWebView(includeOneVpn = true)` 把应用侧票据交给 WebView；
+  WebView 若自己完成了一次 VPN 登录（落到那个 200 空页），`syncOneVpnTicketToOkHttp` 把新票据交回来并让教务会话重建。
+  应用侧已有会话而 WebView 仍被送去 `/login` 时，只重新同步票据、回到代理页，不再登录一次。
+- **门户走代理。** `PortalSso` 发现门户入口跳去 OneVPN 时，先用 `OneVpnSso.ensureVpnSession` 建好 VPN 会话，
+  再经代理完成 OAuth 换 token；`WebScreen` 随后直接打开代理路径下的门户首页，accessToken 种在代理路径上，
+  WebView 不再自己跑 OAuth。校园网下门户不经代理，流程不变。
+- 上游站点的 Cookie 保存在 wengine 服务端，客户端向代理 CAS 注入 CASTGC 无效。
+- 同步 Cookie 时，`CASTGC` 强制为 `cas.bnu.edu.cn` 的 host-only Cookie，并清除旧版可能遗留的
+  `.bnu.edu.cn` 跨子域副本，不能发送给 OneVPN 或门户。
 
 教务系统等普通 CAS 入口不直接把 CAS 登录页交给 WebView：`WebScreen` 先用当前
 `SessionAuthenticator` 在应用侧完成一次标准 SSO，取得目标站点的会话 Cookie 后再加载最终地址。数字京师与珠海门户

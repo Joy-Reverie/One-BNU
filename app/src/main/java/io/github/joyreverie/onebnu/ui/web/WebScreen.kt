@@ -154,10 +154,19 @@ fun WebScreen(
             // 仍然加载代理地址，最坏情况是 OneVPN 自己显示一次登录页，而不是白屏。
             proxied
         } else if (portalService) {
-            // 让门户自己的 cas.html 在 WebView 中完成 OAuth。它会在同一浏览器上下文
-            // 设置 accessToken，并按官方逻辑回到电脑端首页；OkHttp 侧预热只作为加速，
-            // 不能因为一次 token 兑换失败就把 index.html 留成空壳。
-            PortalSso.authorizationUrl(campus, url)
+            // 校外时门户会把访问者送去 OneVPN。应用侧若已经（或现在能）经代理换到 token，
+            // 就直接打开**代理路径下**的门户首页，token 由 syncCookiesToWebView 种在代理路径上；
+            // WebView 不再自己跑一遍 OAuth —— 那会撞上 OneVPN 的 /login，再登录一次把已有会话踢掉。
+            // 校园网下门户不走代理，仍由门户自己的 cas.html 在 WebView 里完成 OAuth。
+            val viaProxy = withContext(Dispatchers.IO) {
+                withTimeoutOrNull(ACADEMIC_PROXY_TIMEOUT_MS) {
+                    if (PortalSso.accessToken(campus) == null) {
+                        runCatching { PortalSso.establish(http, auth, campus, url) }
+                    }
+                    PortalSso.usesProxy(campus)
+                } ?: PortalSso.usesProxy(campus)
+            }
+            if (viaProxy) url else PortalSso.authorizationUrl(campus, url)
         } else if (useSso) {
             withContext(Dispatchers.IO) {
                 runCatching { auth.sso(url).url }.getOrNull()
@@ -242,11 +251,18 @@ fun WebScreen(
                                  */
                                 var academicTargetReloaded = false
 
-                                /** wengine 的 token 兑换最后一跳只补一次。 */
-                                var oneVpnTokenLoginFollowed = false
+                                /** wengine 接受 token 后只回目标页一次，避免来回打转。 */
+                                var oneVpnTokenReturned = false
+
+                                /** 已有会话却被送去 /login 时只同步一次票据；再撞上就真的重新登录。 */
+                                var oneVpnResynced = false
+
+                                /** 最近一次看到的门户地址，被门户踢去 OneVPN 时按它拼代理地址。 */
+                                var lastPortalPage: String? = null
 
                                 fun takeOneVpnSsoUrl(candidate: String?): String? {
-                                    if (!(useOneVpnSso || useAcademicProxy) || oneVpnSsoRedirected) return null
+                                    // 门户在校外也会被送去 OneVPN，同样用 CASTGC 直接为它签票，不让用户再输一次密码
+                                    if (!(useOneVpnSso || useAcademicProxy || portalService) || oneVpnSsoRedirected) return null
                                     val service = OneVpnSso.serviceForRelayRedirect(
                                         candidate?.toHttpUrlOrNull(),
                                         campus = ServiceLocator.activeCampus,
@@ -263,6 +279,21 @@ fun WebScreen(
                                     request: WebResourceRequest?,
                                 ): Boolean {
                                     val u = request?.url ?: return false
+                                    if (u.host == "one.bnu.edu.cn" || u.host == "one.bnuzh.edu.cn") lastPortalPage = u.toString()
+                                    // 应用侧明明已有 OneVPN 会话，WebView 却被送去登录：多半是两边票据不一致。
+                                    // 先把应用侧票据同步过来、回到代理页；**不能**再登录一次 —— OneVPN 单会话，
+                                    // 新登录会把应用侧那份也踢掉（1.9.36 的「退出网页后成绩考试不同步」就是这么来的）。
+                                    if (
+                                        u.host == "onevpn.bnu.edu.cn" && u.path == "/login" &&
+                                        OneVpnSso.sessionEstablished && !oneVpnResynced
+                                    ) {
+                                        oneVpnResynced = true
+                                        syncCookiesToWebView(includeOneVpn = true)
+                                        val back = lastPortalPage?.takeIf { portalService }?.let(OneVpnSso::proxyUrl) ?: pageUrl
+                                        Log.i(TAG, "OneVPN 已有会话，同步票据后回到代理页")
+                                        view?.loadUrl(back)
+                                        return true
+                                    }
                                     takeOneVpnSsoUrl(u.toString())?.let { target ->
                                         view?.loadUrl(target)
                                         return true
@@ -290,23 +321,24 @@ fun WebScreen(
                                     progress = 100
                                     canGoBack = view?.canGoBack() == true
                                     Log.i(TAG, "WebView 页面完成 host=${url?.toHttpUrlOrNull()?.host} path=${url?.toHttpUrlOrNull()?.encodedPath}")
-                                    // wengine 把 WebView 当成了 AJAX 客户端，票据兑换的最后一跳得自己走
-                                    oneVpnTokenLoginFollowUp(url)?.let { next ->
-                                        if (!oneVpnTokenLoginFollowed) {
-                                            oneVpnTokenLoginFollowed = true
-                                            Log.i(TAG, "OneVPN 续走 token-login")
-                                            view?.loadUrl(next)
-                                            return
-                                        }
+                                    // wengine 接受了 token（200 空页）：VPN 会话已在 WebView 自己的票据上，回到目标页。
+                                    // 这里**不要**再同步 OkHttp 的 Cookie，那会把 WebView 刚拿到的会话覆盖掉。
+                                    if (isOneVpnTokenAccepted(url) && !oneVpnTokenReturned) {
+                                        oneVpnTokenReturned = true
+                                        Log.i(TAG, "OneVPN 已接受 token，回到目标页")
+                                        // WebView 自己登了一次 OneVPN：把新票据交回 OkHttp，两边共用同一个会话
+                                        syncOneVpnTicketToOkHttp()
+                                        val back = lastPortalPage?.takeIf { portalService }?.let(OneVpnSso::proxyUrl) ?: pageUrl
+                                        view?.loadUrl(back)
+                                        return
                                     }
-                                    // OneVPN 登录完成后会停在它自己的页面上，要自己走回教务那条代理路径
+                                    // 其他情况下停在 OneVPN 自己的页面（如它的门户首页）：走回教务那条代理路径
                                     if (
                                         useAcademicProxy && !academicTargetReloaded &&
                                         leftAcademicProxyPath(url, pageUrl)
                                     ) {
                                         academicTargetReloaded = true
-                                        Log.i(TAG, "OneVPN 登录后回到教务代理地址")
-                                        syncCookiesToWebView(includeOneVpn = true)
+                                        Log.i(TAG, "回到教务代理地址")
                                         view?.loadUrl(pageUrl)
                                         return
                                     }
@@ -500,21 +532,14 @@ internal fun leftAcademicProxyPath(current: String?, target: String): Boolean {
 }
 
 /**
- * OneVPN 票据兑换的最后一跳，WebView 需要自己走。
- *
- * Android WebView 默认会带 `X-Requested-With: <包名>`，wengine 因此把这次跳转当成 AJAX，
- * 回的是 XHR 版本的链路：`/wengine-vpn-token-login?token=…` 返回 **200、空 body、无跳转**，
- * 页面就停在那里一片空白（系统浏览器不发这个头，所以在浏览器里打开是好的）。
- * 真正让会话落地的是同一个 token 的 `/token-login`，OkHttp 那条链路也是自己拼出来的。
- *
- * @return 要接着加载的地址；当前页不是这一跳时为 null
+ * wengine 接受 token 之后给非浏览器客户端（Android WebView 因为自带 `X-Requested-With` 也算）的落点：
+ * `/wengine-vpn-token-login?token=…` 返回一个 200 空页。此刻 VPN 会话已经挂在当前票据上，
+ * 回到原本要打开的页面即可。**绝不能去 `/token-login`**——同一个 token 再登录一次，
+ * OneVPN 单会话，第二次把第一次踢掉，用户就又回到登录页（1.9.36 的「登录后又回到登录页」正是它）。
  */
-internal fun oneVpnTokenLoginFollowUp(current: String?): String? {
-    val url = current?.toHttpUrlOrNull() ?: return null
-    if (url.host != "onevpn.bnu.edu.cn") return null
-    if (!url.encodedPath.endsWith("/wengine-vpn-token-login")) return null
-    if (url.queryParameter("token").isNullOrBlank()) return null
-    return url.newBuilder().encodedPath("/token-login").build().toString()
+internal fun isOneVpnTokenAccepted(url: String?): Boolean {
+    val u = url?.toHttpUrlOrNull() ?: return false
+    return u.host == "onevpn.bnu.edu.cn" && u.encodedPath.endsWith("/wengine-vpn-token-login")
 }
 
 /** OneVPN 自己的登录入口，或它代理出来的统一认证登录页。 */
@@ -547,10 +572,15 @@ internal fun isPortalLoginPage(url: String?, desktopMode: Boolean = false): Bool
         }
         "one.bnuzh.edu.cn" -> parsed.encodedPath == "/nup/index.html" ||
             parsed.encodedPath == "/nup/guide.html"
-        "onevpn.bnu.edu.cn" -> parsed.encodedPath.endsWith("/tp_nup/index.html") ||
-            parsed.encodedPath.endsWith("/tp_nup/guide.html") ||
-            parsed.encodedPath.endsWith("/nup/index.html") ||
-            parsed.encodedPath.endsWith("/nup/guide.html")
+        // 代理路径下同样区分电脑端：电脑端的 index.html 是首页，不是登录页
+        "onevpn.bnu.edu.cn" -> if (desktopMode) {
+            parsed.encodedPath.endsWith("/tp_nup/guide.html") || parsed.encodedPath.endsWith("/nup/guide.html")
+        } else {
+            parsed.encodedPath.endsWith("/tp_nup/index.html") ||
+                parsed.encodedPath.endsWith("/tp_nup/guide.html") ||
+                parsed.encodedPath.endsWith("/nup/index.html") ||
+                parsed.encodedPath.endsWith("/nup/guide.html")
+        }
         else -> false
     }
 }
@@ -568,6 +598,28 @@ private fun portalWebViewUrl(url: String): String {
     } else {
         url
     }
+}
+
+/**
+ * WebView 自己完成了 OneVPN 登录后，把新票据交给 OkHttp。
+ * OneVPN 单会话：两边若各持一枚票据，任何一边再登录都会把另一边踢掉；教务会话按新票据重建。
+ */
+private fun syncOneVpnTicketToOkHttp() {
+    val raw = CookieManager.getInstance().getCookie("https://onevpn.bnu.edu.cn/") ?: return
+    val ticket = raw.split(';').map { it.trim() }.firstOrNull { it.startsWith("wengine_vpn_ticket") } ?: return
+    val name = ticket.substringBefore('=')
+    val value = ticket.substringAfter('=', "")
+    if (value.isBlank()) return
+    val url = "https://onevpn.bnu.edu.cn/".toHttpUrlOrNull() ?: return
+    ServiceLocator.http.cookies.saveFromResponse(
+        url,
+        listOf(
+            Cookie.Builder().name(name).value(value)
+                .domain("onevpn.bnu.edu.cn").path("/").secure().httpOnly().build(),
+        ),
+    )
+    OneVpnSso.markSessionEstablished()
+    ServiceLocator.api.invalidate()
 }
 
 /** 把 OkHttp 里的 CAS/教务会话写进 WebView，实现免密打开。 */
@@ -600,16 +652,17 @@ private fun syncCookiesToWebView(includeOneVpn: Boolean = true) {
         "https://$casHost/",
         "${BnuCookieJar.CAS_TICKET}=; Max-Age=0; Path=/; Domain=$casHost",
     )
-    PortalSso.webViewCookieTarget(ServiceLocator.activeCampus)?.let { (url, cookie) ->
+    // 门户 accessToken：只有应用侧真的换到了 token 才覆盖 WebView 里的那一份。
+    // 以前这里无条件先删再写，应用侧换 token 失败（校外常见）时就把用户在网页里
+    // 手动登录刚拿到的 token 删掉了 —— 表现为「登录成功又回到登录页」。
+    PortalSso.webViewCookie(ServiceLocator.activeCampus)?.let { (url, cookie) ->
+        PortalSso.webViewCookieTarget(ServiceLocator.activeCampus)?.let { (u, c) -> cm.setCookie(u, c) }
         cm.setCookie(url, cookie)
     }
     if (includeOneVpn) {
         PortalSso.webViewProxyCookie(ServiceLocator.activeCampus)?.let { (url, cookie) ->
             cm.setCookie(url, cookie)
         }
-    }
-    PortalSso.webViewCookie(ServiceLocator.activeCampus)?.let { (url, cookie) ->
-        cm.setCookie(url, cookie)
     }
     for (domain in domains.filter { includeOneVpn || it != "https://onevpn.bnu.edu.cn/" }) {
         val url = domain.toHttpUrlOrNull() ?: continue

@@ -99,13 +99,12 @@ internal object PortalSso {
         val useOneVpnProxy = entry.location?.let { location ->
             location.host == "onevpn.bnu.edu.cn" && location.encodedPath == "/login"
         } == true
-        if (useOneVpnProxy && !OneVpnSso.hasProxySession(http)) {
-            runCatching {
-                OneVpnSso.establish(http, auth, campus, OneVpnSso.COURSE_CENTER)
-            }.onSuccess { ok -> Log.i(TAG, "门户 OAuth 前 OneVPN 会话预热=$ok") }
-                .onFailure { error -> Log.w(TAG, "门户 OAuth 前 OneVPN 预热失败=${error::class.java.simpleName}") }
-        }
-        val proxyPortal = useOneVpnProxy && OneVpnSso.hasProxySession(http)
+        // 校外访问时门户会把人送到 OneVPN；此时先把 wengine 自己那层会话建好，后面的 OAuth 回调与
+        // 换 token 才能走代理路径。以前这里建的是课程中心的**直连**会话，根本没有登录 wengine。
+        val proxyPortal = useOneVpnProxy && runCatching { OneVpnSso.ensureVpnSession(http, auth, campus) }
+            .onSuccess { ok -> Log.i(TAG, "门户 OAuth 前 OneVPN 会话=$ok") }
+            .onFailure { error -> Log.w(TAG, "门户 OAuth 前 OneVPN 会话失败=${error::class.java.simpleName}") }
+            .getOrDefault(false)
         val callback = findCallback(http, authorizeUrl, config) ?: return false
         val code = callback.queryParameter("code")?.takeIf { it.isNotBlank() } ?: return false
         val casDelegate = callback.queryParameter("casDelegate")
@@ -164,6 +163,9 @@ internal object PortalSso {
 
     /** 供 WebView 同步，token 只存在进程内；退出登录时由 [clear] 清除。 */
     fun accessToken(campus: Campus): String? = synchronized(accessTokens) { accessTokens[campus] }
+
+    /** 这次 token 是经 OneVPN 代理换到的：说明门户把校外访问者送去了 OneVPN，页面也得从代理路径打开。 */
+    fun usesProxy(campus: Campus): Boolean = synchronized(accessTokens) { campus in proxyCampuses }
 
     fun clear(campus: Campus) {
         synchronized(accessTokens) {

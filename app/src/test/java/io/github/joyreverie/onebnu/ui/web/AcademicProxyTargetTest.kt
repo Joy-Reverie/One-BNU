@@ -2,7 +2,6 @@ package io.github.joyreverie.onebnu.ui.web
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -60,17 +59,12 @@ class AcademicProxyTargetTest {
     }
 
     @Test
-    fun `wengine 的 token 兑换最后一跳要自己补上`() {
-        // WebView 默认带 X-Requested-With，wengine 因此回 XHR 版链路：
-        // /wengine-vpn-token-login 返回 200 空 body，页面就停在空白上
-        assertEquals(
-            "https://onevpn.bnu.edu.cn/token-login?token=abc123",
-            oneVpnTokenLoginFollowUp("https://onevpn.bnu.edu.cn/wengine-vpn-token-login?token=abc123"),
-        )
-        // 没有 token、别的路径、别的主机都不补
-        assertNull(oneVpnTokenLoginFollowUp("https://onevpn.bnu.edu.cn/wengine-vpn-token-login"))
-        assertNull(oneVpnTokenLoginFollowUp("https://onevpn.bnu.edu.cn/token-login?token=abc123"))
-        assertNull(oneVpnTokenLoginFollowUp("https://example.com/wengine-vpn-token-login?token=abc123"))
-        assertNull(oneVpnTokenLoginFollowUp(null))
+    fun `wengine 接受 token 的落点是 200 空页，此时回目标页而不是再登录一次`() {
+        assertTrue(isOneVpnTokenAccepted("https://onevpn.bnu.edu.cn/wengine-vpn-token-login?token=abc123"))
+        // 别的路径、别的主机都不算
+        assertFalse(isOneVpnTokenAccepted("https://onevpn.bnu.edu.cn/token-login?token=abc123"))
+        assertFalse(isOneVpnTokenAccepted("https://onevpn.bnu.edu.cn/login?cas_login=true"))
+        assertFalse(isOneVpnTokenAccepted("https://example.com/wengine-vpn-token-login?token=abc123"))
+        assertFalse(isOneVpnTokenAccepted(null))
     }
 }

@@ -149,6 +149,7 @@ object ServiceLocator {
 
     fun signOut(forgetCredentials: Boolean) {
         PortalSso.clear(activeCampus)
+        OneVpnSso.reset()
         current.auth.logout()
         current.api.invalidate()
         current.session.clear()

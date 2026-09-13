@@ -30,6 +30,7 @@ internal class HttpOnceResult(
     val code: Int,
     val location: HttpUrl?,
     val body: String,
+    val headers: okhttp3.Headers = okhttp3.Headers.headersOf(),
 )
 
 /**
@@ -97,6 +98,7 @@ class Http(val client: OkHttpClient, val cookies: BnuCookieJar) {
                 code = response.code,
                 location = location,
                 body = decode(bytes, declared),
+                headers = response.headers,
             )
         }
     }
@@ -136,6 +138,7 @@ class Http(val client: OkHttpClient, val cookies: BnuCookieJar) {
                 code = response.code,
                 location = location,
                 body = decode(bytes, declared),
+                headers = response.headers,
             )
         }
     }

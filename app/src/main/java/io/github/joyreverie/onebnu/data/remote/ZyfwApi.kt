@@ -1,5 +1,6 @@
 package io.github.joyreverie.onebnu.data.remote
 
+import android.util.Log
 import io.github.joyreverie.onebnu.core.net.Http
 import io.github.joyreverie.onebnu.core.net.OneVpnSso
 import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
@@ -26,6 +27,7 @@ class ZyfwApi(
 ) {
 
     companion object {
+        private const val TAG = "OneBNU/Zyfw"
         const val BASE = "http://zyfw.bnu.edu.cn"
 
         /** 教务系统只提供 HTTP；移动网络下由北京 OneVPN 以 HTTPS 代理访问。 */
@@ -146,6 +148,7 @@ class ZyfwApi(
         cachedToken = null
         loadUserContext()
         ssoDone = true
+        Log.i(TAG, "教务会话已建立：直连")
     }
 
     @Throws(IOException::class)
@@ -160,6 +163,7 @@ class ZyfwApi(
         cachedToken = null
         loadUserContext()
         ssoDone = true
+        Log.i(TAG, "教务会话已建立：OneVPN 代理")
     }
 
     private fun loadUserContext() {
