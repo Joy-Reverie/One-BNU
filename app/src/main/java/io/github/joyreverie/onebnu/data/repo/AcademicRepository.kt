@@ -23,6 +23,30 @@ import java.io.IOException
 import java.time.LocalDate
 
 /**
+ * 缓存优先的两条判定规则，单独拎出来是因为它们决定了「校外能不能看」这件事，
+ * 而仓库本身依赖 Android 的 Context，没法直接跑单测。
+ */
+internal object CachePolicy {
+
+    /**
+     * 要不要直接用本地快照。
+     *
+     * **有快照就用，哪怕内容是空的**：教务「这一轮没有你的考试」本身就是一个答案，
+     * 以前空快照不算数，于是每次进页面都要重新连一次教务，蜂窝 / 校外就是一直转圈。
+     */
+    fun preferSnapshot(hasSnapshot: Boolean, forceRefresh: Boolean): Boolean = hasSnapshot && !forceRefresh
+
+    /**
+     * 线上结果要不要写进快照。
+     *
+     * 有内容就写；没有内容时只在「还没有任何有内容的快照」时写 ——
+     * 这样既能把「查到的就是空」存下来，又不会让教务的瞬态空响应抹掉好数据。
+     */
+    fun shouldWrite(liveHasContent: Boolean, snapshotHasContent: Boolean): Boolean =
+        liveHasContent || !snapshotHasContent
+}
+
+/**
  * 教务数据仓库。
  *
  * 统一处理两件事：
@@ -40,14 +64,29 @@ class AcademicRepository(
     private val campus: Campus = Campus.BEIJING,
 ) {
 
-    /** 空数据不是错误：界面要显示「本学期暂无…」而不是报错。 */
+    /**
+     * 空数据不是错误：界面要显示「本学期暂无…」而不是报错。
+     * [Empty] 也带 [DataFreshness]，因为「查到的就是空」同样可能来自本地快照，界面要照样提示需要更新。
+     */
     sealed interface Outcome<out T> {
         data class Ok<T>(val data: T, val freshness: DataFreshness? = null) : Outcome<T>
-        data class Empty(val reason: String) : Outcome<Nothing>
+        data class Empty(val reason: String, val freshness: DataFreshness? = null) : Outcome<Nothing>
         data class Error(val message: String, val needLogin: Boolean = false) : Outcome<Nothing>
+
+        /** 这份结果是不是来自本地快照。 */
+        val cached: Boolean
+            get() = when (this) {
+                is Ok -> freshness?.cached == true
+                is Empty -> freshness?.cached == true
+                is Error -> false
+            }
     }
 
-    /** 首页预热、课表页和学分页可能同时触发查询；教务会话不是并发安全的。 */
+    /**
+     * 首页预热、课表页和学分页可能同时触发查询；教务会话不是并发安全的。
+     * **只锁真正发出请求的那一段** —— 读本地快照必须随时可以进行，
+     * 否则登录后那一轮预取（十几个串行请求，蜂窝下每个都可能等满超时）会把所有页面一起堵住。
+     */
     private val dataMutex = Mutex()
 
     private suspend fun <T> call(block: () -> T): Outcome<T> = withContext(Dispatchers.IO) {
@@ -76,14 +115,23 @@ class AcademicRepository(
         is ZyfwApi.SessionExpiredException -> "登录状态已失效，请重新登录"
         is java.net.UnknownHostException -> "无法连接到教务系统，请检查网络"
         is java.net.SocketTimeoutException -> "教务系统响应超时，请稍后重试"
-        is IOException -> "网络异常：${message ?: "请稍后重试"}"
+        // ensureSession 已经把「代理 / 直连都不通」翻译成用户看得懂的一句话，不要再套一层「网络异常」
+        is IOException -> message?.takeIf { it == ZyfwApi.UNREACHABLE_MESSAGE }
+            ?: "网络异常：${message ?: "请稍后重试"}"
         else -> message ?: "出现未知错误"
     }
 
     /**
-     * 默认先读有效快照，让弱网/代理故障不阻塞页面；显式重试和后台预热才绕过快照。
+     * 缓存优先：有快照就先拿快照渲染，网络留给后台刷新。
      *
-     * 线上响应仍必须通过 [shouldCache] 才能写入，空表或半截响应绝不能覆盖旧快照。
+     * 两条与旧写法不同的规则：
+     *  - **「查到的就是空」也是一种快照**。以前空快照过不了 [shouldCache]，于是每次进页面都要重新
+     *    走一次网络；在蜂窝 / 校外网络下就是一直转圈最后报错。现在只要有快照就直接用，
+     *    是空就显示「暂无…」，并由调用方在后台再取一次。
+     *  - **锁只罩住真正的请求**。读快照在锁外，登录后的预取不会把课表、成绩、考试页一起堵住。
+     *
+     * 写入仍受 [shouldCache] 保护：空表或半截响应不覆盖已有的**有内容**快照；
+     * 但一份快照都还没有时，空结果要存下来，否则「空」这个状态永远进不了缓存。
      */
     private suspend fun <T> cachedHtml(
         key: String,
@@ -91,33 +139,36 @@ class AcademicRepository(
         parse: (String) -> T,
         shouldCache: (T) -> Boolean = { true },
         forceRefresh: Boolean = false,
-    ): Outcome<T> = dataMutex.withLock {
-        if (!forceRefresh) {
-            cachedParsed(key, parse)?.takeIf { shouldCache(it.data) }?.let { return@withLock it }
-        }
-        val live = call(request)
-        if (live is Outcome.Ok) {
-            val parsed = runCatching { parse(live.data) }
-            if (parsed.isSuccess) {
-                val value = parsed.getOrThrow()
-                if (shouldCache(value)) {
-                    offlineCache?.let { cache ->
-                        withContext(Dispatchers.IO) { cache.saveText(key, live.data) }
+    ): Outcome<T> {
+        val snapshot = cachedParsed(key, parse)
+        if (CachePolicy.preferSnapshot(snapshot != null, forceRefresh)) return requireNotNull(snapshot)
+        val hadContent = snapshot != null && shouldCache(snapshot.data)
+
+        return dataMutex.withLock {
+            val live = call(request)
+            if (live is Outcome.Ok) {
+                val parsed = runCatching { parse(live.data) }
+                if (parsed.isSuccess) {
+                    val value = parsed.getOrThrow()
+                    if (CachePolicy.shouldWrite(shouldCache(value), hadContent)) {
+                        offlineCache?.let { cache ->
+                            withContext(Dispatchers.IO) { cache.saveText(key, live.data) }
+                        }
+                    } else if (snapshot != null) {
+                        // 瞬态空响应不能把上一次有内容的快照抹掉，直接继续用旧数据
+                        return@withLock snapshot
                     }
-                } else {
-                    // 空表/半截页面不能覆盖上一次有效快照；瞬态空响应时直接继续用旧数据。
-                    cachedParsed(key, parse)?.takeIf { shouldCache(it.data) }?.let { return@withLock it }
+                    return@withLock Outcome.Ok(value, DataFreshness(System.currentTimeMillis(), false))
                 }
-                return@withLock Outcome.Ok(value, DataFreshness(System.currentTimeMillis(), false))
+
+                snapshot?.let { return@withLock it }
+                return@withLock Outcome.Error(parsed.exceptionOrNull()?.message ?: "解析教务数据失败")
             }
 
-            cachedParsed(key, parse)?.takeIf { shouldCache(it.data) }?.let { return@withLock it }
-            return@withLock Outcome.Error(parsed.exceptionOrNull()?.message ?: "解析教务数据失败")
+            snapshot?.let { return@withLock it }
+            @Suppress("UNCHECKED_CAST")
+            live as Outcome<T>
         }
-
-        cachedParsed(key, parse)?.takeIf { shouldCache(it.data) }?.let { return@withLock it }
-        @Suppress("UNCHECKED_CAST")
-        live as Outcome<T>
     }
 
     private suspend fun cachedOptions(
@@ -125,23 +176,26 @@ class AcademicRepository(
         request: () -> List<Option>,
         shouldCache: (List<Option>) -> Boolean = { it.isNotEmpty() },
         forceRefresh: Boolean = false,
-    ): Outcome<List<Option>> = dataMutex.withLock {
-        if (!forceRefresh) {
-            loadCachedOptions(key)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
-        }
-        val live = call(request)
-        if (live is Outcome.Ok) {
-            if (shouldCache(live.data)) {
-                offlineCache?.let { cache ->
-                    withContext(Dispatchers.IO) { cache.saveOptions(key, live.data) }
+    ): Outcome<List<Option>> {
+        val snapshot = loadCachedOptions(key)
+        if (CachePolicy.preferSnapshot(snapshot != null, forceRefresh)) return requireNotNull(snapshot)
+        val hadContent = snapshot != null && shouldCache(snapshot.data)
+
+        return dataMutex.withLock {
+            val live = call(request)
+            if (live is Outcome.Ok) {
+                if (CachePolicy.shouldWrite(shouldCache(live.data), hadContent)) {
+                    offlineCache?.let { cache ->
+                        withContext(Dispatchers.IO) { cache.saveOptions(key, live.data) }
+                    }
+                } else if (snapshot != null) {
+                    return@withLock snapshot
                 }
-            } else {
-                loadCachedOptions(key)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
+                return@withLock Outcome.Ok(live.data, DataFreshness(System.currentTimeMillis(), false))
             }
+            snapshot?.let { return@withLock it }
             return@withLock live
         }
-        loadCachedOptions(key)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
-        return@withLock live
     }
 
     private suspend fun <T> cachedParsed(key: String, parse: (String) -> T): Outcome.Ok<T>? =
@@ -151,8 +205,14 @@ class AcademicRepository(
             }
         }
 
-    private suspend fun loadCachedOptions(key: String): List<Option>? =
-        offlineCache?.let { cache -> withContext(Dispatchers.IO) { cache.loadOptions(key) } }
+    private suspend fun loadCachedOptions(key: String): Outcome.Ok<List<Option>>? =
+        offlineCache?.let { cache ->
+            withContext(Dispatchers.IO) {
+                cache.loadOptionsAt(key)?.let { (options, savedAt) ->
+                    Outcome.Ok(options, DataFreshness(savedAt, true))
+                }
+            }
+        }
 
     val userContext get() = api.userContext
 
@@ -163,13 +223,13 @@ class AcademicRepository(
         forceRefresh = forceRefresh,
     ).let { o ->
         val converted: Outcome<List<Term>> = when (o) {
-            is Outcome.Ok -> Outcome.Ok(o.data.mapNotNull { Term.parse(it.code, it.name) })
-            is Outcome.Empty -> Outcome.Empty(o.reason)
+            is Outcome.Ok -> Outcome.Ok(o.data.mapNotNull { Term.parse(it.code, it.name) }, o.freshness)
+            is Outcome.Empty -> Outcome.Empty(o.reason, o.freshness)
             is Outcome.Error -> Outcome.Error(o.message, o.needLogin)
         }
         if (converted is Outcome.Ok && converted.data.isEmpty()) {
-            scheduleCache?.load()?.schedule?.term?.let { Outcome.Ok(listOf(it)) }
-                ?: Outcome.Empty("教务系统暂未发布任何学期课表")
+            scheduleCache?.load()?.schedule?.term?.let { Outcome.Ok(listOf(it), converted.freshness) }
+                ?: Outcome.Empty("教务系统暂未发布任何学期课表", converted.freshness)
         } else converted
     }
 
@@ -207,7 +267,7 @@ class AcademicRepository(
         if (o is Outcome.Ok) {
             // 空课表不覆盖上一次有效的小组件数据，避免教务瞬态空响应造成数据消失。
             if (isCurrentTerm(term) && o.data.courses.isNotEmpty()) runCatching { scheduleCache?.save(o.data) }
-            if (o.data.courses.isEmpty()) Outcome.Empty("${term.name}没有查询到选课记录") else o
+            if (o.data.courses.isEmpty()) Outcome.Empty("${term.name}没有查询到选课记录", o.freshness) else o
         } else o
     }
 
@@ -234,7 +294,7 @@ class AcademicRepository(
         }
         return result.let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) {
-            Outcome.Empty("教务系统中还没有成绩记录")
+            Outcome.Empty("教务系统中还没有成绩记录", o.freshness)
         } else o
         }
     }
@@ -256,7 +316,7 @@ class AcademicRepository(
             shouldCache = { it.isNotEmpty() },
             forceRefresh = forceRefresh,
         ).let { o ->
-        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未发布培养方案课程模块") else o
+        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未发布培养方案课程模块", o.freshness) else o
         }
     }
 
@@ -268,7 +328,7 @@ class AcademicRepository(
         shouldCache = { it.isNotEmpty() },
         forceRefresh = forceRefresh,
     ).let { o ->
-        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未返回选课结果课程类别") else o
+        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未返回选课结果课程类别", o.freshness) else o
     }
 
     suspend fun examRounds(forceRefresh: Boolean = false): Outcome<List<Option>> = cachedOptions(
@@ -276,7 +336,7 @@ class AcademicRepository(
         request = { api.examRounds() },
         forceRefresh = forceRefresh,
     ).let { o ->
-        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未发布考试安排") else o
+        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统暂未发布考试安排", o.freshness) else o
     }
 
     suspend fun exams(round: String, forceRefresh: Boolean = false): Outcome<List<Exam>> = cachedHtml(
@@ -286,14 +346,14 @@ class AcademicRepository(
         shouldCache = { it.isNotEmpty() },
         forceRefresh = forceRefresh,
     ).let { o ->
-        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("该轮次下没有你的考试安排") else o
+        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("该轮次下没有你的考试安排", o.freshness) else o
     }
 
     /** 当前登录入口对应的教务校区，用于查该校区的教室课表。 */
     suspend fun classroomCampus(forceRefresh: Boolean = false): Outcome<Option> {
         return when (val all = cachedOptions(OfflineCache.CAMPUSES, request = { api.campuses() }, forceRefresh = forceRefresh)) {
-            is Outcome.Ok -> pickClassroomCampus(all.data)?.let { Outcome.Ok(it) }
-                ?: Outcome.Empty("教务系统没有返回${campus.label}信息")
+            is Outcome.Ok -> pickClassroomCampus(all.data)?.let { Outcome.Ok(it, all.freshness) }
+                ?: Outcome.Empty("教务系统没有返回${campus.label}信息", all.freshness)
             is Outcome.Empty -> all
             is Outcome.Error -> all
         }
@@ -315,7 +375,7 @@ class AcademicRepository(
         request = { api.buildings(campus) },
         forceRefresh = forceRefresh,
     ).let { o ->
-        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统没有返回楼房列表") else o
+        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("教务系统没有返回楼房列表", o.freshness) else o
     }
 
     suspend fun classrooms(term: Term, campus: String, building: String, forceRefresh: Boolean = false): Outcome<List<Classroom>> = cachedHtml(
@@ -326,7 +386,7 @@ class AcademicRepository(
         shouldCache = { it.isNotEmpty() },
         forceRefresh = forceRefresh,
     ).let { o ->
-        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("这栋楼没有查询到教室课表") else o
+        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("这栋楼没有查询到教室课表", o.freshness) else o
     }
 
     suspend fun studentInfo(forceRefresh: Boolean = false): Outcome<List<InfoItem>> {
@@ -364,7 +424,7 @@ class AcademicRepository(
         shouldCache = { it.isNotEmpty() },
         forceRefresh = forceRefresh,
     ).let { o ->
-        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("没有查询到毕业学分要求") else o
+        if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("没有查询到毕业学分要求", o.freshness) else o
     }
 
     /**

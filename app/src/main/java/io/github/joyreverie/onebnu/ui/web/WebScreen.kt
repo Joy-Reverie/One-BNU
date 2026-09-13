@@ -42,11 +42,15 @@ import io.github.joyreverie.onebnu.core.net.PortalSso
 import io.github.joyreverie.onebnu.core.store.Campus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Cookie
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import android.util.Log
 
 private const val TAG = "OneBNU/WebView"
+
+/** 蜂窝下建教务代理会话的等待上限；超时就先把页面加载出来。 */
+private const val ACADEMIC_PROXY_TIMEOUT_MS = 20_000L
 private const val BEIJING_PORTAL_PC_HOME = "https://one.bnu.edu.cn/tp_nup/index.html"
 private const val DESKTOP_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -137,8 +141,13 @@ fun WebScreen(
             // 交原始地址的话 OneVpnSso 会先直连 zyfw:80，超时后落回 CAS 登录页 → 白屏。
             // 数据接口（ZyfwApi.establishProxySession）传的一直是代理地址。
             val proxied = academicProxyUrl(url)
+            // 建会话要走十来跳，蜂窝下每一跳都可能等满超时。给它一个上限：
+            // 到点先把代理地址加载出来，会话在后台继续建，页面上还有刷新按钮兜底 ——
+            // 总比一直停在进度条上强。
             withContext(Dispatchers.IO) {
-                runCatching { OneVpnSso.establish(http, auth, campus, proxied) }
+                withTimeoutOrNull(ACADEMIC_PROXY_TIMEOUT_MS) {
+                    runCatching { OneVpnSso.establish(http, auth, campus, proxied) }
+                }
             }
             // 会话没建起来也不退回明文直连 —— 蜂窝下那条路本来就不通，
             // 仍然加载代理地址，最坏情况是 OneVPN 自己显示一次登录页，而不是白屏。

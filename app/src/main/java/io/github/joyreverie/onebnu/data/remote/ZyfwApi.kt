@@ -33,6 +33,12 @@ class ZyfwApi(
 
         /** OneVPN 短暂故障时避免每个接口都重新等待一次代理超时。 */
         private const val PROXY_BACKOFF_MS = 2 * 60 * 1000L
+
+        /**
+         * 连不上教务时统一的说法。用户看到的是「为什么现在是缓存」，
+         * 而不是代理、直连这些实现细节。
+         */
+        const val UNREACHABLE_MESSAGE = "当前网络连不上教务系统，校园网下可获取最新数据"
     }
 
     class SessionExpiredException : IOException("登录状态已失效")
@@ -62,15 +68,20 @@ class ZyfwApi(
     @Synchronized
     @Throws(IOException::class)
     fun ensureSession(force: Boolean = false) {
-        val shouldUseProxy = proxyBase != null && preferProxy() &&
-            (force || System.currentTimeMillis() >= proxyFailureUntil)
+        val preferProxyNow = proxyBase != null && preferProxy()
         if (
             ssoDone && !force &&
-            ((shouldUseProxy && activeBase == proxyBase) || (!shouldUseProxy && activeBase == base))
+            ((preferProxyNow && activeBase == proxyBase) || (!preferProxyNow && activeBase == base))
         ) return
         if (!auth.hasSession()) throw SessionExpiredException()
 
-        if (shouldUseProxy) {
+        if (preferProxyNow) {
+            // 上一轮代理 + 直连都失败过：退避窗口内**立刻**报错，不要再各等一次超时。
+            // 一次完整的失败尝试可能花掉好几分钟，界面已经在显示本地缓存，
+            // 后台刷新没必要一直挂着。显式重试（force）会绕过退避重新探测。
+            if (!force && System.currentTimeMillis() < proxyFailureUntil) {
+                throw IOException(UNREACHABLE_MESSAGE)
+            }
             try {
                 establishProxySession()
                 proxyFailureUntil = 0L
@@ -78,19 +89,16 @@ class ZyfwApi(
             } catch (proxyError: SessionExpiredException) {
                 throw proxyError
             } catch (proxyError: IOException) {
-                // 代理偶发不可用时仍尝试同一 CAS 会话的直连路径；若直连成功，后续请求
-                // 在退避窗口内不会再次等待代理；显式重试会主动绕过退避重新探测。
-                proxyFailureUntil = System.currentTimeMillis() + PROXY_BACKOFF_MS
+                // 代理偶发不可用时仍给直连一次机会：并非所有运营商都拦 80 端口
                 try {
                     establishDirectSession()
+                    proxyFailureUntil = 0L
                     return
                 } catch (directError: SessionExpiredException) {
                     throw directError
                 } catch (directError: IOException) {
-                    throw IOException(
-                        "教务系统代理与直连均不可用：${proxyError.message ?: directError.message ?: "请检查网络"}",
-                        directError,
-                    )
+                    proxyFailureUntil = System.currentTimeMillis() + PROXY_BACKOFF_MS
+                    throw IOException(UNREACHABLE_MESSAGE, directError)
                 }
             }
         }
@@ -108,7 +116,7 @@ class ZyfwApi(
                 proxyFailureUntil = 0L
             } catch (proxyError: IOException) {
                 proxyFailureUntil = System.currentTimeMillis() + PROXY_BACKOFF_MS
-                throw proxyError
+                throw IOException(UNREACHABLE_MESSAGE, proxyError)
             }
         }
     }
@@ -142,7 +150,7 @@ class ZyfwApi(
         val target = proxyBase ?: throw IOException("教务代理未配置")
         if (!OneVpnSso.establish(http, auth, Campus.BEIJING, "$target/")) {
             ssoDone = false
-            throw IOException("教务系统代理会话未能建立，请检查网络后重试")
+            throw IOException(UNREACHABLE_MESSAGE)
         }
         activeBase = target
         ssoDone = false

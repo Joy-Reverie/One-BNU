@@ -10,6 +10,7 @@ import io.github.joyreverie.onebnu.data.model.Schedule
 import io.github.joyreverie.onebnu.data.model.Term
 import io.github.joyreverie.onebnu.data.repo.AcademicRepository.Outcome
 import io.github.joyreverie.onebnu.data.repo.SessionRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +21,8 @@ import java.time.temporal.ChronoUnit
 data class ScheduleUiState(
     val freshness: DataFreshness? = null,
     val loading: Boolean = true,
+    /** 已经显示出缓存内容，后台还在向教务要新数据。 */
+    val refreshing: Boolean = false,
     val error: String? = null,
     val emptyReason: String? = null,
     val terms: List<Term> = emptyList(),
@@ -43,6 +46,9 @@ data class ScheduleUiState(
         } ?: emptyList()
 
     val isCurrentWeek: Boolean get() = currentWeek != null && week == currentWeek
+
+    /** 当前显示的是本地快照（含「查到的就是空」）。 */
+    val fromCache: Boolean get() = freshness?.cached == true
 }
 
 class ScheduleViewModel : ViewModel() {
@@ -50,6 +56,7 @@ class ScheduleViewModel : ViewModel() {
     private val repo = ServiceLocator.repo
     private val settings = ServiceLocator.settings
     private val session = ServiceLocator.session
+    private var backgroundJob: Job? = null
 
     private val _state = MutableStateFlow(ScheduleUiState())
     val state: StateFlow<ScheduleUiState> = _state.asStateFlow()
@@ -66,73 +73,106 @@ class ScheduleViewModel : ViewModel() {
     }
 
     fun load(term: Term? = null, forceRefresh: Boolean = false) {
-        _state.value = _state.value.copy(loading = true, error = null, emptyReason = null)
+        backgroundJob?.cancel()
+        _state.value = _state.value.copy(loading = true, refreshing = false, error = null, emptyReason = null)
         viewModelScope.launch {
-            var terms = _state.value.terms
-            if (terms.isEmpty()) {
-                // 学期下限取自学籍里的年级。课表若比学籍先加载完，就会拿不到年级、
-                // 失去「入学之后」这道过滤，而 terms 之后是缓存的，一次错就一直错。
-                runCatching { session.ensureLoaded() }
-                when (val t = repo.terms(forceRefresh = forceRefresh)) {
-                    is Outcome.Ok -> terms = filterTerms(t.data)
-                    is Outcome.Empty -> {
-                        _state.value = _state.value.copy(loading = false, emptyReason = t.reason)
-                        return@launch
-                    }
-                    is Outcome.Error -> {
-                        _state.value = _state.value.copy(loading = false, error = t.message)
-                        return@launch
-                    }
-                }
+            fetch(term, forceRefresh)
+            // 缓存已经画出来了，后台再向教务要一次；成功了缓存提示自动消失
+            if (_state.value.fromCache) refreshInBackground()
+        }
+    }
+
+    /**
+     * 后台刷新：不显示整页 loading，失败也不覆盖已经显示的缓存。
+     * 蜂窝 / 校外网络下教务常常连不上，用户看到的应该是课表加一行提示，而不是一直转圈。
+     */
+    private fun refreshInBackground() {
+        if (backgroundJob?.isActive == true) return
+        val term = _state.value.term ?: return
+        _state.value = _state.value.copy(refreshing = true)
+        backgroundJob = viewModelScope.launch {
+            val before = _state.value
+            fetch(term, forceRefresh = true)
+            if (_state.value.error != null) {
+                // 后台失败：把缓存内容和提示原样放回去
+                _state.value = before.copy(refreshing = false)
+            } else {
+                // 别把用户正在看的那一周拽回本周 —— 现在周次由分页决定
+                _state.value = _state.value.copy(
+                    refreshing = false,
+                    week = before.week.coerceIn(1, _state.value.maxWeek),
+                )
             }
+        }
+    }
 
-            // 默认选教务当前学期，其次最新的一个
-            val ctx = repo.userContext
-            val target = term
-                ?: terms.firstOrNull { it.xn == ctx?.currentXn && it.xq == ctx.currentXq }
-                ?: terms.firstOrNull()
-
-            if (target == null) {
-                _state.value = _state.value.copy(loading = false, emptyReason = "没有可查询的学期")
-                return@launch
-            }
-
-            val start = AcademicCalendar.firstMonday(
-                target,
-                useOfficial = true,
-            )
-
-            when (val s = repo.schedule(target, forceRefresh = forceRefresh)) {
-                is Outcome.Ok -> {
-                    val baseMax = maxOf(s.data.maxWeek, MIN_WEEKS)
-                    val cur = start?.let { currentWeekIn(target, it, baseMax) }
-                    val max = maxOf(baseMax, cur ?: 1)
+    private suspend fun fetch(term: Term?, forceRefresh: Boolean) {
+        var terms = _state.value.terms
+        if (terms.isEmpty()) {
+            // 学期下限取自学籍里的年级。课表若比学籍先加载完，就会拿不到年级、
+            // 失去「入学之后」这道过滤，而 terms 之后是缓存的，一次错就一直错。
+            runCatching { session.ensureLoaded() }
+            when (val t = repo.terms(forceRefresh = forceRefresh)) {
+                is Outcome.Ok -> terms = filterTerms(t.data)
+                is Outcome.Empty -> {
                     _state.value = _state.value.copy(
-                        loading = false,
-                        terms = terms,
-                        term = target,
-                        schedule = s.data,
-                        freshness = s.freshness,
-                        termStart = start,
-                        currentWeek = cur?.takeIf { it in 1..max },
-                        week = (cur ?: 1).coerceIn(1, max),
-                        maxWeek = max,
-                        periodTimes = settings.periodTimes,
-                        error = null,
-                        emptyReason = null,
+                        loading = false, emptyReason = t.reason, freshness = t.freshness,
                     )
+                    return
                 }
-                is Outcome.Empty -> _state.value = _state.value.copy(
-                    loading = false, terms = terms, term = target, termStart = start,
-                    schedule = null, emptyReason = s.reason,
-                    currentWeek = null, week = 1, maxWeek = MIN_WEEKS,
-                )
-                is Outcome.Error -> _state.value = _state.value.copy(
-                    loading = false, terms = terms, term = target, termStart = start,
-                    error = s.message,
-                    currentWeek = null, week = 1, maxWeek = MIN_WEEKS,
+                is Outcome.Error -> {
+                    _state.value = _state.value.copy(loading = false, error = t.message, freshness = null)
+                    return
+                }
+            }
+        }
+
+        // 默认选教务当前学期，其次最新的一个
+        val ctx = repo.userContext
+        val target = term
+            ?: terms.firstOrNull { it.xn == ctx?.currentXn && it.xq == ctx.currentXq }
+            ?: terms.firstOrNull()
+
+        if (target == null) {
+            _state.value = _state.value.copy(loading = false, emptyReason = "没有可查询的学期")
+            return
+        }
+
+        val start = AcademicCalendar.firstMonday(
+            target,
+            useOfficial = true,
+        )
+
+        when (val s = repo.schedule(target, forceRefresh = forceRefresh)) {
+            is Outcome.Ok -> {
+                val baseMax = maxOf(s.data.maxWeek, MIN_WEEKS)
+                val cur = start?.let { currentWeekIn(target, it, baseMax) }
+                val max = maxOf(baseMax, cur ?: 1)
+                _state.value = _state.value.copy(
+                    loading = false,
+                    terms = terms,
+                    term = target,
+                    schedule = s.data,
+                    freshness = s.freshness,
+                    termStart = start,
+                    currentWeek = cur?.takeIf { it in 1..max },
+                    week = (cur ?: 1).coerceIn(1, max),
+                    maxWeek = max,
+                    periodTimes = settings.periodTimes,
+                    error = null,
+                    emptyReason = null,
                 )
             }
+            is Outcome.Empty -> _state.value = _state.value.copy(
+                loading = false, terms = terms, term = target, termStart = start,
+                schedule = null, emptyReason = s.reason, freshness = s.freshness,
+                currentWeek = null, week = 1, maxWeek = MIN_WEEKS,
+            )
+            is Outcome.Error -> _state.value = _state.value.copy(
+                loading = false, terms = terms, term = target, termStart = start,
+                error = s.message, freshness = null,
+                currentWeek = null, week = 1, maxWeek = MIN_WEEKS,
+            )
         }
     }
 

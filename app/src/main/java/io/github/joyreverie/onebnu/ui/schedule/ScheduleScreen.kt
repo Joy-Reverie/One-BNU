@@ -86,6 +86,7 @@ import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PeriodMapper
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
+import io.github.joyreverie.onebnu.ui.components.CacheBanner
 import io.github.joyreverie.onebnu.ui.components.EmptyBox
 import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.InfoRow
@@ -222,32 +223,41 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             Column(Modifier.fillMaxSize()) {
-                when {
-                    s.loading -> LoadingBox("正在加载课表…")
-                    s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
-                    s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.load(forceRefresh = true) })
-                    else -> {
-                        val schedule = s.schedule
-                        if (schedule == null) {
-                            EmptyBox("暂无课表数据", onRetry = { vm.load(forceRefresh = true) })
-                        } else {
-                            SchedulePager(
-                                schedule = schedule,
-                                state = s,
-                                pager = pager,
-                                zoom = zoom,
-                                onZoom = {
-                                    zoom = ScheduleLayout.clampZoom(zoom * it)
-                                    zoomHint = true
-                                    zoomTick++
-                                },
-                                onZoomEnd = {
-                                    settings.scheduleZoom = zoom
-                                    zoomTick++
-                                },
-                                onClick = { c, sess -> selected = c to sess },
-                                onEventClick = { editing = it },
-                            )
+                // 缓存优先渲染时给一行说明；后台取到新数据这行自己消失
+                if (s.fromCache) {
+                    CacheBanner(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                        refreshing = s.refreshing,
+                    )
+                }
+                Box(Modifier.weight(1f)) {
+                    when {
+                        s.loading -> LoadingBox("正在加载课表…")
+                        s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
+                        s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.load(forceRefresh = true) })
+                        else -> {
+                            val schedule = s.schedule
+                            if (schedule == null) {
+                                EmptyBox("暂无课表数据", onRetry = { vm.load(forceRefresh = true) })
+                            } else {
+                                SchedulePager(
+                                    schedule = schedule,
+                                    state = s,
+                                    pager = pager,
+                                    zoom = zoom,
+                                    onZoom = {
+                                        zoom = ScheduleLayout.clampZoom(zoom * it)
+                                        zoomHint = true
+                                        zoomTick++
+                                    },
+                                    onZoomEnd = {
+                                        settings.scheduleZoom = zoom
+                                        zoomTick++
+                                    },
+                                    onClick = { c, sess -> selected = c to sess },
+                                    onEventClick = { editing = it },
+                                )
+                            }
                         }
                     }
                 }

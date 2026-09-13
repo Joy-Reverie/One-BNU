@@ -21,9 +21,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -90,6 +92,44 @@ fun OfflineBanner(modifier: Modifier = Modifier) {
             Icon(Icons.Outlined.CloudOff, null, Modifier.size(17.dp))
             Spacer(Modifier.width(7.dp))
             Text("无网络连接，可能需要联网更新", style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+/**
+ * 页面内容来自本地快照时的一行提示。
+ *
+ * 与 [OfflineBanner] 同一套样式：教务在蜂窝 / 校外网络下经常连不上，
+ * 这时先把缓存显示出来，后台继续尝试；取到新数据这行就自己消失。
+ * [refreshing] 为真时换成「正在更新」，让用户知道后台还在试。
+ */
+@Composable
+fun CacheBanner(modifier: Modifier = Modifier, refreshing: Boolean = false) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.96f),
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = RoundedCornerShape(10.dp),
+        tonalElevation = 3.dp,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (refreshing) {
+                CircularProgressIndicator(
+                    Modifier.size(13.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Icon(Icons.Outlined.CloudSync, null, Modifier.size(17.dp))
+            }
+            Spacer(Modifier.width(7.dp))
+            Text(
+                if (refreshing) "为本地缓存，正在尝试更新…" else "为本地缓存，可能需要校园网更新",
+                style = MaterialTheme.typography.labelMedium,
+            )
         }
     }
 }

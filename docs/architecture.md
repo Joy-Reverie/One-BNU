@@ -60,6 +60,17 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 解析全部在 `data/parse/Parsers.kt`，用 Jsoup；单元测试的样本在 `app/src/test/resources/fixtures/`，已脱敏。
 
+教务数据一律**缓存优先**（`AcademicRepository` + `CachePolicy`）：
+
+- 有本地快照就直接返回快照，**空结果也是一种快照** —— 「这一轮没有你的考试」本身就是答案，
+  不该每次进页面都重新连一次教务。旧写法把「空」判成「没有缓存」，蜂窝 / 校外因此一直转圈最后报错。
+- 写入仍有保护：有内容就写；结果为空时只在还没有任何有内容的快照时才写，教务的瞬态空响应不会抹掉好数据。
+- `dataMutex` 只锁**真正发请求**的那一段。读快照在锁外，登录后那一轮预取（十几个串行请求）不会把页面一起堵住。
+- 课表、成绩、考试三页在拿到快照后由各自的 ViewModel 在后台再取一次（`refreshInBackground`）：
+  成功就静默替换、提示消失；失败保留快照与提示，不弹错误。
+- `ZyfwApi.ensureSession` 在蜂窝下先走 OneVPN 代理、失败再试一次直连；两条都失败后进入 2 分钟退避，
+  期间直接抛 `UNREACHABLE_MESSAGE`，不再每个接口各等一次超时。
+
 课程中心的入口是 `https://kczx.bnu.edu.cn/www/dd/vue/spa/jw-pyfa#/`。
 它受北京 CAS 保护，且方案、手册、大纲会随学校发布和个人权限变化，因此 `CultivationPlanScreen` 只提供一个原生目录页，
 由受限的 `WebScreen` 打开官方实时页面；不做 HTML 抓取、离线内置或导出。

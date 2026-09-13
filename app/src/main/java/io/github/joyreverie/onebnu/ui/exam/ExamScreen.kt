@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.joyreverie.onebnu.data.model.Exam
+import io.github.joyreverie.onebnu.ui.components.CacheBanner
 import io.github.joyreverie.onebnu.ui.components.EmptyBox
 import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.LoadingBox
@@ -89,21 +90,30 @@ fun ExamScreen(onBack: () -> Unit, vm: ExamViewModel = viewModel()) {
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when {
-                s.loading -> LoadingBox("正在查询考试安排…")
-                s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
-                s.emptyReason != null -> EmptyBox(
-                    s.emptyReason!!,
-                    hint = "考试安排由教务在考试周前统一发布",
-                    onRetry = { vm.load(forceRefresh = true) },
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            // 缓存优先渲染时给一行说明；后台取到新数据这行自己消失
+            if (s.fromCache) {
+                CacheBanner(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    refreshing = s.refreshing,
                 )
-                else -> LazyColumn(
-                    Modifier.fillMaxSize(),
-                    contentPadding = LocalScreenInfo.current.listPadding(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(s.exams, key = { it.courseName + it.time }) { ExamCard(it) }
+            }
+            Box(Modifier.weight(1f)) {
+                when {
+                    s.loading -> LoadingBox("正在查询考试安排…")
+                    s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
+                    s.emptyReason != null -> EmptyBox(
+                        s.emptyReason!!,
+                        hint = "考试安排由教务在考试周前统一发布",
+                        onRetry = { vm.load(forceRefresh = true) },
+                    )
+                    else -> LazyColumn(
+                        Modifier.fillMaxSize(),
+                        contentPadding = LocalScreenInfo.current.listPadding(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(s.exams, key = { it.courseName + it.time }) { ExamCard(it) }
+                    }
                 }
             }
         }

@@ -52,17 +52,21 @@ class OfflineCache(context: Context, campus: Campus) {
     }
 
     @Synchronized
-    fun loadOptions(key: String): List<Option>? {
-        val text = loadText(key)?.text ?: return null
+    fun loadOptions(key: String): List<Option>? = loadOptionsAt(key)?.first
+
+    /** 带保存时间的选项快照：界面要区分「刚同步」和「本地缓存」。 */
+    @Synchronized
+    fun loadOptionsAt(key: String): Pair<List<Option>, Long>? {
+        val snapshot = loadText(key) ?: return null
         return runCatching {
-            val array = JSONArray(text)
+            val array = JSONArray(snapshot.text)
             (0 until array.length()).mapNotNull { index ->
                 val item = array.optJSONArray(index) ?: return@mapNotNull null
                 val code = item.optString(0)
                 val name = item.optString(1)
                 if (code.isBlank() && name.isBlank()) null else Option(code, name)
             }
-        }.getOrNull()
+        }.getOrNull()?.let { it to snapshot.savedAt }
     }
 
     /** 只缓存已经过字段白名单处理的学籍键值，不保存接口原始 XML。 */

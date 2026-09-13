@@ -9,6 +9,7 @@ import io.github.joyreverie.onebnu.data.model.GpaScale
 import io.github.joyreverie.onebnu.data.model.GpaSummary
 import io.github.joyreverie.onebnu.data.model.Grade
 import io.github.joyreverie.onebnu.data.repo.AcademicRepository.Outcome
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +18,8 @@ import kotlinx.coroutines.launch
 data class GradeUiState(
     val freshness: DataFreshness? = null,
     val loading: Boolean = true,
+    /** 已经显示出缓存内容，后台还在向教务要新数据。 */
+    val refreshing: Boolean = false,
     val error: String? = null,
     val emptyReason: String? = null,
     val grades: List<Grade> = emptyList(),
@@ -27,12 +30,16 @@ data class GradeUiState(
     val manuallyExcludedCourseKeys: Set<String> = emptySet(),
     /** 教务没给绩点、只能本地换算时提示用户口径差异。 */
     val officialPointsMissing: Boolean = false,
-)
+) {
+    /** 当前显示的是本地快照（含「查到的就是空」）。 */
+    val fromCache: Boolean get() = freshness?.cached == true
+}
 
 class GradeViewModel : ViewModel() {
 
     private val repo = ServiceLocator.repo
     private val settings = ServiceLocator.settings
+    private var backgroundJob: Job? = null
 
     private val _state = MutableStateFlow(GradeUiState(scale = settings.gpaScale))
     val state: StateFlow<GradeUiState> = _state.asStateFlow()
@@ -40,18 +47,42 @@ class GradeViewModel : ViewModel() {
     init { load() }
 
     fun load(forceRefresh: Boolean = false) {
-        _state.value = _state.value.copy(loading = true, error = null, emptyReason = null)
+        backgroundJob?.cancel()
+        _state.value = _state.value.copy(loading = true, refreshing = false, error = null, emptyReason = null)
         viewModelScope.launch {
-            when (val r = repo.grades(forceRefresh = forceRefresh)) {
-                is Outcome.Ok -> {
-                    _state.value = _state.value.copy(freshness = r.freshness)
-                    applyGrades(r.data)
-                }
-                is Outcome.Empty -> _state.value = _state.value.copy(
-                    loading = false, grades = emptyList(), emptyReason = r.reason,
-                )
-                is Outcome.Error -> _state.value = _state.value.copy(loading = false, error = r.message)
+            apply(repo.grades(forceRefresh = forceRefresh))
+            if (_state.value.fromCache) refreshInBackground()
+        }
+    }
+
+    /**
+     * 缓存已经显示出来之后，在后台再向教务要一次。
+     * 成功就换成新数据、缓存提示自动消失；失败保持缓存与提示。
+     */
+    private fun refreshInBackground() {
+        if (backgroundJob?.isActive == true) return
+        _state.value = _state.value.copy(refreshing = true)
+        backgroundJob = viewModelScope.launch {
+            when (val r = repo.grades(forceRefresh = true)) {
+                is Outcome.Error -> _state.value = _state.value.copy(refreshing = false)
+                else -> apply(r)
             }
+        }
+    }
+
+    private fun apply(result: Outcome<List<Grade>>) {
+        when (result) {
+            is Outcome.Ok -> {
+                _state.value = _state.value.copy(freshness = result.freshness, refreshing = false)
+                applyGrades(result.data)
+            }
+            is Outcome.Empty -> _state.value = _state.value.copy(
+                loading = false, refreshing = false, grades = emptyList(),
+                emptyReason = result.reason, freshness = result.freshness,
+            )
+            is Outcome.Error -> _state.value = _state.value.copy(
+                loading = false, refreshing = false, error = result.message,
+            )
         }
     }
 
@@ -87,6 +118,7 @@ class GradeViewModel : ViewModel() {
         val manuallyExcluded = settings.gpaExcludedCourseKeys
         _state.value = _state.value.copy(
             loading = false,
+            refreshing = false,
             grades = grades.sortedWith(compareByDescending<Grade> { it.xn }.thenByDescending { it.xq }),
             scale = scale,
             overall = GpaCalculator.summarize(grades, scale, manuallyExcluded),

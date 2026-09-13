@@ -51,6 +51,7 @@ import io.github.joyreverie.onebnu.data.model.GpaScale
 import io.github.joyreverie.onebnu.data.model.GpaCalculator
 import io.github.joyreverie.onebnu.data.model.GpaSummary
 import io.github.joyreverie.onebnu.data.model.Grade
+import io.github.joyreverie.onebnu.ui.components.CacheBanner
 import io.github.joyreverie.onebnu.ui.components.EmptyBox
 import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.LoadingBox
@@ -113,12 +114,20 @@ fun GradeScreen(vm: GradeViewModel = viewModel()) {
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when {
-                s.loading -> LoadingBox("正在查询成绩…")
-                s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
-                s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.load(forceRefresh = true) })
-                else -> GradeContent(s, onSetIncludedCourses = vm::setIncludedCourses)
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            if (s.fromCache) {
+                CacheBanner(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    refreshing = s.refreshing,
+                )
+            }
+            Box(Modifier.weight(1f)) {
+                when {
+                    s.loading -> LoadingBox("正在查询成绩…")
+                    s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
+                    s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.load(forceRefresh = true) })
+                    else -> GradeContent(s, onSetIncludedCourses = vm::setIncludedCourses)
+                }
             }
         }
     }
