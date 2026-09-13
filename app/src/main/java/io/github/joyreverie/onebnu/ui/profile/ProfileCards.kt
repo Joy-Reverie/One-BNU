@@ -46,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -252,6 +253,14 @@ fun ReminderCard() {
     // 正在等待用户完成通知或悬浮通知授权的开关；回到页面后自动继续开启。
     var awaiting by remember { mutableStateOf<Boolean?>(null) }
     val enabled = remindClasses || remindEvents
+
+    // If reminders were already enabled before this version, guide the user
+    // once to the exact channel screen where floating, sound and vibration live.
+    LaunchedEffect(enabled, popupSetupRequired, notifyOk) {
+        if (enabled && notifyOk && popupSetupRequired) {
+            ClassReminder.openNotificationSettings(context)
+        }
+    }
 
     /** 提醒范围一变，下一次是谁也就变了。 */
     fun apply(isEvent: Boolean, on: Boolean) {
