@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -156,13 +157,16 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
                     }
                     Box {
                         // 点周次即可挑周；本周单列一项，一步回到当前
-                        Box(Modifier.width(72.dp), contentAlignment = Alignment.Center) {
+                        Box(Modifier.width(76.dp), contentAlignment = Alignment.Center) {
                             TextButton(
                                 onClick = { weekMenu = true },
                                 modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
                                 Text(
                                     "第 ${s.week} 周",
+                                    maxLines = 1,
+                                    softWrap = false,
                                     fontWeight = if (s.isCurrentWeek) FontWeight.Bold else FontWeight.Normal,
                                 )
                             }

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.AddToHomeScreen
 import androidx.compose.material.icons.outlined.EditCalendar
+import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material3.AlertDialog
@@ -244,6 +245,7 @@ fun ReminderCard() {
     var batteryOk by remember { mutableStateOf(ClassReminder.ignoringBatteryOptimizations(context)) }
     var exactOk by remember { mutableStateOf(ClassReminder.canScheduleExact(context)) }
     var notifyOk by remember { mutableStateOf(ClassReminder.notificationsAllowed(context)) }
+    var notifyReady by remember { mutableStateOf(ClassReminder.notificationsReady(context)) }
     val enabled = remindClasses || remindEvents
 
     // 从系统设置页回来时刷新各项权限状态
@@ -254,6 +256,7 @@ fun ReminderCard() {
                 batteryOk = ClassReminder.ignoringBatteryOptimizations(context)
                 exactOk = ClassReminder.canScheduleExact(context)
                 notifyOk = ClassReminder.notificationsAllowed(context)
+                notifyReady = ClassReminder.notificationsReady(context)
                 next = ClassReminder.nextDescription(context)
             }
         }
@@ -271,6 +274,7 @@ fun ReminderCard() {
             settings.remindClasses = on
         }
         ClassReminder.reschedule(context)
+        notifyReady = ClassReminder.notificationsReady(context)
         next = ClassReminder.nextDescription(context)
     }
 
@@ -278,6 +282,7 @@ fun ReminderCard() {
     var awaiting by remember { mutableStateOf<Boolean?>(null) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         notifyOk = granted
+        notifyReady = ClassReminder.notificationsReady(context)
         val isEvent = awaiting
         awaiting = null
         if (granted && isEvent != null) apply(isEvent, true)
@@ -330,6 +335,37 @@ fun ReminderCard() {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
+            }
+
+            if (!notifyReady) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Outlined.NotificationsOff,
+                        null,
+                        Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("通知弹窗未开启", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "允许通知后，提醒才会在屏幕顶部弹出",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                    TextButton(onClick = {
+                        ClassReminder.openNotificationSettings(context)
+                    }) { Text("去开启") }
+                }
             }
         }
 
