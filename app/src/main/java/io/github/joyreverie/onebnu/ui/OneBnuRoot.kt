@@ -69,6 +69,7 @@ import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.OneBnuTheme
 import io.github.joyreverie.onebnu.ui.theme.ProvideScreenInfo
 import io.github.joyreverie.onebnu.ui.update.AutoUpdatePrompt
+import io.github.joyreverie.onebnu.ui.announcement.AnnouncementPrompt
 import io.github.joyreverie.onebnu.ui.web.WebScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -306,6 +307,7 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
 
             // 启动时联网自动检查更新（设置里可关）；对话框浮在任何页面之上
             AutoUpdatePrompt()
+            AnnouncementPrompt()
         }
     }
 }
