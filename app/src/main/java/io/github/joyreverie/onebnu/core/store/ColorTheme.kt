@@ -35,9 +35,11 @@ enum class ColorTheme(
         val onPrimaryContainer = if (dark) mix(primary, WHITE, 0.72f) else mix(primary, BLACK, 0.55f)
         val onSecondaryContainer = if (dark) mix(secondary, WHITE, 0.72f) else mix(primary, BLACK, 0.55f)
         val onTertiaryContainer = if (dark) mix(tertiary, WHITE, 0.72f) else mix(tertiary, BLACK, 0.62f)
-        val heroStart = if (dark) mix(primary, BLACK, 0.76f) else primary
-        val heroCenter = if (dark) mix(primary, BLACK, 0.62f) else mix(primary, secondary, 0.48f)
-        val heroEnd = if (dark) mix(secondary, BLACK, 0.70f) else secondary
+        // 英雄渐变上永远是白字。珊瑚、琥珀这类偏亮的色系原样铺上去只有 4.2:1，
+        // 达不到无障碍 AA，所以浅色模式下按需压暗到 4.5:1 再用。
+        val heroStart = if (dark) mix(primary, BLACK, 0.76f) else darkenForWhiteText(primary)
+        val heroCenter = if (dark) mix(primary, BLACK, 0.62f) else darkenForWhiteText(mix(primary, secondary, 0.48f))
+        val heroEnd = if (dark) mix(secondary, BLACK, 0.70f) else darkenForWhiteText(secondary)
         val softStart = if (dark) mix(primary, BLACK, 0.70f) else primaryContainer
         val softEnd = if (dark) mix(secondary, BLACK, 0.72f) else mix(secondary, WHITE, 0.80f)
 
@@ -95,11 +97,36 @@ enum class ColorTheme(
         private const val WHITE = 0xFFFFFFFF.toInt()
         private const val BLACK = 0xFF000000.toInt()
 
+        /** 白字要求的最小对比度（WCAG AA 正文）。 */
+        const val WHITE_TEXT_MIN_CONTRAST = 4.5f
+
         private fun mix(a: Int, b: Int, amount: Float): Int {
             val t = amount.coerceIn(0f, 1f)
             fun channel(value: Int, shift: Int): Int = (value ushr shift) and 0xFF
             fun blend(shift: Int): Int = (channel(a, shift) * (1f - t) + channel(b, shift) * t).toInt().coerceIn(0, 255)
             return (0xFF shl 24) or (blend(16) shl 16) or (blend(8) shl 8) or blend(0)
+        }
+
+        /** sRGB 相对亮度（WCAG 定义）。 */
+        fun relativeLuminance(color: Int): Double {
+            fun channel(shift: Int): Double {
+                val v = ((color ushr shift) and 0xFF) / 255.0
+                return if (v <= 0.03928) v / 12.92 else Math.pow((v + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
+        }
+
+        /** 白字压在 [background] 上的对比度。 */
+        fun contrastWithWhite(background: Int): Double = 1.05 / (relativeLuminance(background) + 0.05)
+
+        /** 逐档压暗，直到白字达到 [WHITE_TEXT_MIN_CONTRAST]。已经够暗的原样返回。 */
+        fun darkenForWhiteText(color: Int): Int {
+            var c = color
+            repeat(24) {
+                if (contrastWithWhite(c) >= WHITE_TEXT_MIN_CONTRAST) return c
+                c = mix(c, BLACK, 0.05f)
+            }
+            return c
         }
     }
 }

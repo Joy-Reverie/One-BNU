@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -48,6 +49,8 @@ import io.github.joyreverie.onebnu.core.store.AnnouncementStore
 import kotlinx.coroutines.delay
 
 internal data class AnnouncementItem(val number: String, val text: String, val important: Boolean = false)
+
+/** 一份公告。[date] 同时用作已读标记的 id，因此**改内容就要换日期**。 */
 internal data class AnnouncementRecord(val date: String, val title: String, val items: List<AnnouncementItem>)
 
 internal val CURRENT_ANNOUNCEMENT_ITEMS = listOf(
@@ -74,15 +77,28 @@ internal val CURRENT_ANNOUNCEMENT_ITEMS = listOf(
     ),
 )
 
+/** 最新一份公告的 id，同时是已读标记。内容有实质变化时才改它，否则用户会被反复打断。 */
+internal const val CURRENT_ANNOUNCEMENT_ID = "2026-09-13"
+
 internal val ANNOUNCEMENT_HISTORY = listOf(
-    AnnouncementRecord("2026年9月13日", "重要公告", CURRENT_ANNOUNCEMENT_ITEMS),
+    AnnouncementRecord(CURRENT_ANNOUNCEMENT_ID, "重要公告", CURRENT_ANNOUNCEMENT_ITEMS),
 )
 
-/** 启动公告：只在当前版本尚未确认时显示，放在根层确保登录页和主界面都能看到。 */
+/** 「2026-09-13」→「2026 年 9 月 13 日」。 */
+internal fun announcementDateLabel(id: String): String {
+    val parts = id.split('-')
+    if (parts.size != 3) return id
+    val (y, m, d) = parts
+    return "$y 年 ${m.trimStart('0')} 月 ${d.trimStart('0')} 日"
+}
+
+/** 启动公告：同一份公告只在没读过时显示一次，放在根层确保登录页和主界面都能看到。 */
 @Composable
 fun AnnouncementPrompt() {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var visible by rememberSaveable { mutableStateOf(AnnouncementStore.shouldShow(context)) }
+    var visible by rememberSaveable {
+        mutableStateOf(AnnouncementStore.shouldShow(context, CURRENT_ANNOUNCEMENT_ID))
+    }
     var confirming by rememberSaveable { mutableStateOf(false) }
     var welcome by rememberSaveable { mutableStateOf(false) }
 
@@ -127,24 +143,20 @@ fun AnnouncementPrompt() {
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "公告会在新版本再次提醒你。",
+                            "读完后可在「我的 → 公告」里随时翻回来。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                         )
                     }
                 } else {
+                    // 固定 390dp 在横屏、分屏下会把按钮顶出屏幕；改成按可用高度封顶
                     Column(
                         Modifier
-                            .height(390.dp)
+                            .heightIn(max = 390.dp)
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        Text(
-                            "请花一点时间读完，后续使用会更顺利。历史公告可在“设置 → 公告”中查看。",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                         CURRENT_ANNOUNCEMENT_ITEMS.forEach { AnnouncementRow(it) }
                     }
                 }
@@ -152,7 +164,7 @@ fun AnnouncementPrompt() {
             confirmButton = {
                 TextButton(onClick = {
                     if (confirming) {
-                        AnnouncementStore.markRead(context)
+                        AnnouncementStore.markRead(context, CURRENT_ANNOUNCEMENT_ID)
                         visible = false
                         confirming = false
                         welcome = true

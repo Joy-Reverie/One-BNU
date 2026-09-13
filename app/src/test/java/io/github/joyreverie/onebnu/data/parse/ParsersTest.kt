@@ -284,15 +284,15 @@ class ParsersTest {
         val html = """
             <table>
               <tr><td>序号</td><td>课程</td><td>学分</td><td>类别</td><td>任课教师</td></tr>
-              <tr><td>1</td><td>[FGS21158302]中药资源学</td><td>2.0</td><td>学位专业</td><td>杜树山</td></tr>
-              <tr><td>2</td><td>[FGS21197082]高级遥感图像处理</td><td>3.0</td><td>学位基础</td><td>朱文泉</td></tr>
-              <tr><td>3</td><td>[GRA20225821]理论与实践课</td><td>2.0</td><td>公共必修</td><td>李娟</td></tr>
+              <tr><td>1</td><td>[AIS21158302]计算机视觉</td><td>2.0</td><td>学位专业</td><td>王明</td></tr>
+              <tr><td>2</td><td>[AIS21197082]高级算法设计</td><td>3.0</td><td>学位基础</td><td>李华</td></tr>
+              <tr><td>3</td><td>[GRA20225821]理论与实践课</td><td>2.0</td><td>公共必修</td><td>张伟</td></tr>
             </table>
         """.trimIndent()
         assertEquals(
             mapOf(
-                "FGS21158302" to "学位专业",
-                "FGS21197082" to "学位基础",
+                "AIS21158302" to "学位专业",
+                "AIS21197082" to "学位基础",
                 "GRA20225821" to "公共必修",
             ),
             Parsers.parseCourseCategories(html),

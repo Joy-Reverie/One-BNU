@@ -36,4 +36,16 @@ class WebScreenPortalTest {
             ),
         )
     }
+
+    @Test
+    fun `教务网页入口在蜂窝下走 OneVPN 代理地址而不是明文直连`() {
+        assertTrue(isAcademicService("http://zyfw.bnu.edu.cn/"))
+        assertFalse(isAcademicService("https://one.bnu.edu.cn/tp_nup/index.html"))
+
+        // 建会话与加载页面必须是同一条代理路径：交原始地址的话 OneVpnSso 会先直连
+        // zyfw:80，蜂窝下必然超时，最后落到 CAS 登录页 → 白屏（1.9.14 起的老毛病）
+        val proxied = academicProxyUrl("http://zyfw.bnu.edu.cn/")
+        assertTrue("应指向 OneVPN 主机，实际是 $proxied", proxied.startsWith("https://onevpn.bnu.edu.cn/http/"))
+        assertFalse(proxied.contains("zyfw.bnu.edu.cn"))
+    }
 }

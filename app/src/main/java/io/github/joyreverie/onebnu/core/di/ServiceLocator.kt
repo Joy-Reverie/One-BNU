@@ -9,7 +9,9 @@ import io.github.joyreverie.onebnu.core.net.NetworkDiagnostics
 import io.github.joyreverie.onebnu.core.net.OneVpnSso
 import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
 import io.github.joyreverie.onebnu.core.net.PortalSso
+import io.github.joyreverie.onebnu.core.net.SsoCoordinator
 import io.github.joyreverie.onebnu.core.notify.ClassReminder
+import io.github.joyreverie.onebnu.core.store.AppearanceStore
 import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.core.store.CampusStore
 import io.github.joyreverie.onebnu.core.store.CreditCategoryStore
@@ -62,6 +64,10 @@ object ServiceLocator {
     lateinit var campusStore: CampusStore
         private set
 
+    /** 外观（深浅色 + 色系）是应用级偏好，两校区共用同一份。 */
+    lateinit var appearance: AppearanceStore
+        private set
+
     private lateinit var runtimes: Map<Campus, CampusRuntime>
     private lateinit var beijingDevice: DeviceIdentity
     private val _activeCampus = MutableStateFlow(Campus.BEIJING)
@@ -89,6 +95,7 @@ object ServiceLocator {
         app = context.applicationContext
         campusStore = CampusStore(app)
         beijingDevice = DeviceIdentity(app)
+        appearance = AppearanceStore(app) { TodayWidgetProvider.updateAll(app) }
 
         fun createRuntime(campus: Campus): CampusRuntime {
             val isBeijing = campus == Campus.BEIJING
@@ -96,12 +103,11 @@ object ServiceLocator {
             val http = Http.create(device, if (isBeijing) "cas.bnu.edu.cn" else "cas.bnuzh.edu.cn")
             val auth: SessionAuthenticator = if (isBeijing) CasClient(http, beijingDevice) else ZhuhaiCasClient(http)
             val secure = SecureStore.create(app, campus)
-            val widgetChanged = { TodayWidgetProvider.updateAll(app) }
             val changed = {
-                widgetChanged()
+                TodayWidgetProvider.updateAll(app)
                 ClassReminder.reschedule(app)
             }
-            val settings = Settings(app, campus, onThemeChanged = widgetChanged)
+            val settings = Settings(app, campus)
             return CampusRuntime(
                 campus = campus,
                 http = http,
@@ -165,6 +171,27 @@ object ServiceLocator {
 
     /** 允许已有本地快照在没有 CAS Cookie 时进入主界面。 */
     fun hasOfflineData(): Boolean = current.offlineCache.hasData() || current.scheduleCache.load() != null
+
+    /**
+     * 确保当前校区手上有一份可用的 CAS 会话，没有就用已保存的凭据静默重登一次。
+     *
+     * 首次登录一定会写下离线快照，于是第二次冷启动时「有快照 → 直接进主界面」，
+     * 但 CASTGC 早就随进程消失了。不在这里补一次登录的话，教务、数字京师、课程中心
+     * 这些网页入口一点就回到统一认证登录页 —— 免登录对回访用户等于失效。
+     *
+     * 会发网络请求，**只能在 IO 线程调用**。串到 [SsoCoordinator] 的锁上，
+     * 避免与正在进行的 SSO 跳转互相覆盖票据。
+     */
+    fun ensureSession(): Boolean {
+        val runtime = current
+        if (runtime.auth.hasSession()) return true
+        if (!runtime.secure.hasCredentials) return false
+        return synchronized(SsoCoordinator.lock) {
+            if (runtime.auth.hasSession()) return@synchronized true
+            runCatching { runtime.auth.relogin(runtime.secure.username, runtime.secure.password) }
+                .getOrDefault(false)
+        }
+    }
 
     fun currentDevice(): DeviceIdentity? = if (activeCampus == Campus.BEIJING) beijingDevice else null
 

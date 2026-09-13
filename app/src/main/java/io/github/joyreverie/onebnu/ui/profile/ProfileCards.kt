@@ -46,7 +46,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -250,15 +249,14 @@ fun ReminderCard() {
     var popupSetupRequired by remember {
         mutableStateOf(ClassReminder.floatingNotificationSetupRequired(context))
     }
-    // 正在等待用户完成通知或悬浮通知授权的开关；回到页面后自动继续开启。
+    // 正在等待用户授予通知权限的开关；授权回来后自动继续开启。
     var awaiting by remember { mutableStateOf<Boolean?>(null) }
     val enabled = remindClasses || remindEvents
 
-    // If reminders were already enabled before this version, guide the user
-    // once to the exact channel screen where floating, sound and vibration live.
-    LaunchedEffect(enabled, popupSetupRequired, notifyOk) {
-        if (enabled && notifyOk && popupSetupRequired) {
-            ClassReminder.openNotificationSettings(context)
+    /** 去系统通知设置；打不开就说一声，不能点了没反应。 */
+    fun openNotificationSettings() {
+        if (!ClassReminder.openNotificationSettings(context)) {
+            Toast.makeText(context, "没能打开系统通知设置，请到「设置 - 应用 - One BNU」里开启", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -289,7 +287,7 @@ fun ReminderCard() {
                 popupSetupRequired = ClassReminder.floatingNotificationSetupRequired(context)
                 next = ClassReminder.nextDescription(context)
                 awaiting?.let { pending ->
-                    if (notifyReady && !popupSetupRequired) {
+                    if (notifyOk) {
                         awaiting = null
                         apply(pending, true)
                     }
@@ -306,32 +304,31 @@ fun ReminderCard() {
         notifyReady = ClassReminder.notificationsReady(context)
         popupSetupRequired = ClassReminder.floatingNotificationSetupRequired(context)
         val isEvent = awaiting
+        awaiting = null
         when {
-            !granted -> {
-                awaiting = null
-                Toast.makeText(context, "需要允许通知才能提醒", Toast.LENGTH_LONG).show()
-            }
-            isEvent != null && notifyReady && !popupSetupRequired -> {
-                awaiting = null
-                apply(isEvent, true)
-            }
-            isEvent != null -> ClassReminder.openNotificationSettings(context)
+            !granted -> Toast.makeText(context, "需要允许通知才能提醒", Toast.LENGTH_LONG).show()
+            isEvent != null -> apply(isEvent, true)
         }
     }
 
+    /**
+     * 真正拦住提醒的只有「通知权限」这一条。
+     * 悬浮通知、频道重要性属于提醒好不好看，不能拿来当开关的门槛 ——
+     * 把频道重要性调成「默认」的用户以前永远开不了提醒，只会被反复甩去系统设置。
+     */
     fun toggle(isEvent: Boolean, on: Boolean) {
         when {
             !on -> {
                 awaiting = null
                 apply(isEvent, false)
             }
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notifyOk -> {
+            !notifyOk -> {
                 awaiting = isEvent
-                permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-            !notifyReady || popupSetupRequired -> {
-                awaiting = isEvent
-                ClassReminder.openNotificationSettings(context)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    openNotificationSettings()
+                }
             }
             else -> {
                 awaiting = null
@@ -377,39 +374,26 @@ fun ReminderCard() {
                 )
             }
 
-            if (!notifyReady || popupSetupRequired) {
+            // 通知权限是硬条件（红），悬浮通知只影响「弹不弹出来」（中性），
+            // 两者都在卡片里给一个按钮，不再自动把用户甩到系统设置页
+            if (!notifyOk) {
                 Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.errorContainer)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Outlined.NotificationsOff,
-                        null,
-                        Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onErrorContainer,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            if (!notifyOk) "通知权限未开启" else "悬浮通知未开启",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            if (!notifyOk) "允许通知后，提醒才会在屏幕顶部弹出"
-                            else "开启后，提醒才会在屏幕顶部弹出",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                        )
-                    }
-                    TextButton(onClick = {
-                        ClassReminder.openNotificationSettings(context)
-                    }) { Text("去开启") }
-                }
+                NoticeRow(
+                    title = "通知权限未开启",
+                    detail = "允许通知后才会收到提醒",
+                    container = MaterialTheme.colorScheme.errorContainer,
+                    onContainer = MaterialTheme.colorScheme.onErrorContainer,
+                    onOpen = ::openNotificationSettings,
+                )
+            } else if (!notifyReady || popupSetupRequired) {
+                Spacer(Modifier.height(8.dp))
+                NoticeRow(
+                    title = "悬浮通知未开启",
+                    detail = "开启后提醒会在屏幕顶部弹出",
+                    container = MaterialTheme.colorScheme.surfaceVariant,
+                    onContainer = MaterialTheme.colorScheme.onSurfaceVariant,
+                    onOpen = ::openNotificationSettings,
+                )
             }
         }
 
@@ -515,6 +499,33 @@ fun ReminderCard() {
                 next = ClassReminder.nextDescription(context)
             },
         )
+    }
+}
+
+/** 提醒卡里的一条状态提示：标题、一行说明、一个「去开启」按钮。 */
+@Composable
+private fun NoticeRow(
+    title: String,
+    detail: String,
+    container: androidx.compose.ui.graphics.Color,
+    onContainer: androidx.compose.ui.graphics.Color,
+    onOpen: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(container)
+            .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.NotificationsOff, null, Modifier.size(18.dp), tint = onContainer)
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = onContainer)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = onContainer)
+        }
+        TextButton(onClick = onOpen) { Text("去开启") }
     }
 }
 

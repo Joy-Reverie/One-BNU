@@ -118,25 +118,35 @@ object ClassReminder {
         return (!notificationsReady(context) || isVendorNotificationUi()) && !opened
     }
 
-    /** 打开应用通知设置，用户可恢复悬浮通知、声音和震动。 */
-    fun openNotificationSettings(context: Context) {
-        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+    /**
+     * 打开应用通知设置，用户可恢复悬浮通知、声音和震动。
+     * 系统页打不开（部分 ROM 没有这个 Activity）时返回 false，由调用方提示，不能默默什么都不发生。
+     */
+    fun openNotificationSettings(context: Context): Boolean {
+        val channelIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
                 putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
                 putExtra(Settings.EXTRA_CHANNEL_ID, CHANNEL_ID)
             }
         } else {
-            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-            }
+            null
         }
-        runCatching {
-            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val appIntent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        val detailsIntent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            android.net.Uri.parse("package:${context.packageName}"),
+        )
+        val opened = listOfNotNull(channelIntent, appIntent, detailsIntent).any { intent ->
+            runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+        }
+        if (opened) {
             context.getSharedPreferences(NOTIFICATION_PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean(KEY_POPUP_SETTINGS_OPENED, true)
                 .apply()
         }
+        return opened
     }
 
     private fun isVendorNotificationUi(): Boolean {
@@ -159,11 +169,11 @@ object ClassReminder {
         )
     }
 
-    /** 已提醒到哪一刻；没提醒过则为 null。 */
-    private fun deliveredThrough(): LocalDateTime? =
-        ServiceLocator.settings.lastRemindedStart
-            .takeIf { it > 0 }
-            ?.let { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneId.systemDefault()) }
+    /** 已经提醒过、开始时刻还没到的那些时刻。 */
+    private fun delivered(): Set<LocalDateTime> =
+        ServiceLocator.settings.remindedStarts()
+            .map { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneId.systemDefault()) }
+            .toSet()
 
     private fun nextReminder(now: LocalDateTime): Pair<LocalDateTime, List<ReminderItem>>? {
         val settings = ServiceLocator.settings
@@ -173,7 +183,7 @@ object ClassReminder {
             now = now,
             leadMinutes = settings.reminderLeadMinutes,
             periodTimes = settings.periodTimes,
-            deliveredThrough = deliveredThrough(),
+            delivered = delivered(),
         )
     }
 
@@ -248,11 +258,11 @@ object ClassReminder {
         val settings = ServiceLocator.settings
         if (settings.remindersEnabled) {
             val startMillis = intent.getLongExtra(EXTRA_START, 0L)
-            if (startMillis > 0) {
+            // 先记下「这一刻已送达」再送达：紧接着的 reschedule 才不会把同一条又算成「该立刻提醒」。
+            // markReminded 同时挡住重复广播 —— 系统偶尔会把同一条闹钟送两次。
+            if (startMillis > 0 && settings.markReminded(startMillis)) {
                 val start = LocalDateTime.ofInstant(Instant.ofEpochMilli(startMillis), ZoneId.systemDefault())
                 val items = ReminderPlanner.startingAt(upcoming(context, start.minusDays(1)), start)
-                // 先记下「已提醒到这一刻」再送达：紧接着的 reschedule 才不会把同一条又算成「该立刻提醒」
-                settings.lastRemindedStart = startMillis
                 deliver(context, items, settings.reminderStyle)
             }
         }

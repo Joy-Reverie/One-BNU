@@ -57,6 +57,19 @@ import io.github.joyreverie.onebnu.ui.theme.listPadding
 const val CONTACT_EMAIL = "joyreverie27@gmail.com"
 const val REPO_URL = "https://github.com/${BuildConfig.GITHUB_REPO}"
 
+/**
+ * 打开一个外部 Intent；设备上没有邮件或浏览器应用时不能让应用直接崩掉。
+ * 打不开就把地址复制到剪贴板并提示一句，用户还是拿得到信息。
+ */
+private fun openExternally(context: android.content.Context, intent: Intent, fallbackText: String, label: String) {
+    if (runCatching { context.startActivity(intent) }.isSuccess) return
+    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+    clipboard?.setPrimaryClip(android.content.ClipData.newPlainText(label, fallbackText))
+    android.widget.Toast
+        .makeText(context, "没有可用的应用，已复制 $fallbackText", android.widget.Toast.LENGTH_LONG)
+        .show()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InfoScreen(onBack: () -> Unit) {
@@ -98,9 +111,12 @@ fun InfoScreen(onBack: () -> Unit) {
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable {
-                                    context.startActivity(
+                                    openExternally(
+                                        context,
                                         Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$CONTACT_EMAIL"))
-                                            .putExtra(Intent.EXTRA_SUBJECT, "One BNU 反馈")
+                                            .putExtra(Intent.EXTRA_SUBJECT, "One BNU 反馈"),
+                                        CONTACT_EMAIL,
+                                        "邮箱",
                                     )
                                 }
                                 .padding(14.dp),
@@ -174,7 +190,7 @@ private fun OpenSourceCard() {
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .clickable {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(REPO_URL)))
+                    openExternally(context, Intent(Intent.ACTION_VIEW, Uri.parse(REPO_URL)), REPO_URL, "仓库地址")
                 }
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -287,7 +303,7 @@ private fun QrPreviewDialog(resource: Int, onDismiss: () -> Unit) {
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "长按可保存，用对应 App「扫一扫」识别",
+                    "用对应 App「扫一扫」识别",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF6B7280),
                 )

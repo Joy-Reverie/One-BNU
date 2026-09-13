@@ -76,6 +76,8 @@ object TodayWidgetModel {
         /** 12 节的作息，"HH:mm-HH:mm"。 */
         val periodTimes: List<String>,
         val heightDp: Int,
+        /** 系统字体倍数；行高随它一起长，能放几行也随之变少。 */
+        val fontScale: Float = 1f,
         val useOfficialCalendar: Boolean = true,
     )
 
@@ -98,19 +100,26 @@ object TodayWidgetModel {
     private val DAYS = listOf("一", "二", "三", "四", "五", "六", "日")
 
     /**
+     * 一行课的实际高度（dp）。行里是两行 sp 文字，系统字体放大时行也跟着变高
+     * （`widget_row.xml` 用的是 minHeight 而不是死高度），行数必须按同一个倍数算。
+     */
+    fun rowDp(fontScale: Float): Int = (ROW_DP * fontScale.coerceIn(1f, 2f)).toInt()
+
+    /**
      * 给定高度下能放几行课。[total] 是今天的课程数：全放得下就不占脚注的位置，
      * 放不下才给脚注留出一行。
      */
-    fun capacity(heightDp: Int, total: Int): Int {
+    fun capacity(heightDp: Int, total: Int, fontScale: Float = 1f): Int {
+        val row = rowDp(fontScale)
         val avail = heightDp - HOST_PADDING_DP - CHROME_DP
-        val fitAll = avail / ROW_DP
+        val fitAll = avail / row
         if (total <= fitAll) return total.coerceAtLeast(1)
-        return ((avail - FOOTER_DP) / ROW_DP).coerceAtLeast(1)
+        return ((avail - FOOTER_DP) / row).coerceAtLeast(1)
     }
 
     /** 放了 [rows] 行之后，脚注那一行还放不放得下。最矮时宁可不要脚注，也不能让它压住课程。 */
-    fun footerFits(heightDp: Int, rows: Int): Boolean =
-        heightDp - HOST_PADDING_DP - CHROME_DP - rows * ROW_DP >= FOOTER_DP
+    fun footerFits(heightDp: Int, rows: Int, fontScale: Float = 1f): Boolean =
+        heightDp - HOST_PADDING_DP - CHROME_DP - rows * rowDp(fontScale) >= FOOTER_DP
 
     fun build(i: Input): Model {
         val dateLabel = "${i.today.monthValue}月${i.today.dayOfMonth}日"
@@ -152,11 +161,11 @@ object TodayWidgetModel {
         if (rows.isEmpty()) {
             return Model(dateLabel, weekdayLabel, weekLabel, refreshingLabel, emptyList(), null, "今天没有课 ☕")
         }
-        val (visible, before, after) = window(rows, capacity(i.heightDp, rows.size))
+        val (visible, before, after) = window(rows, capacity(i.heightDp, rows.size, i.fontScale))
         val footer = listOfNotNull(
             before.takeIf { it > 0 }?.let { "$it 节已结束" },
             after.takeIf { it > 0 }?.let { "还有 $it 节" },
-        ).joinToString(" · ").ifBlank { null }?.takeIf { footerFits(i.heightDp, visible.size) }
+        ).joinToString(" · ").ifBlank { null }?.takeIf { footerFits(i.heightDp, visible.size, i.fontScale) }
         val count = refreshingLabel.ifBlank { countLabel(rows) }
         return Model(dateLabel, weekdayLabel, weekLabel, count, visible, footer, null)
     }

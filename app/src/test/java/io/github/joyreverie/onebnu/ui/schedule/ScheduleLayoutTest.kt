@@ -131,5 +131,41 @@ class ScheduleLayoutTest {
         assertEquals(42f * 1.3f, ScheduleLayout.gutterDp(isExpanded = false, isMedium = false, textScale = 1.3f))
         assertEquals(42f * 1.5f, ScheduleLayout.gutterDp(isExpanded = false, isMedium = false, textScale = 3f))
     }
-}
 
+    /** 整段落在午休、晨间这类长空档里的日程：网格里没有它的高度，只是贴在下一节上沿。 */
+    private fun breakEvent(name: String, start: String, end: String): GridItem<String> {
+        val a = LocalTime.parse(start)
+        val b = LocalTime.parse(end)
+        val (top, bottom) = PeriodMapper.span(a, b, Settings.PERIOD_TIMES)
+        return GridItem(top, bottom, name, pinned = PeriodMapper.insideLongBreak(a, b, Settings.PERIOD_TIMES))
+    }
+
+    @Test
+    fun `午休的日程不与下午第一节课并成一簇`() {
+        val lunch = breakEvent("取快递", "12:00", "12:15")
+        assertTrue("12:00–12:15 应被认成落在午休里", lunch.pinned)
+        val groups = ScheduleLayout.groupColumn(listOf(GridItem.periods(5, 6, "高级算法设计"), lunch))
+        assertEquals(1, groups.size)
+        // 同一块里两簇：课一簇、日程一簇，各自显示，不再藏进 ⇅ 切换格
+        assertEquals(
+            listOf(listOf("高级算法设计"), listOf("取快递")),
+            groups[0].clusters.map { c -> c.map { it.payload } },
+        )
+    }
+
+    @Test
+    fun `伸进下午第一节的日程仍然算重叠`() {
+        val across = breakEvent("面谈", "13:00", "14:00")
+        assertFalse(across.pinned)
+        val groups = ScheduleLayout.groupColumn(listOf(GridItem.periods(5, 6, "高级算法设计"), across))
+        assertEquals(listOf(listOf("高级算法设计", "面谈")), groups[0].clusters.map { c -> c.map { it.payload } })
+    }
+
+    @Test
+    fun `贴在同一行沿上的多条空档日程共用一簇`() {
+        val groups = ScheduleLayout.groupColumn(
+            listOf(breakEvent("取快递", "12:00", "12:15"), breakEvent("午饭", "12:20", "13:00")),
+        )
+        assertEquals(listOf(listOf("取快递", "午饭")), groups[0].clusters.map { c -> c.map { it.payload } })
+    }
+}

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.Badge
+import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.School
@@ -91,6 +92,7 @@ fun ProfileScreen(
 
         item {
             MenuGroup {
+                MenuItem(Icons.Outlined.Campaign, "公告") { nav.navigate(Routes.ANNOUNCEMENT_HISTORY) }
                 MenuItem(Icons.Outlined.Settings, "设置") { nav.navigate(Routes.SETTINGS) }
                 MenuItem(Icons.Outlined.Info, "关于与支持") { nav.navigate(Routes.INFO) }
             }
@@ -191,13 +193,13 @@ private fun IdentityCard(state: SessionRepository.State, onRetry: () -> Unit) {
                         Text(
                             p.studentId,
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.8f),
+                            color = Color.White.copy(alpha = 0.9f),
                         )
                         if (p.summary.isNotBlank()) {
                             Text(
                                 p.summary,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.8f),
+                                color = Color.White.copy(alpha = 0.9f),
                             )
                         }
                         val tags = listOfNotNull(
@@ -240,7 +242,7 @@ private fun IdentityCard(state: SessionRepository.State, onRetry: () -> Unit) {
                         Text(
                             state.message,
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.85f),
+                            color = Color.White.copy(alpha = 0.9f),
                         )
                     }
                 }

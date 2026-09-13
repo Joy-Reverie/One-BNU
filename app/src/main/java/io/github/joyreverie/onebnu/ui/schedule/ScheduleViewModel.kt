@@ -101,11 +101,12 @@ class ScheduleViewModel : ViewModel() {
                 target,
                 useOfficial = true,
             )
-            val cur = start?.let { currentWeekIn(it) }
 
             when (val s = repo.schedule(target, forceRefresh = forceRefresh)) {
                 is Outcome.Ok -> {
-                    val max = maxOf(s.data.maxWeek, cur ?: 1, MIN_WEEKS)
+                    val baseMax = maxOf(s.data.maxWeek, MIN_WEEKS)
+                    val cur = start?.let { currentWeekIn(target, it, baseMax) }
+                    val max = maxOf(baseMax, cur ?: 1)
                     _state.value = _state.value.copy(
                         loading = false,
                         terms = terms,
@@ -124,10 +125,12 @@ class ScheduleViewModel : ViewModel() {
                 is Outcome.Empty -> _state.value = _state.value.copy(
                     loading = false, terms = terms, term = target, termStart = start,
                     schedule = null, emptyReason = s.reason,
+                    currentWeek = null, week = 1, maxWeek = MIN_WEEKS,
                 )
                 is Outcome.Error -> _state.value = _state.value.copy(
                     loading = false, terms = terms, term = target, termStart = start,
                     error = s.message,
+                    currentWeek = null, week = 1, maxWeek = MIN_WEEKS,
                 )
             }
         }
@@ -160,11 +163,19 @@ class ScheduleViewModel : ViewModel() {
         }
     }
 
-    /** 今天落在该学期的第几周；学期还没开始或已过很久则返回 null。 */
-    private fun currentWeekIn(start: LocalDate): Int? {
+    /**
+     * 今天落在该学期的第几周；学期还没开始、或今天已经在这个学期之外就返回 null。
+     *
+     * 不加上界的话，翻看往届学期时会把「今天距那个学期起点的周数」当成本周：
+     * 切到 2025 春季会打开空白的「第 29 周」并标成本周，还顺带生成上百页。
+     */
+    private fun currentWeekIn(term: Term, start: LocalDate, scheduleWeeks: Int): Int? {
         val days = ChronoUnit.DAYS.between(start, LocalDate.now())
         if (days < 0) return null
-        return (days / 7 + 1).toInt()
+        val week = (days / 7 + 1).toInt()
+        // 有官方校历就按校历的周数，否则按课表自己排到第几周（至少 MIN_WEEKS）
+        val limit = AcademicCalendar.official(term, useOfficial = true)?.weeks ?: scheduleWeeks
+        return week.takeIf { it <= limit }
     }
 
     companion object {

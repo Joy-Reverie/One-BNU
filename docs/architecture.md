@@ -66,8 +66,10 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 
 北京校区已有 CAS 会话时，`OneVpnSso` 先访问课程中心的 `www/public/home/cas-bnu` 桥接页，
 再从其中提取并校验课程中心自己的 CAS service，调用当前 CAS 的标准 `sso(service)` 建立会话，最后加载官方直连地址。
-这样不依赖 OneVPN 网页端的 JavaScript Cookie 桥接，也不会把密码传给 WebView。旧版 OneVPN 代理地址仍保留严格白名单中转，
-用于兼容历史调试入口；同步 Cookie 时，`CASTGC` 强制为 `cas.bnu.edu.cn` 的 host-only Cookie，并清除旧版可能遗留的
+这样不依赖 OneVPN 网页端的 JavaScript Cookie 桥接，也不会把密码传给 WebView。OneVPN 的 HTTPS 代理地址不再只是历史调试入口：旧教务只监听 HTTP 80，蜂窝网络下常常不通，
+因此数据接口（`ZyfwApi`）与「教务系统」网页入口在蜂窝网络下都走 `OneVpnSso.proxyUrl(...)` 这条代理路径 ——
+建会话与加载页面必须用同一个代理地址，交原始明文地址会先直连 80 端口、超时后落回 CAS 登录页（白屏）。
+同步 Cookie 时，`CASTGC` 强制为 `cas.bnu.edu.cn` 的 host-only Cookie，并清除旧版可能遗留的
 `.bnu.edu.cn` 跨子域副本，不能发送给 OneVPN 或门户。
 
 教务系统等普通 CAS 入口不直接把 CAS 登录页交给 WebView：`WebScreen` 先用当前
@@ -78,12 +80,14 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 整个过程复用应用已有的认证会话，不保存或向网页填写账号密码。
 
 认证网络请求使用有限连接、读取和总超时；超时会回到可重试的登录提示，避免弱网或代理异常时界面永久停在加载状态。门户 WebView
-在确认 accessToken 已同步后会检查页面主体是否为空，遇到脚本或 Cookie 瞬态失败最多自动重载一次。
+在确认 accessToken 已同步后会检查页面主体是否为空，遇到脚本或 Cookie 瞬态失败会自动重载；
+token、Cookie、空白页、跨设备引导四类情况各有一次性重载，互不叠加。
 校园服务里的北京数字京师入口把 WebView UA 设置为桌面浏览器，并先加载学校官方 OAuth 回调页；门户自己的 `cas.html`
 在同一 WebView 上写入专属 accessToken 后再回到电脑端首页。后台已有 OAuth 预热只作加速，失败不会让 WebView 直接打开空壳。
 若服务端仍返回跨设备引导页，应用只设置官方页面要求的本地访问偏好，再回到电脑端首页，不向页面注入账号或密码。
 
-登录成功或应用启动时检测到已有会话后，`OneBnuRoot` 会在后台通过 `SsoWarmup` 依次预热北京门户、教务和课程中心
+登录成功或应用启动后，`OneBnuRoot` 先调用 `ServiceLocator.ensureSession()`：手上没有 CAS 会话（冷启动只剩离线快照时的
+常态）而本机存有凭据，就在 IO 线程静默重登一次，否则网页入口一点就回到统一认证登录页。拿到会话后再通过 `SsoWarmup` 依次预热北京门户、教务和课程中心
 的服务会话；预热失败不会阻塞首页，点击入口时仍会按需重试。同步到 WebView 的只包含对应目标站点 Cookie，`CASTGC`
 仍严格限制在 CAS 主机。
 

@@ -45,17 +45,21 @@ object GradeScale {
 
     /**
      * 等第成绩映射到百分制中值，用于参与加权计算。
-     * 「通过 / 合格」这类没有区分度的记录返回 null —— 它们计学分但不该拉高或拉低 GPA。
+     *
+     * 五级等第（优秀 / 良好 / 中等 / 及格 / 不及格）是百分制的另一种写法，取各段中值参与加权；
+     * 通过制（合格 / 不合格 / 通过 / 免修…）没有分数含义，一律返回 null —— 把「合格」折成 65 分
+     * 会让所有通过制课程在五分制、四分制下把绩点和加权均分一起拉低。
      */
     fun letterToScore(text: String): Double? {
         val t = text.trim()
         t.toDoubleOrNull()?.let { return it }
+        if (isPassFailResult(t)) return null
         return when {
             t.startsWith("优秀") || t == "优" || t.equals("A", true) -> 95.0
             t.startsWith("良好") || t == "良" || t.equals("B", true) -> 85.0
             t.startsWith("中等") || t == "中" || t.equals("C", true) -> 75.0
-            t.startsWith("及格") || t.startsWith("合格") || t == "及" || t.equals("D", true) -> 65.0
-            t.startsWith("不及格") || t.startsWith("不合格") || t.equals("F", true) -> 45.0
+            t.startsWith("及格") || t == "及" || t.equals("D", true) -> 65.0
+            t.startsWith("不及格") || t.equals("F", true) -> 45.0
             else -> null
         }
     }
@@ -65,6 +69,15 @@ object GradeScale {
         val t = text.trim()
         return t == "通过" || t == "合格" || t == "P" || t == "免修" || t == "免考"
     }
+
+    /** 通过制里「没通过」的那一侧：既不给学分，也不该按 45 分去拉绩点。 */
+    fun isPassFailFailure(text: String): Boolean {
+        val t = text.trim()
+        return t == "不合格" || t == "不通过" || t == "未通过" || t == "NP"
+    }
+
+    /** 这条成绩是否出自通过制（无论通过与否）。 */
+    fun isPassFailResult(text: String): Boolean = isPassFail(text) || isPassFailFailure(text)
 }
 
 /** 一段区间（某学期或全部）的 GPA 统计结果。 */

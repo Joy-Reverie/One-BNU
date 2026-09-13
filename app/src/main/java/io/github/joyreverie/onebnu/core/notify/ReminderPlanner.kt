@@ -31,10 +31,10 @@ object ReminderPlanner {
         now: LocalDateTime,
         leadMinutes: Int,
         periodTimes: List<String>,
-        deliveredThrough: LocalDateTime? = null,
+        delivered: Set<LocalDateTime> = emptySet(),
         useOfficialCalendar: Boolean = true,
     ): Pair<LocalDateTime, List<ReminderItem>>? {
-        val after = maxOf(now, deliveredThrough ?: now)
+        val after = now
         val candidates = ArrayList<ReminderItem>()
         val monday = schedule?.let { AcademicCalendar.firstMonday(it.term, useOfficialCalendar) }
         if (monday != null) {
@@ -65,7 +65,7 @@ object ReminderPlanner {
                 candidates += ReminderItem(it.atTime(event.start), it.atTime(event.end), event.title, event.location, true)
             }
         }
-        return next(candidates, now, leadMinutes, deliveredThrough)
+        return next(candidates, now, leadMinutes, delivered)
     }
 
     /** 从 [from] 起 [days] 天内的全部课程与日程，按开始时间排序。 */
@@ -106,18 +106,22 @@ object ReminderPlanner {
      * 两种「不按 start - lead」的情况：
      *  - **提醒时刻已过但还没开始**：比如提前 10 分钟、而用户在开始前 5 分钟才添加这条日程，
      *    这时立刻提醒（返回 [now]），而不是整条跳过 —— 跳过的话新加的近期日程永远等不到提醒。
-     *  - **已经送达过的不再算**：[deliveredThrough] 是上一次已提醒的事项开始时刻，
-     *    小于等于它的一律排除。否则「立刻提醒」这条会在每次重排时被重新算出来，变成一直响。
+     *  - **已经送达过的不再算**：[delivered] 是已经提醒过、且开始时刻还没到的那些时刻。
+     *    不记的话，「立刻提醒」这条会在每次重排时被重新算出来，变成一直响。
+     *
+     * 这里刻意用**集合**而不是「已提醒到某一刻」的高水位。高水位会把水位线之前新出现的事项
+     * 永久过滤掉：提前 60 分钟时，10:00 的课在 09:00 提醒过之后，09:20 新加的 09:45 日程
+     * 就再也等不到提醒了；系统时间回拨让水位线落到未来时，更是整段时间的提醒全部消失。
      */
     fun next(
         items: List<ReminderItem>,
         now: LocalDateTime,
         leadMinutes: Int,
-        deliveredThrough: LocalDateTime? = null,
+        delivered: Set<LocalDateTime> = emptySet(),
     ): Pair<LocalDateTime, List<ReminderItem>>? {
         val first = items
-            // 已经开始的不再提醒；已送达过的不再重复
-            .filter { it.start.isAfter(now) && (deliveredThrough == null || it.start.isAfter(deliveredThrough)) }
+            // 已经开始的不再提醒；这一刻已送达过的不再重复
+            .filter { it.start.isAfter(now) && it.start !in delivered }
             .minByOrNull { it.start }
             ?: return null
         val fireAt = maxOf(first.start.minusMinutes(leadMinutes.toLong()), now)

@@ -2,6 +2,8 @@ package io.github.joyreverie.onebnu.data.model
 
 import io.github.joyreverie.onebnu.core.store.Settings
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalTime
 
@@ -99,5 +101,22 @@ class PeriodMapperTest {
         assertEquals(null, PeriodMapper.validate(listOf("08:00-08:45", "08:45-09:30")))
         assertEquals("第 1 节的时间格式不对", PeriodMapper.validate(listOf("八点-九点")))
     }
-}
 
+    @Test
+    fun `识别出没有网格高度的长空档`() {
+        // 午休 11:40–13:30：整段落在里面的日程在网格里没有自己的位置
+        assertTrue(PeriodMapper.insideLongBreak(LocalTime.of(12, 0), LocalTime.of(12, 15), p))
+        assertTrue(PeriodMapper.insideLongBreak(LocalTime.of(11, 40), LocalTime.of(13, 30), p))
+        // 第一节之前同理
+        assertTrue(PeriodMapper.insideLongBreak(LocalTime.of(7, 0), LocalTime.of(7, 45), p))
+        // 傍晚 17:10–18:00 的空档
+        assertTrue(PeriodMapper.insideLongBreak(LocalTime.of(17, 20), LocalTime.of(17, 50), p))
+        // 伸进下午第一节的日程是真重叠，不算空档
+        assertFalse(PeriodMapper.insideLongBreak(LocalTime.of(13, 0), LocalTime.of(14, 0), p))
+        // 10 分钟、20 分钟的课间本来就并进上一行，不是长空档
+        assertFalse(PeriodMapper.insideLongBreak(LocalTime.of(8, 45), LocalTime.of(8, 55), p))
+        assertFalse(PeriodMapper.insideLongBreak(LocalTime.of(9, 40), LocalTime.of(10, 0), p))
+        // 正常上课时段
+        assertFalse(PeriodMapper.insideLongBreak(LocalTime.of(8, 0), LocalTime.of(9, 0), p))
+    }
+}

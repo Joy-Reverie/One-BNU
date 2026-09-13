@@ -47,13 +47,6 @@ fun AnnouncementHistoryScreen(onBack: () -> Unit) {
             contentPadding = LocalScreenInfo.current.listPadding(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            item {
-                Text(
-                    "这里保存已发布的公告，重要提醒会随版本更新再次出现在启动时。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
             items(ANNOUNCEMENT_HISTORY, key = { it.date + it.title }) { record ->
                 HistoryCard(record)
             }
@@ -77,7 +70,7 @@ private fun HistoryCard(record: AnnouncementRecord) {
                 Column(Modifier.weight(1f)) {
                     Text(record.title, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "发布于 ${record.date}",
+                        "发布于 ${announcementDateLabel(record.date)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline,
                     )

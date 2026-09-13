@@ -67,7 +67,42 @@ class ReminderPlannerTest {
         assertEquals(listOf("组会"), hit.map { it.title })
         // 提醒过之后再重排：同一条不再算进来，否则会一直响
         val done = LocalDateTime.of(2026, 9, 10, 15, 0)
-        assertNull(ReminderPlanner.next(items, now, 10, deliveredThrough = done))
+        assertNull(ReminderPlanner.next(items, now, 10, delivered = setOf(done)))
+    }
+
+    @Test
+    fun `提前时间窗口里新加的日程不会被更晚的已提醒事项挡掉`() {
+        // 10:00 的课在 09:00 已经提醒过（提前 60 分钟）
+        val course = ReminderItem(
+            LocalDateTime.of(2026, 9, 10, 10, 0), LocalDateTime.of(2026, 9, 10, 11, 40),
+            "机器学习", "四117", isEvent = false,
+        )
+        // 09:20 才加进来的 09:45 日程：它比「已提醒到的 10:00」早，但完全没提醒过
+        val added = ReminderItem(
+            LocalDateTime.of(2026, 9, 10, 9, 45), LocalDateTime.of(2026, 9, 10, 10, 0),
+            "取快递", "菜鸟驿站", isEvent = true,
+        )
+        val now = LocalDateTime.of(2026, 9, 10, 9, 20)
+        val (at, hit) = ReminderPlanner.next(
+            listOf(course, added), now, 60, delivered = setOf(course.start),
+        )!!
+        assertEquals(now, at)
+        assertEquals(listOf("取快递"), hit.map { it.title })
+    }
+
+    @Test
+    fun `系统时间回拨后提醒不会整段消失`() {
+        val course = ReminderItem(
+            LocalDateTime.of(2026, 9, 10, 10, 0), LocalDateTime.of(2026, 9, 10, 11, 40),
+            "机器学习", "四117", isEvent = false,
+        )
+        // 已提醒记录落在未来（时钟被拨回）；用集合判定时它只挡住自己那一刻
+        val stale = LocalDateTime.of(2026, 9, 12, 8, 0)
+        val (at, hit) = ReminderPlanner.next(
+            listOf(course), LocalDateTime.of(2026, 9, 10, 8, 0), 10, delivered = setOf(stale),
+        )!!
+        assertEquals(LocalDateTime.of(2026, 9, 10, 9, 50), at)
+        assertEquals(listOf("机器学习"), hit.map { it.title })
     }
 
     @Test

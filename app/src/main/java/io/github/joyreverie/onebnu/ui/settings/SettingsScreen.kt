@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.BrightnessAuto
-import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.NetworkCheck
@@ -52,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import io.github.joyreverie.onebnu.BuildConfig
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
@@ -80,14 +81,14 @@ import java.time.LocalTime
 fun SettingsScreen(
     onBack: () -> Unit,
     onDiagnostics: () -> Unit = {},
-    onAnnouncements: () -> Unit = {},
     currentVersion: String = BuildConfig.VERSION_NAME,
 ) {
     val settings = ServiceLocator.settings
+    val appearance = ServiceLocator.appearance
     var scale by remember { mutableStateOf(settings.gpaScale) }
     val checker = remember(currentVersion) { UpdateChecker(currentVersion) }
-    val themeMode by settings.themeMode.collectAsState()
-    val colorTheme by settings.colorThemeFlow.collectAsState()
+    val themeMode by appearance.themeMode.collectAsState()
+    val colorTheme by appearance.colorThemeFlow.collectAsState()
 
     Scaffold(
         topBar = {
@@ -110,7 +111,7 @@ fun SettingsScreen(
                         ThemeMode.entries.forEachIndexed { i, mode ->
                             SegmentedButton(
                                 selected = themeMode == mode,
-                                onClick = { settings.setThemeMode(mode) },
+                                onClick = { appearance.setThemeMode(mode) },
                                 shape = SegmentedButtonDefaults.itemShape(index = i, count = ThemeMode.entries.size),
                                 icon = { Icon(mode.icon, null, Modifier.size(SegmentedButtonDefaults.IconSize)) },
                                 label = { Text(mode.label) },
@@ -126,7 +127,7 @@ fun SettingsScreen(
                     ) {
                         ColorTheme.entries.forEach { theme ->
                             Column(
-                                Modifier.weight(1f).clickable { settings.setColorTheme(theme) },
+                                Modifier.weight(1f).clickable { appearance.setColorTheme(theme) },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 androidx.compose.material3.Surface(
@@ -199,27 +200,6 @@ fun SettingsScreen(
             }
 
             item { UpdateCard(currentVersion, checker) }
-
-            item {
-                SectionCard("公告") {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable(onClick = onAnnouncements)
-                            .padding(vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Outlined.Campaign, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Text("历史公告", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        Icon(
-                            Icons.AutoMirrored.Outlined.ArrowForward,
-                            null,
-                            tint = MaterialTheme.colorScheme.outline,
-                        )
-                    }
-                }
-            }
         }
     }
 }
@@ -237,6 +217,8 @@ private fun PeriodTimesCard() {
     val periods by settings.periodTimesFlow.collectAsState()
     // 正在改第几节的哪一端；null 表示没在改
     var editing by remember { mutableStateOf<Pair<Int, Boolean>?>(null) }
+    // 时间芯片里是 sp 文字，系统字体放大时槽位也要跟着宽，否则「08:00」会被裁掉
+    val fontScale = LocalDensity.current.fontScale.coerceIn(1f, 1.6f)
 
     fun applied() {
         ClassReminder.reschedule(context)
@@ -260,14 +242,15 @@ private fun PeriodTimesCard() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("第 ${i + 1} 节", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                // 给右侧时间组和两枚芯片固定槽位，避免每行按文本测量后蓝色点击区域横向漂移。
+                // 右侧时间组的两枚芯片同宽（各占一半），行与行之间对齐；
+                // 宽度随系统字体一起长，不再用 64dp 死宽把「08:00」裁掉。
                 Row(
-                    Modifier.width(PERIOD_TIME_GROUP_WIDTH).height(PERIOD_TIME_ROW_HEIGHT),
+                    Modifier.width(PERIOD_TIME_GROUP_WIDTH * fontScale).heightIn(min = PERIOD_TIME_ROW_HEIGHT),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TimeChip(t.substringBefore('-')) { editing = i to true }
+                    TimeChip(t.substringBefore('-'), Modifier.weight(1f)) { editing = i to true }
                     Box(
-                        Modifier.width(24.dp).fillMaxHeight(),
+                        Modifier.width(20.dp).fillMaxHeight(),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
@@ -276,7 +259,7 @@ private fun PeriodTimesCard() {
                             color = MaterialTheme.colorScheme.outline,
                         )
                     }
-                    TimeChip(t.substringAfter('-')) { editing = i to false }
+                    TimeChip(t.substringAfter('-'), Modifier.weight(1f)) { editing = i to false }
                 }
             }
             if (i < periods.lastIndex) HorizontalDivider()
@@ -311,27 +294,27 @@ private fun PeriodTimesCard() {
 
 /** 可点的时刻，点开时间选择器。 */
 @Composable
-private fun TimeChip(text: String, onClick: () -> Unit) {
+private fun TimeChip(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        Modifier
-            .width(PERIOD_TIME_CHIP_WIDTH)
-            .height(PERIOD_TIME_ROW_HEIGHT)
+        modifier
+            .heightIn(min = PERIOD_TIME_ROW_HEIGHT)
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.secondaryContainer)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 6.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
 
-private val PERIOD_TIME_CHIP_WIDTH = 64.dp
-private val PERIOD_TIME_GROUP_WIDTH = PERIOD_TIME_CHIP_WIDTH * 2 + 24.dp
+private val PERIOD_TIME_GROUP_WIDTH = 152.dp
 private val PERIOD_TIME_ROW_HEIGHT = 40.dp
 
 private val ThemeMode.icon: ImageVector

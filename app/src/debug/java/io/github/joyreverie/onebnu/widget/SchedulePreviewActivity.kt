@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
@@ -17,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import java.time.LocalTime
 import androidx.compose.ui.Modifier
@@ -27,12 +31,13 @@ import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
 import io.github.joyreverie.onebnu.data.model.Term
 import io.github.joyreverie.onebnu.ui.event.EventEditorSheet
-import io.github.joyreverie.onebnu.ui.schedule.ScheduleGrid
+import io.github.joyreverie.onebnu.ui.schedule.SchedulePager
 import io.github.joyreverie.onebnu.ui.schedule.ScheduleLayout
 import io.github.joyreverie.onebnu.ui.schedule.ScheduleUiState
 import io.github.joyreverie.onebnu.ui.theme.OneBnuTheme
 import io.github.joyreverie.onebnu.ui.theme.ProvideScreenInfo
 import java.time.LocalDate
+import kotlinx.coroutines.launch
 
 /**
  * 开发用：不登录直接看课表网格在当前屏幕（含横屏）下的行高与缩放效果。
@@ -65,6 +70,9 @@ class SchedulePreviewActivity : ComponentActivity() {
                 PersonalEvent("e6", "自习", LocalDate.of(2026, 9, 16), LocalTime.of(9, 0), LocalTime.of(10, 0), "图书馆"),
                 // 落在午休里的短日程：网格里没有对应高度，贴在第 5 节上沿并保证最小高度
                 PersonalEvent("e7", "取快递", LocalDate.of(2026, 9, 14), LocalTime.of(12, 0), LocalTime.of(12, 15), "菜鸟驿站"),
+                // 同样落在午休，但那天下午第一节有课：两者在真实时间上不重叠，
+                // 必须各自显示（日程占顶部细带、课让出这段高度），不能并成 ⇅ 切换格
+                PersonalEvent("e8", "午饭", LocalDate.of(2026, 9, 18), LocalTime.of(12, 0), LocalTime.of(12, 40), "学五食堂"),
                 // 重复日程：从 9/7 起每周二、周六 07:00 晨跑
                 PersonalEvent(
                     "e4", "晨跑", LocalDate.of(2026, 9, 7), LocalTime.of(7, 0), LocalTime.of(7, 45), "操场",
@@ -77,18 +85,32 @@ class SchedulePreviewActivity : ComponentActivity() {
                 ProvideScreenInfo(calculateWindowSizeClass(this)) {
                     var zoom by remember { mutableFloatStateOf(ScheduleLayout.clampZoom(initialZoom)) }
                     var editing by remember { mutableStateOf<PersonalEvent?>(null) }
+                    // 分页是「现在看第几周」的唯一真源，和正式页面一样；
+                    // 「跳 15 周」用来复现 1.9.26 的回归：跨多周选择曾会停在半页
+                    val pager = rememberPagerState(initialPage = state.week - 1) { state.maxWeek }
+                    val scope = rememberCoroutineScope()
+                    val week = pager.currentPage + 1
                     Scaffold(
                         topBar = {
                             TopAppBar(
-                                title = { Text("2026-2027学年秋季学期 · 第 2 周") },
-                                actions = { io.github.joyreverie.onebnu.ui.schedule.ZoomBadge(zoom) },
+                                title = { Text("秋季学期 · 第 $week 周") },
+                                actions = {
+                                    io.github.joyreverie.onebnu.ui.schedule.ZoomBadge(zoom)
+                                    TextButton(onClick = {
+                                        scope.launch { pager.animateScrollToPage(14, animationSpec = tween(280)) }
+                                    }) { Text("跳 15 周") }
+                                    TextButton(onClick = {
+                                        scope.launch { pager.animateScrollToPage(1, animationSpec = tween(280)) }
+                                    }) { Text("回本周") }
+                                },
                             )
                         },
                     ) { padding ->
                         Box(Modifier.fillMaxSize().padding(padding)) {
-                            ScheduleGrid(
+                            SchedulePager(
                                 schedule = state.schedule!!,
-                                state = state,
+                                state = state.copy(week = week),
+                                pager = pager,
                                 zoom = zoom,
                                 onZoom = { zoom = ScheduleLayout.clampZoom(zoom * it) },
                                 onZoomEnd = {},

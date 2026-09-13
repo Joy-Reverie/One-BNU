@@ -13,13 +13,9 @@ import java.time.LocalDate
 class Settings(
     context: Context,
     campus: Campus = Campus.BEIJING,
-    private val onThemeChanged: () -> Unit = {},
 ) {
 
-    private val prefs = context.getSharedPreferences(
-        if (campus == Campus.BEIJING) "onebnu_settings" else "onebnu_settings_${campus.storageKey}",
-        Context.MODE_PRIVATE,
-    )
+    private val prefs = context.getSharedPreferences(prefsName(campus), Context.MODE_PRIVATE)
 
     init {
         migrateReminderSwitches()
@@ -81,35 +77,6 @@ class Settings(
             ?.takeIf { it.size == PERIOD_TIMES.size && PeriodMapper.validate(it) == null }
             ?: PERIOD_TIMES
 
-    private val _themeMode = MutableStateFlow(
-        runCatching { ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "") }.getOrDefault(ThemeMode.SYSTEM),
-    )
-
-    /** 深浅色模式。以流的形式暴露，主题在设置页改动后整个界面立即重绘，不重建 Activity。 */
-    val themeMode: StateFlow<ThemeMode> get() = _themeMode
-
-    private val _colorTheme = MutableStateFlow(
-        runCatching { ColorTheme.valueOf(prefs.getString(KEY_COLOR_THEME, null) ?: "") }
-            .getOrDefault(ColorTheme.INDIGO),
-    )
-
-    /** 应用主色系；与深浅色独立，切换后立即重绘页面并刷新桌面小组件。 */
-    val colorThemeFlow: StateFlow<ColorTheme> get() = _colorTheme
-
-    val colorTheme: ColorTheme get() = _colorTheme.value
-
-    fun setColorTheme(theme: ColorTheme) {
-        prefs.edit().putString(KEY_COLOR_THEME, theme.name).apply()
-        _colorTheme.value = theme
-        onThemeChanged()
-    }
-
-    fun setThemeMode(mode: ThemeMode) {
-        prefs.edit().putString(KEY_THEME, mode.name).apply()
-        _themeMode.value = mode
-        onThemeChanged()
-    }
-
     /** 联网启动时自动检查更新。 */
     var autoCheckUpdates: Boolean
         get() = prefs.getBoolean(KEY_AUTO_UPDATE, true)
@@ -153,12 +120,32 @@ class Settings(
     }
 
     /**
-     * 已经提醒到哪一刻（被提醒事项的开始时刻，epoch 毫秒；0 表示还没提醒过）。
-     * 用来防止「提醒时刻已过、立刻提醒」的事项在每次重排时被反复提醒。
+     * 已经提醒过、但还没开始的事项开始时刻（epoch 毫秒）。
+     *
+     * 只用来防止「提醒时刻已过、立刻提醒」的事项在每次重排时被反复提醒，所以记的是**集合**
+     * 而不是一条高水位线：高水位会把水位线之前新加的日程永久挡掉（提前 60 分钟时，
+     * 10:00 的课提醒过以后，新加的 09:45 日程就再也提醒不了），系统时间回拨时更是全军覆没。
+     * 读的时候顺手丢掉已经过去的时刻，集合不会无限增长。
      */
-    var lastRemindedStart: Long
-        get() = prefs.getLong(KEY_REMIND_DONE, 0L)
-        set(value) { prefs.edit().putLong(KEY_REMIND_DONE, value).apply() }
+    fun remindedStarts(now: Long = System.currentTimeMillis()): Set<Long> =
+        storedRemindedStarts().filter { it > now }.toSet()
+
+    /**
+     * 记下这一刻已经送达；这一刻之前已经记过就返回 false。
+     * 返回值同时用作幂等守卫：系统偶尔会把同一条广播送两次，不能让它响两遍。
+     */
+    fun markReminded(startMillis: Long, now: Long = System.currentTimeMillis()): Boolean {
+        val stored = storedRemindedStarts()
+        if (startMillis in stored) return false
+        val kept = stored.filter { it > now - REMIND_RETAIN_MILLIS } + startMillis
+        prefs.edit().putStringSet(KEY_REMIND_DONE_SET, kept.map(Long::toString).toSet()).apply()
+        return true
+    }
+
+    private fun storedRemindedStarts(): Set<Long> =
+        prefs.getStringSet(KEY_REMIND_DONE_SET, emptySet()).orEmpty()
+            .mapNotNull { it.toLongOrNull() }
+            .toSet()
 
     /** 提醒的送达方式：通知或闹钟。 */
     var reminderStyle: ReminderStyle
@@ -172,6 +159,10 @@ class Settings(
         set(value) { prefs.edit().putInt(KEY_REMIND_LEAD, value.coerceIn(1, 120)).apply() }
 
     companion object {
+        /** 设置按校区分文件保存；外观例外，见 [AppearanceStore]。 */
+        fun prefsName(campus: Campus): String =
+            if (campus == Campus.BEIJING) "onebnu_settings" else "onebnu_settings_${campus.storageKey}"
+
         private const val KEY_TERM_START = "term_start"
         private const val KEY_GPA_SCALE = "gpa_scale"
         private const val KEY_GPA_EXCLUDED_COURSES = "gpa_excluded_course_keys"
@@ -181,9 +172,10 @@ class Settings(
         private const val KEY_REMIND_EVENTS = "remind_events"
         private const val KEY_REMIND_LEAD = "reminder_lead_minutes"
         private const val KEY_REMIND_STYLE = "reminder_style"
-        private const val KEY_REMIND_DONE = "reminder_last_start"
-        private const val KEY_THEME = "theme_mode"
-        private const val KEY_COLOR_THEME = "color_theme"
+        private const val KEY_REMIND_DONE_SET = "reminder_delivered_starts"
+
+        /** 已送达记录保留多久：够挡住重复广播即可，不必留着过期的时刻。 */
+        private const val REMIND_RETAIN_MILLIS = 6 * 60 * 60 * 1000L
         private const val KEY_AUTO_UPDATE = "auto_check_updates"
         private const val KEY_PERIODS = "period_times"
         private const val PERIOD_SEP = "|"

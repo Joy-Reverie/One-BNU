@@ -77,6 +77,24 @@ object PeriodMapper {
         return if (Duration.between(end, next).toMinutes() <= MAX_BREAK_MINUTES) next else end
     }
 
+    /**
+     * 这一段是不是整个落在「网格里没有高度」的空档里：第一节之前，或午休、晚上开课前这类
+     * 超过 [MAX_BREAK_MINUTES] 的长间隔。这种段落只能贴到下一节的上沿，
+     * 与那一节课在真实时间上并不重叠 —— 课表因此不能把它们判成重叠、藏进 ⇅ 切换格。
+     */
+    fun insideLongBreak(start: LocalTime, end: LocalTime, periodTimes: List<String>): Boolean {
+        val periods = periodTimes.mapNotNull { parsePeriod(it) }
+        if (periods.isEmpty()) return false
+        if (!end.isAfter(periods.first().first)) return true
+        for (i in 0 until periods.lastIndex) {
+            val from = rowEnd(periods, i)
+            val to = periods[i + 1].first
+            if (Duration.between(from, to).toMinutes() <= MAX_BREAK_MINUTES) continue
+            if (!start.isBefore(from) && !end.isAfter(to)) return true
+        }
+        return false
+    }
+
     /** 一段时间在网格里的上下沿（行单位）；整段落在课间时下沿只比上沿高出最小跨度，界面再保证最小高度。 */
     fun span(start: LocalTime, end: LocalTime, periodTimes: List<String>, minSpan: Float = 0.1f): Pair<Float, Float> {
         val top = position(start, periodTimes)

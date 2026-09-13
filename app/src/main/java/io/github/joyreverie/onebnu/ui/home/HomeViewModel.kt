@@ -8,15 +8,14 @@ import io.github.joyreverie.onebnu.data.model.AcademicCalendar
 import io.github.joyreverie.onebnu.data.model.ClassSession
 import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
+import io.github.joyreverie.onebnu.data.model.Term
 import io.github.joyreverie.onebnu.data.repo.AcademicRepository.Outcome
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
-import java.time.temporal.ChronoUnit
 
 data class TodayCourse(val course: Course, val session: ClassSession)
 
@@ -60,13 +59,16 @@ class HomeViewModel : ViewModel() {
     fun refresh(forceRefresh: Boolean = false) {
         _state.value = _state.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            val week = currentWeek()
             val today = LocalDate.now().dayOfWeek.value
 
             when (val t = repo.terms(forceRefresh = forceRefresh)) {
                 is Outcome.Ok -> {
                     val ctx = repo.userContext
                     val term = repo.currentTerm(t.data)
+                    // 周次必须按**实际取到课表的那个学期**算。按「今天所在学期」算的话，
+                    // 教务提前切到下学期时（9 月 1–6 日、1–2 月）会算出「第 28 周」这种数。
+                    val week = weekIn(term)
+                    val weekLabel = if (week < 1) "开学前" else "第 $week 周"
                     if (term == null) {
                         _state.value = _state.value.copy(
                             loading = false,
@@ -78,16 +80,24 @@ class HomeViewModel : ViewModel() {
                     }
                     when (val s = repo.schedule(term, forceRefresh = forceRefresh)) {
                         is Outcome.Ok -> {
-                            val slots = s.data.slotsOn(week, today).map { TodayCourse(it.first, it.second) }
+                            val slots = if (week >= 1) {
+                                s.data.slotsOn(week, today).map { TodayCourse(it.first, it.second) }
+                            } else {
+                                emptyList()
+                            }
                             _state.value = HomeUiState(
                                 loading = false,
                                 greeting = greetingFor(LocalTime.now()),
                                 userName = s.data.studentName.ifBlank { ctx?.userName.orEmpty() },
-                                subtitle = "${term.name} · 第 $week 周 · 周${dayLabel(today)}",
+                                subtitle = "${term.name} · $weekLabel · 周${dayLabel(today)}",
                                 todayCourses = slots,
                                 freshness = s.freshness,
                                 todayEvents = _state.value.todayEvents,
-                                todayHint = "第 $week 周 周${dayLabel(today)} 没有排课",
+                                todayHint = if (week >= 1) {
+                                    "$weekLabel 周${dayLabel(today)} 没有排课"
+                                } else {
+                                    "${term.name}还没开始"
+                                },
                                 periodTimes = settings.periodTimes,
                             )
                         }
@@ -95,7 +105,7 @@ class HomeViewModel : ViewModel() {
                             loading = false,
                             greeting = greetingFor(LocalTime.now()),
                             userName = ctx?.userName.orEmpty(),
-                            subtitle = "${term.name} · 第 $week 周",
+                            subtitle = "${term.name} · $weekLabel",
                             todayEvents = _state.value.todayEvents,
                             todayHint = s.reason,
                             periodTimes = settings.periodTimes,
@@ -115,9 +125,15 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    private fun currentWeek(): Int = AcademicCalendar.currentWeek(
-        useOfficial = true,
-    )
+    /**
+     * 今天是 [term] 的第几周；学期还没开始时返回 0 或负数，由调用方显示「开学前」。
+     * 拿不到学期时退回「今天所在学期」的周次。
+     */
+    private fun weekIn(term: Term?): Int {
+        val start = term?.let { AcademicCalendar.firstMonday(it, useOfficial = true) }
+            ?: return AcademicCalendar.currentWeek(useOfficial = true)
+        return AcademicCalendar.weekOf(start, LocalDate.now())
+    }
 
     private fun dayLabel(d: Int) = listOf("一", "二", "三", "四", "五", "六", "日").getOrElse(d - 1) { "?" }
 

@@ -82,18 +82,20 @@ object TodayWidgetRenderer {
         )
     }
 
-    private fun input(base: Base, heightDp: Int, today: LocalDate, now: LocalTime) = TodayWidgetModel.Input(
-        schedule = base.schedule,
-        events = base.events.filter { it.occursOn(today) },
-        hasCredentials = base.hasCredentials,
-        refreshing = base.refreshing,
-        lastError = base.lastError,
-        today = today,
-        now = now,
-        periodTimes = ServiceLocator.settings.periodTimes,
-        useOfficialCalendar = true,
-        heightDp = heightDp,
-    )
+    private fun input(base: Base, heightDp: Int, today: LocalDate, now: LocalTime, fontScale: Float = 1f) =
+        TodayWidgetModel.Input(
+            schedule = base.schedule,
+            events = base.events.filter { it.occursOn(today) },
+            hasCredentials = base.hasCredentials,
+            refreshing = base.refreshing,
+            lastError = base.lastError,
+            today = today,
+            now = now,
+            periodTimes = ServiceLocator.settings.periodTimes,
+            useOfficialCalendar = true,
+            heightDp = heightDp,
+            fontScale = fontScale,
+        )
 
     fun render(
         context: Context,
@@ -105,7 +107,10 @@ object TodayWidgetRenderer {
     ): RemoteViews {
         val palette = palette(context)
         if (widthDp < SMALL_BELOW_DP) return renderSmall(context, base, widthDp, today, now, palette)
-        val model = TodayWidgetModel.build(input(base, heightDp, today, now))
+        // 行高随系统字体一起长（widget_row.xml 是 minHeight），能放几行必须按同一倍数算
+        val model = TodayWidgetModel.build(
+            input(base, heightDp, today, now, context.resources.configuration.fontScale),
+        )
 
         val rv = RemoteViews(context.packageName, R.layout.widget_today)
         applyLargePalette(rv, palette)
@@ -255,7 +260,7 @@ object TodayWidgetRenderer {
     }
 
     private fun palette(context: Context): Palette {
-        val mode = runCatching { ServiceLocator.settings.themeMode.value }.getOrDefault(ThemeMode.SYSTEM)
+        val mode = runCatching { ServiceLocator.appearance.themeMode.value }.getOrDefault(ThemeMode.SYSTEM)
         val systemDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
         val dark = when (mode) {
@@ -263,7 +268,7 @@ object TodayWidgetRenderer {
             ThemeMode.LIGHT -> false
             ThemeMode.DARK -> true
         }
-        val theme = runCatching { ServiceLocator.settings.colorTheme }.getOrDefault(ColorTheme.INDIGO)
+        val theme = runCatching { ServiceLocator.appearance.colorTheme }.getOrDefault(ColorTheme.INDIGO)
         val themePalette = theme.palette(dark)
         return Palette(
             backgroundColor = themePalette.widgetBackground,

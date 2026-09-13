@@ -1,6 +1,7 @@
 package io.github.joyreverie.onebnu.ui.schedule
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +25,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,10 +62,14 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -82,12 +91,15 @@ import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.InfoRow
 import io.github.joyreverie.onebnu.ui.components.LoadingBox
 import io.github.joyreverie.onebnu.ui.event.EventEditorSheet
+import io.github.joyreverie.onebnu.ui.theme.LocalDarkTheme
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.courseAccent
 import io.github.joyreverie.onebnu.ui.theme.courseColor
 import java.time.LocalDate
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 private const val PERIODS = ScheduleLayout.PERIODS
 private val DAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "日")
@@ -114,6 +126,23 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
     // 日程编辑：adding 为新建，editing 为改已有的
     var adding by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<PersonalEvent?>(null) }
+
+    // 分页状态就是「现在看第几周」：箭头、周次菜单直接驱动它，ViewModel 只跟着它走。
+    val pager = rememberPagerState(initialPage = 0) { s.maxWeek.coerceAtLeast(1) }
+    val scope = rememberCoroutineScope()
+    val setWeek = rememberUpdatedState(vm::setWeek)
+    LaunchedEffect(pager) {
+        snapshotFlow { pager.currentPage }.distinctUntilChanged().collect { setWeek.value(it + 1) }
+    }
+    // 课表载入或切学期后落到该学期的本周。键里没有 week，翻页不会把自己弹回去。
+    LaunchedEffect(s.term?.code, s.currentWeek, s.maxWeek) {
+        val target = ((s.currentWeek ?: 1) - 1).coerceIn(0, (s.maxWeek - 1).coerceAtLeast(0))
+        if (pager.currentPage != target) pager.scrollToPage(target)
+    }
+    fun goToWeek(week: Int) {
+        val page = (week - 1).coerceIn(0, (s.maxWeek - 1).coerceAtLeast(0))
+        scope.launch { pager.animateScrollToPage(page, animationSpec = tween(280)) }
+    }
 
     Scaffold(
         topBar = {
@@ -152,33 +181,39 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
                     IconButton(onClick = { adding = true }) {
                         Icon(Icons.Filled.Add, "添加日程")
                     }
-                    IconButton(onClick = { vm.setWeek(s.week - 1) }, enabled = s.week > 1) {
+                    // 离开本周时给一个看得见的回程入口，不必再去翻菜单
+                    AnimatedVisibility(
+                        visible = s.currentWeek != null && !s.isCurrentWeek,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                    ) {
+                        TodayWeekButton { s.currentWeek?.let(::goToWeek) }
+                    }
+                    IconButton(onClick = { goToWeek(s.week - 1) }, enabled = s.week > 1) {
                         Icon(Icons.Filled.ChevronLeft, "上一周")
                     }
                     Box {
                         // 点周次即可挑周；本周单列一项，一步回到当前
-                        Box(Modifier.width(76.dp), contentAlignment = Alignment.Center) {
-                            TextButton(
-                                onClick = { weekMenu = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 4.dp),
-                            ) {
-                                Text(
-                                    "第 ${s.week} 周",
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    fontWeight = if (s.isCurrentWeek) FontWeight.Bold else FontWeight.Normal,
-                                )
-                            }
+                        TextButton(
+                            onClick = { weekMenu = true },
+                            modifier = Modifier.widthIn(min = 72.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp),
+                        ) {
+                            Text(
+                                "第 ${s.week} 周",
+                                maxLines = 1,
+                                softWrap = false,
+                                fontWeight = if (s.isCurrentWeek) FontWeight.Bold else FontWeight.Normal,
+                            )
                         }
                         WeekMenu(
                             expanded = weekMenu,
                             state = s,
                             onDismiss = { weekMenu = false },
-                            onPick = { weekMenu = false; vm.setWeek(it) },
+                            onPick = { weekMenu = false; goToWeek(it) },
                         )
                     }
-                    IconButton(onClick = { vm.setWeek(s.week + 1) }, enabled = s.week < s.maxWeek) {
+                    IconButton(onClick = { goToWeek(s.week + 1) }, enabled = s.week < s.maxWeek) {
                         Icon(Icons.Filled.ChevronRight, "下一周")
                     }
                 },
@@ -187,35 +222,35 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             Column(Modifier.fillMaxSize()) {
-            when {
-                s.loading -> LoadingBox("正在加载课表…")
-                s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
-                s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.load(forceRefresh = true) })
-                else -> {
-                    val schedule = s.schedule
-                    if (schedule == null) {
-                        EmptyBox("暂无课表数据", onRetry = { vm.load(forceRefresh = true) })
-                    } else {
-                        ScheduleWeekPager(
-                            schedule = schedule,
-                            state = s,
-                            zoom = zoom,
-                            onWeekChange = vm::setWeek,
-                            onZoom = {
-                                zoom = ScheduleLayout.clampZoom(zoom * it)
-                                zoomHint = true
-                                zoomTick++
-                            },
-                            onZoomEnd = {
-                                settings.scheduleZoom = zoom
-                                zoomTick++
-                            },
-                            onClick = { c, sess -> selected = c to sess },
-                            onEventClick = { editing = it },
-                        )
+                when {
+                    s.loading -> LoadingBox("正在加载课表…")
+                    s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
+                    s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.load(forceRefresh = true) })
+                    else -> {
+                        val schedule = s.schedule
+                        if (schedule == null) {
+                            EmptyBox("暂无课表数据", onRetry = { vm.load(forceRefresh = true) })
+                        } else {
+                            SchedulePager(
+                                schedule = schedule,
+                                state = s,
+                                pager = pager,
+                                zoom = zoom,
+                                onZoom = {
+                                    zoom = ScheduleLayout.clampZoom(zoom * it)
+                                    zoomHint = true
+                                    zoomTick++
+                                },
+                                onZoomEnd = {
+                                    settings.scheduleZoom = zoom
+                                    zoomTick++
+                                },
+                                onClick = { c, sess -> selected = c to sess },
+                                onEventClick = { editing = it },
+                            )
+                        }
                     }
                 }
-            }
             }
         }
     }
@@ -238,6 +273,25 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
             onDismiss = { adding = false; editing = null },
             onSave = { store.upsert(it); adding = false; editing = null },
             onDelete = { store.delete(it.id); adding = false; editing = null },
+        )
+    }
+}
+
+/** 顶栏的「今」小钮：只在离开本周时出现，点一下回到当前周。 */
+@Composable
+private fun TodayWeekButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.padding(horizontal = 2.dp),
+    ) {
+        Text(
+            "今",
+            Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
         )
     }
 }
@@ -294,16 +348,19 @@ private fun WeekMenu(
 }
 
 /**
- * 双指缩放手势：只在两根手指同时按下时接管事件并回调缩放比例，单指滑动照常交给列表滚动。
+ * 双指缩放手势：只在两根手指同时按下时接管事件并回调缩放比例，单指滑动照常交给分页与纵向滚动。
  * 不用 detectTransformGestures —— 它会把单指拖动也当作平移吃掉，列表就滚不动了。
+ *
+ * 事件走 [PointerEventPass.Initial]：这个修饰符挂在分页与滚动的外层，只有抢在它们之前
+ * 才能在双指时把事件收走，否则捏合会同时被认成翻页。
  */
 private fun Modifier.pinchToZoom(onZoom: (Float) -> Unit, onEnd: () -> Unit): Modifier =
     pointerInput(Unit) {
         awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false)
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             var zooming = false
             do {
-                val event = awaitPointerEvent()
+                val event = awaitPointerEvent(PointerEventPass.Initial)
                 if (event.changes.count { it.pressed } >= 2) {
                     val zoom = event.calculateZoom()
                     if (zoom != 1f) {
@@ -323,24 +380,22 @@ private sealed interface GridPayload {
     data class Event(val event: PersonalEvent) : GridPayload
 }
 
+/**
+ * 课表网格的外框：星期表头 + 左侧刻度 + 纵向滚动，中间的七列由 [days] 提供。
+ *
+ * 表头、刻度和滚动位置都在分页之外，所以切周时刻度不跟着横移、纵向位置也保持不变。
+ */
 @Composable
-internal fun ScheduleGrid(
-    schedule: Schedule,
+private fun GridFrame(
     state: ScheduleUiState,
     zoom: Float,
     onZoom: (Float) -> Unit,
     onZoomEnd: () -> Unit,
-    onClick: (Course, ClassSession) -> Unit,
-    onEventClick: (PersonalEvent) -> Unit = {},
+    days: @Composable RowScope.(rowHeight: Dp, titleSize: TextUnit, subSize: TextUnit) -> Unit,
 ) {
-    // 重叠格子当前显示第几个，键为「周:星期:起始节」
-    val shown = remember { mutableStateMapOf<String, Int>() }
-    val s = state
     val screen = LocalScreenInfo.current
-    val today = ScheduleViewModel.todayDayOfWeek()
-    val isCurrentWeek = s.isCurrentWeek
-    val dates = s.weekDates
     val density = LocalDensity.current
+    val scroll = rememberScrollState()
 
     // 随屏幕尺寸调整：大屏放大；横屏宽度富余、高度紧张，行高按一天 12 节尽量落进一屏来算；
     // 再乘上用户双指缩放的倍数
@@ -357,146 +412,218 @@ internal fun ScheduleGrid(
         val availableDp = with(density) { (constraints.maxHeight - headerPx).toDp().value }
         val rowHeight = ScheduleLayout.rowDp(screen.isLandscape, availableDp, baseRowDp, zoom).dp
 
-    Column(Modifier.fillMaxSize()) {
-        // ---- 星期表头：固定不滚动，否则往下翻就不知道是星期几了 ----
-        Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp).onSizeChanged { headerPx = it.height }) {
-            Spacer(Modifier.width(gutter))
-            DAY_LABELS.forEachIndexed { i, label ->
-                val day = i + 1
-                val highlight = isCurrentWeek && day == today
-                val date = dates.getOrNull(i)
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .padding(1.5.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(
-                            if (highlight) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.surface,
-                        )
-                        .padding(vertical = 6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = if (highlight) FontWeight.Bold else FontWeight.Medium,
-                        color = if (highlight) MaterialTheme.colorScheme.onPrimary
-                        else MaterialTheme.colorScheme.onSurface,
+        Column(Modifier.fillMaxSize()) {
+            // ---- 星期表头：固定不滚动，否则往下翻就不知道是星期几了 ----
+            WeekHeader(
+                state = state,
+                gutter = gutter,
+                modifier = Modifier.onSizeChanged { headerPx = it.height },
+            )
+            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            // ---- 课程网格（仅这部分滚动，表头保持可见）----
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(scroll)
+                    .pinchToZoom(onZoom, onZoomEnd)
+                    .padding(horizontal = 2.dp),
+            ) {
+                PeriodGutter(
+                    periodTimes = state.periodTimes,
+                    gutter = gutter,
+                    rowHeight = rowHeight,
+                    fontScale = fontScale,
+                    textScale = textScale,
+                )
+                days(rowHeight, titleSize, subSize)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeekHeader(state: ScheduleUiState, gutter: Dp, modifier: Modifier = Modifier) {
+    val today = ScheduleViewModel.todayDayOfWeek()
+    val isCurrentWeek = state.isCurrentWeek
+    val dates = state.weekDates
+    Row(modifier.fillMaxWidth().padding(horizontal = 2.dp)) {
+        Spacer(Modifier.width(gutter))
+        DAY_LABELS.forEachIndexed { i, label ->
+            val day = i + 1
+            val highlight = isCurrentWeek && day == today
+            val date = dates.getOrNull(i)
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(1.5.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        if (highlight) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surface,
                     )
-                    if (date != null) {
-                        Spacer(Modifier.height(1.dp))
+                    .padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (highlight) FontWeight.Bold else FontWeight.Medium,
+                    color = if (highlight) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurface,
+                )
+                if (date != null) {
+                    Spacer(Modifier.height(1.dp))
+                    Text(
+                        "${date.monthValue}/${date.dayOfMonth}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (highlight) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (highlight) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 左侧的节次与上下课时刻。节次号比时刻**小一号**（它只是编号，真正要读的是时间）；
+ * 行高不够（横屏压缩、缩到最小、系统字体调大）时按 `gutterDetail` 逐级少显示一行。
+ */
+@Composable
+private fun PeriodGutter(
+    periodTimes: List<String>,
+    gutter: Dp,
+    rowHeight: Dp,
+    fontScale: Float,
+    textScale: Float,
+) {
+    val detail = ScheduleLayout.gutterDetail(rowHeight.value, textScale)
+    Column(Modifier.width(gutter)) {
+        for (period in 1..PERIODS) {
+            val spec = periodTimes.getOrNull(period - 1)
+            Column(
+                Modifier.height(rowHeight).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    "$period",
+                    fontSize = 9.sp * fontScale,
+                    lineHeight = 11.sp * fontScale,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.outline,
+                    maxLines = 1,
+                )
+                if (spec != null && detail != ScheduleLayout.GutterDetail.NUMBER_ONLY) {
+                    Text(
+                        spec.substringBefore('-'),
+                        fontSize = 10.5.sp * fontScale,
+                        lineHeight = 12.sp * fontScale,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                    if (detail == ScheduleLayout.GutterDetail.START_AND_END) {
                         Text(
-                            "${date.monthValue}/${date.dayOfMonth}",
-                            fontSize = 9.sp,
-                            fontWeight = if (highlight) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (highlight) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.outline,
+                            spec.substringAfter('-'),
+                            fontSize = 9.5.sp * fontScale,
+                            lineHeight = 11.sp * fontScale,
+                            // 下课时刻弱一档，一眼能看出哪个是上课时间；仍保持 5:1 以上对比度
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                            maxLines = 1,
                         )
                     }
                 }
             }
         }
-        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    }
+}
 
-        // ---- 课程网格（仅这部分滚动，表头保持可见）----
-        // 按「天」成列渲染：跨节的课块直接给出 span 倍高度，
-        // 比逐格渲染再撑高可靠 —— 后者会被固定高度的行裁掉。
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .pinchToZoom(onZoom, onZoomEnd)
-                .padding(horizontal = 2.dp),
-        ) {
-            // 左侧节次与上下课时刻。节次号比时间小一号，三行才不至于互相挤压；
-            // 行高不够（横屏压缩、缩到最小、系统字体调大）时按 gutterDetail 逐级少显示一行
-            val detail = ScheduleLayout.gutterDetail(rowHeight.value, textScale)
-            Column(Modifier.width(gutter)) {
-                for (period in 1..PERIODS) {
-                    val spec = s.periodTimes.getOrNull(period - 1)
-                    Column(
-                        Modifier.height(rowHeight).fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Text(
-                            "$period",
-                            fontSize = 10.sp * fontScale,
-                            lineHeight = 12.sp * fontScale,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                        if (spec != null && detail != ScheduleLayout.GutterDetail.NUMBER_ONLY) {
-                            Text(
-                                spec.substringBefore('-'),
-                                fontSize = 8.5.sp * fontScale,
-                                lineHeight = 10.sp * fontScale,
-                                color = MaterialTheme.colorScheme.outline,
-                                maxLines = 1,
-                            )
-                            if (detail == ScheduleLayout.GutterDetail.START_AND_END) {
-                                Text(
-                                    spec.substringAfter('-'),
-                                    fontSize = 8.5.sp * fontScale,
-                                    lineHeight = 10.sp * fontScale,
-                                    // 下课时刻弱一档，一眼能看出哪个是上课时间
-                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
-                                    maxLines = 1,
-                                )
-                            }
-                        }
-                    }
-                }
+/**
+ * 某一周的七列。课与日程放进同一列：课程占整节，日程按起止时刻在行内定位；
+ * 时间上真正重叠的才归为一簇（一次显示一个），首尾相接的各自显示。
+ */
+@Composable
+internal fun DayColumns(
+    schedule: Schedule,
+    state: ScheduleUiState,
+    rowHeight: Dp,
+    titleSize: TextUnit,
+    subSize: TextUnit,
+    modifier: Modifier = Modifier,
+    onClick: (Course, ClassSession) -> Unit,
+    onEventClick: (PersonalEvent) -> Unit = {},
+) {
+    // 重叠格子当前显示第几个，键为「周:星期:起始节」
+    val shown = remember { mutableStateMapOf<String, Int>() }
+    val s = state
+    val today = ScheduleViewModel.todayDayOfWeek()
+    val isCurrentWeek = s.isCurrentWeek
+    val dates = s.weekDates
+    // 4% 的今日底色在深色主题下基本看不见，深色下加重一档
+    val todayTint = MaterialTheme.colorScheme.primary
+        .copy(alpha = if (LocalDarkTheme.current) 0.12f else 0.05f)
+
+    Row(modifier) {
+        for (day in 1..7) {
+            val date = dates.getOrNull(day - 1)
+            val items = schedule.slotsOn(s.week, day).map { (course, sess) ->
+                ScheduleLayout.GridItem.periods(
+                    sess.startPeriod,
+                    sess.endPeriod,
+                    GridPayload.CourseSlot(course, sess) as GridPayload,
+                )
+            } + (if (date != null) s.events.filter { it.occursOn(date) } else emptyList()).map { e ->
+                val (top, bottom) = PeriodMapper.span(e.start, e.end, s.periodTimes, ScheduleLayout.MIN_SPAN)
+                ScheduleLayout.GridItem(
+                    top,
+                    bottom,
+                    GridPayload.Event(e) as GridPayload,
+                    // 午休、晚上开课前这类长空档在网格里没有自己的高度，落在里面的日程
+                    // 只是「贴」在下一节上沿，不能因此判成与那节课重叠
+                    pinned = PeriodMapper.insideLongBreak(e.start, e.end, s.periodTimes),
+                )
             }
+            val groups = ScheduleLayout.groupColumn(items)
+            val isToday = isCurrentWeek && day == today
 
-            for (day in 1..7) {
-                val date = dates.getOrNull(day - 1)
-                // 课与日程放进同一列：课程占整节，日程按起止时刻在行内定位；
-                // 时间上真正重叠的才归为一簇（一次显示一个），首尾相接的各自显示
-                val items = schedule.slotsOn(s.week, day).map { (course, sess) ->
-                    ScheduleLayout.GridItem.periods(sess.startPeriod, sess.endPeriod, GridPayload.CourseSlot(course, sess) as GridPayload)
-                } + (if (date != null) s.events.filter { it.occursOn(date) } else emptyList()).map { e ->
-                    val (top, bottom) = PeriodMapper.span(e.start, e.end, s.periodTimes, ScheduleLayout.MIN_SPAN)
-                    ScheduleLayout.GridItem(top, bottom, GridPayload.Event(e) as GridPayload)
-                }
-                val groups = ScheduleLayout.groupColumn(items)
-                val isToday = isCurrentWeek && day == today
-
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .then(
-                            if (isToday) {
-                                Modifier.background(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.04f),
-                                )
-                            } else {
-                                Modifier
-                            },
-                        ),
-                ) {
-                    var period = 1
-                    groups.forEach { group ->
-                        while (period < group.start) {
-                            EmptyCell(rowHeight)
-                            period++
-                        }
-                        val blockHeight = rowHeight * group.span
-                        Box(Modifier.height(blockHeight).fillMaxWidth()) {
-                            Column { repeat(group.span) { EmptyCell(rowHeight) } }
-                            group.clusters.forEachIndexed { clusterIndex, items ->
+            Column(
+                Modifier
+                    .weight(1f)
+                    .then(if (isToday) Modifier.background(todayTint) else Modifier),
+            ) {
+                var period = 1
+                groups.forEach { group ->
+                    while (period < group.start) {
+                        EmptyCell(rowHeight)
+                        period++
+                    }
+                    val blockHeight = rowHeight * group.span
+                    // 贴在行沿上的日程各自占一条细带，正课让出这段高度，两者都看得见
+                    val reserved = group.clusters
+                        .filter { c -> c.any { it.pinned } }
+                        .associate { c -> c.minOf { it.top } to MIN_CELL_HEIGHT }
+                    Box(Modifier.height(blockHeight).fillMaxWidth()) {
+                        Column { repeat(group.span) { EmptyCell(rowHeight) } }
+                        group.clusters.forEachIndexed { clusterIndex, items ->
                             // 时间上重叠的一簇不并排挤成细条：一次只显示一个，底部的切换条点一下换下一个
                             val key = "${s.week}:$day:${group.start}:$clusterIndex"
                             val shownIndex = (shown[key] ?: 0).mod(items.size)
                             val item = items[shownIndex]
                             val conflicting = items.count { it.payload is GridPayload.CourseSlot } > 1
                             val inset = if (items.size > 1) OVERLAP_STRIP else 0.dp
+                            val shift = if (item.pinned) 0.dp else reserved[item.top] ?: 0.dp
                             // 按时刻定位、按时长取高；太短的日程保证一个最小高度，能读出标题
-                            val cellHeight = maxOf(rowHeight * (item.bottom - item.top), MIN_CELL_HEIGHT)
-                            val cellTop = (rowHeight * (item.top - (group.start - 1)))
+                            val rawHeight = if (item.pinned) {
+                                MIN_CELL_HEIGHT
+                            } else {
+                                maxOf(rowHeight * (item.bottom - item.top) - shift, MIN_CELL_HEIGHT)
+                            }
+                            val cellHeight = minOf(rawHeight, blockHeight)
+                            val cellTop = (rowHeight * (item.top - (group.start - 1)) + shift)
                                 .coerceIn(0.dp, (blockHeight - cellHeight).coerceAtLeast(0.dp))
                             Box(
                                 Modifier
@@ -536,18 +663,67 @@ internal fun ScheduleGrid(
                                     ) { shown[key] = shownIndex + 1 }
                                 }
                             }
-                            }
                         }
-                        period = group.end + 1
                     }
-                    while (period <= PERIODS) {
-                        EmptyCell(rowHeight)
-                        period++
-                    }
+                    period = group.end + 1
+                }
+                while (period <= PERIODS) {
+                    EmptyCell(rowHeight)
+                    period++
                 }
             }
         }
     }
+}
+
+/** 带左右翻周的整块网格。周次的唯一真源是 [pager]，界面从 `currentPage` 读回来。 */
+@Composable
+internal fun SchedulePager(
+    schedule: Schedule,
+    state: ScheduleUiState,
+    pager: PagerState,
+    zoom: Float,
+    onZoom: (Float) -> Unit,
+    onZoomEnd: () -> Unit,
+    onClick: (Course, ClassSession) -> Unit,
+    onEventClick: (PersonalEvent) -> Unit = {},
+) {
+    GridFrame(state, zoom, onZoom, onZoomEnd) { rowHeight, titleSize, subSize ->
+        ScheduleWeekPager(
+            schedule = schedule,
+            state = state,
+            pager = pager,
+            rowHeight = rowHeight,
+            titleSize = titleSize,
+            subSize = subSize,
+            onClick = onClick,
+            onEventClick = onEventClick,
+        )
+    }
+}
+
+/** 不分页的整块网格；debug 预览用它直接渲染某一周。 */
+@Composable
+internal fun ScheduleGrid(
+    schedule: Schedule,
+    state: ScheduleUiState,
+    zoom: Float,
+    onZoom: (Float) -> Unit,
+    onZoomEnd: () -> Unit,
+    onClick: (Course, ClassSession) -> Unit,
+    onEventClick: (PersonalEvent) -> Unit = {},
+) {
+    GridFrame(state, zoom, onZoom, onZoomEnd) { rowHeight, titleSize, subSize ->
+        DayColumns(
+            schedule = schedule,
+            state = state,
+            rowHeight = rowHeight,
+            titleSize = titleSize,
+            subSize = subSize,
+            modifier = Modifier.weight(1f).height(rowHeight * PERIODS),
+            onClick = onClick,
+            onEventClick = onEventClick,
+        )
     }
 }
 

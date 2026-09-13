@@ -195,4 +195,16 @@ class TodayWidgetModelTest {
     fun `刷新中表头显示刷新中`() {
         assertEquals("刷新中…", TodayWidgetModel.build(input(refreshing = true)).countLabel)
     }
+
+    @Test
+    fun `系统字体放大后每行更高，能放的行数相应变少`() {
+        // widget_row.xml 用的是 minHeight，行会随字号长高；行数必须按同一倍数算，
+        // 否则最后一行会被压在脚注下面或直接裁掉
+        assertEquals(38, TodayWidgetModel.rowDp(1f))
+        assertEquals(49, TodayWidgetModel.rowDp(1.3f))
+        assertEquals(4, TodayWidgetModel.capacity(239, total = 4, fontScale = 1f))
+        assertEquals(3, TodayWidgetModel.capacity(239, total = 4, fontScale = 1.3f))
+        // 倍数再大也有上限，不至于算出 0 行
+        assertEquals(1, TodayWidgetModel.capacity(140, total = 4, fontScale = 2.5f))
+    }
 }

@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.heightIn
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -116,6 +119,12 @@ private val ZHUHAI_ENTRIES = listOf(
     // 因此入口必须落在 /nup/，WebView 仍复用当前珠海 CAS 会话免二次输入。
     Entry("珠海门户", Icons.Outlined.Public, Routes.web("珠海门户", "https://one.bnuzh.edu.cn/nup/", true), 4),
     Entry("珠海教务", Icons.Outlined.AccountBalance, Routes.web("珠海教务系统", "https://jwxt.bnuzh.edu.cn/caslogin", true), 5),
+    // 课程中心（培养方案 / 教学手册 / 教学大纲）是两校区共用的一套系统，
+    // 但它认的是北京 CAS：珠海走普通网页入口，由课程中心自己决定要不要登录，
+    // 绝不把珠海账号送去北京认证域（OneVpnSso 对珠海本来也直接拒绝）。
+    Entry("培养方案", Icons.Outlined.AccountTree, Routes.web("培养方案", "$COURSE_CENTER/pyfa", false), 0),
+    Entry("教学手册", Icons.AutoMirrored.Outlined.MenuBook, Routes.web("教学手册", "$COURSE_CENTER/jxsc", false), 1),
+    Entry("教学大纲", Icons.Outlined.Description, Routes.web("教学大纲", "$COURSE_CENTER/jxdg", false), 2),
 )
 
 /** 今日时间轴上的一项：一节课或一条日程，统一按开始时刻排序。 */
@@ -250,6 +259,7 @@ private fun androidx.compose.foundation.layout.PaddingValues.horizontalOnly():
 }
 
 /** 顶部主视觉：渐变 + 模糊光斑，信息按「问候 / 姓名 / 学期周次」三级排布。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HeroCard(s: HomeUiState) {
     val accents = LocalAccents.current
@@ -280,7 +290,7 @@ private fun HeroCard(s: HomeUiState) {
             Text(
                 s.greeting,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.82f),
+                color = Color.White.copy(alpha = 0.9f),
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -290,11 +300,12 @@ private fun HeroCard(s: HomeUiState) {
             )
             if (s.subtitle.isNotBlank()) {
                 Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    s.subtitle.split(" · ").take(3).forEachIndexed { i, part ->
-                        if (i > 0) Spacer(Modifier.width(8.dp))
-                        HeroChip(part)
-                    }
+                // 系统字体放大后三枚芯片一行放不下，让它们换行而不是把最后一枚挤成两行
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    s.subtitle.split(" · ").take(3).forEach { HeroChip(it) }
                 }
             }
         }
@@ -387,12 +398,25 @@ private fun TimelineRow(item: TimelineItem, first: Boolean, last: Boolean, onCli
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp),
     ) {
+        // 系统字体放大到 1.3 倍时 46dp 固定宽会把「08:00」裁成「08:0」，给下限即可
         Column(
-            Modifier.width(46.dp).padding(top = ROW_PAD),
+            Modifier.widthIn(min = 46.dp).padding(top = ROW_PAD, end = 4.dp),
             horizontalAlignment = Alignment.End,
         ) {
-            Text(item.start, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-            Text(item.end, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            Text(
+                item.start,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false,
+            )
+            Text(
+                item.end,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+                maxLines = 1,
+                softWrap = false,
+            )
         }
 
         Column(

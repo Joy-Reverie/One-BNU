@@ -1,14 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 一节课：左侧起止时间，中间课程色条，右侧课名 / 教室·教师·节次。高 38dp。 -->
+<!--
+  一节课：左侧起止时间，中间课程色条，右侧课名 / 教室·教师·节次。
+  最低 38dp，但高度随字号增长 —— 写死 38dp 的话系统字体放大到 1.3 倍就会把第二行裁掉。
+  行数由 TodayWidgetModel.capacity 按同样的字号倍数算出来。
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="38dp"
+    android:layout_height="wrap_content"
+    android:minHeight="38dp"
     android:gravity="center_vertical"
     android:orientation="horizontal">
 
     <LinearLayout
-        android:layout_width="46dp"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:minWidth="46dp"
+        android:layout_marginEnd="2dp"
         android:orientation="vertical">
 
         <TextView

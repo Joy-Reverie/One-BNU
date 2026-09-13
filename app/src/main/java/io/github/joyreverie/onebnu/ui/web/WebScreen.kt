@@ -124,23 +124,25 @@ fun WebScreen(
         useAcademicProxy,
         campus,
     ) {
+        // 冷启动后只剩离线快照时这里还没有 CAS 会话，先补一次静默登录，
+        // 否则下面每条分支都会把用户送回统一认证登录页。
+        withContext(Dispatchers.IO) { ServiceLocator.ensureSession() }
         value = if (useOneVpnSso) {
             withContext(Dispatchers.IO) {
                 runCatching { OneVpnSso.establish(http, auth, campus, url) }
             }
             url
         } else if (useAcademicProxy) {
-            val established = withContext(Dispatchers.IO) {
-                runCatching { OneVpnSso.establish(http, auth, campus, url) }.getOrDefault(false)
+            // 教务只有 HTTP 80，蜂窝网络下直连必失败。建会话时就要用**代理地址**：
+            // 交原始地址的话 OneVpnSso 会先直连 zyfw:80，超时后落回 CAS 登录页 → 白屏。
+            // 数据接口（ZyfwApi.establishProxySession）传的一直是代理地址。
+            val proxied = academicProxyUrl(url)
+            withContext(Dispatchers.IO) {
+                runCatching { OneVpnSso.establish(http, auth, campus, proxied) }
             }
-            if (established) {
-                OneVpnSso.proxyUrl(url)
-            } else {
-                // 代理临时失败时仍给出官方 SSO 地址；直连可用时不阻断页面。
-                withContext(Dispatchers.IO) {
-                    runCatching { auth.sso(url).url }.getOrNull()
-                } ?: auth.ssoUrl(url)
-            }
+            // 会话没建起来也不退回明文直连 —— 蜂窝下那条路本来就不通，
+            // 仍然加载代理地址，最坏情况是 OneVPN 自己显示一次登录页，而不是白屏。
+            proxied
         } else if (portalService) {
             // 让门户自己的 cas.html 在 WebView 中完成 OAuth。它会在同一浏览器上下文
             // 设置 accessToken，并按官方逻辑回到电脑端首页；OkHttp 侧预热只作为加速，
@@ -423,8 +425,16 @@ private fun isPortalPage(url: String?): Boolean {
         (parsed.encodedPath.contains("/tp_nup/") || parsed.encodedPath.contains("/nup/"))
 }
 
-private fun isAcademicService(url: String): Boolean =
+internal fun isAcademicService(url: String): Boolean =
     url.toHttpUrlOrNull()?.host == "zyfw.bnu.edu.cn"
+
+/**
+ * 蜂窝网络下教务网页入口真正要用的地址。
+ *
+ * 建会话和加载页面必须是**同一条 OneVPN 代理路径**：把原始 `http://zyfw…` 交给
+ * `OneVpnSso.establish`，它会先直连 80 端口，在流量网络下必然超时，最后落到 CAS 登录页 → 白屏。
+ */
+internal fun academicProxyUrl(url: String): String = OneVpnSso.proxyUrl(url)
 
 private fun isPortalHomePage(url: String?): Boolean {
     val parsed = url?.toHttpUrlOrNull() ?: return false

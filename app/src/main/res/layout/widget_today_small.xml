@@ -52,6 +52,7 @@
             android:layout_weight="1"
             android:gravity="end"
             android:includeFontPadding="false"
+            android:ellipsize="end"
             android:singleLine="true"
             android:textColor="@color/widget_on_hero_dim"
             android:textSize="10.5sp" />

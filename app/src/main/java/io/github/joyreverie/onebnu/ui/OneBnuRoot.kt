@@ -159,12 +159,15 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                 }
             }
 
+            // 冷启动时如果只剩离线快照（CASTGC 随进程消失了），先用已保存的凭据静默重登，
+            // 否则网页入口一点就回到统一认证登录页。重登失败也不拦人：离线内容照常可看。
             LaunchedEffect(loggedIn, activeCampus) {
-                if (loggedIn && ServiceLocator.auth.hasSession()) {
-                    val auth = ServiceLocator.auth
+                if (loggedIn) {
                     withContext(Dispatchers.IO) {
-                        SsoWarmup.warm(ServiceLocator.http, auth, activeCampus)
-                        ServiceLocator.repo.prefetchBasicData()
+                        if (ServiceLocator.ensureSession()) {
+                            SsoWarmup.warm(ServiceLocator.http, ServiceLocator.auth, activeCampus)
+                            ServiceLocator.repo.prefetchBasicData()
+                        }
                     }
                 }
             }
@@ -333,7 +336,6 @@ private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus)
         SettingsScreen(
             onBack = { nav.popBackStack() },
             onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) },
-            onAnnouncements = { nav.navigate(Routes.ANNOUNCEMENT_HISTORY) },
         )
     }
     composable(Routes.INFO) { InfoScreen(onBack = { nav.popBackStack() }) }

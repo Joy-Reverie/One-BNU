@@ -12,8 +12,8 @@
 
 ## 功能
 
-- **课表**：周视图、课程详情、多学期切换、双指缩放行高；表头标注日期，当天整列高亮
-- **今日课表桌面小组件**：2×2 / 4×2 / 4×3 / 4×4 四种尺寸，跟随系统深浅色，后台按需刷新
+- **课表**：周视图、课程详情、多学期切换、双指缩放行高；左右滑动或点周次切周，离开本周时顶栏给一个「今」按钮；表头标注日期，当天整列高亮
+- **今日课表桌面小组件**：2×2 / 4×2 / 4×3 / 4×4 四种尺寸，跟随应用内的深浅色与色系，后台按需刷新
 - **成绩与 GPA**：官方 / 4.0 / 4.3 等多种绩点口径换算，按学期统计；缓考（即使暂记为 0 分）自动不计入，可手动勾选计算范围
 - **考试安排**：含倒计时
 - **空闲教室**：按周次或具体日期查询北京、珠海校区各楼空闲教室
@@ -29,7 +29,8 @@
 - **内嵌浏览器**：北京、珠海图书馆及各自门户、教务系统与课程中心；站内页面可直接打开，也可转系统浏览器
 - **检查更新**：设置页内查询 GitHub Releases，下载并安装新版本；联网启动时自动检查一次并询问，可关闭
 - **作息时间**：默认学校统一作息，可在设置里逐节调整上下课时刻；课表刻度、日程定位、提醒与小组件都按它算
-- **深浅色**：跟随系统，或在设置里固定为浅色 / 深色
+- **深浅色与色系**：跟随系统或固定为浅色 / 深色；七套色系（靛蓝、青碧、松绿、珊瑚、琥珀、蔷薇、石墨）覆盖按钮、文字与桌面小组件。外观是应用级偏好，切换校区不会被重置
+- **启动公告**：重要提示在启动时弹一次，按公告本身的发布日期记已读（同一份公告不会因为升级而重复打断）；历史公告在「我的 → 公告」里随时可查
 
 ## 截图
 
@@ -88,13 +89,17 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 
 ## 构建
 
-环境：JDK 17、Android SDK 34。`local.properties` 需指向本机 SDK（该文件不入库）。
+环境：JDK 17、Android SDK 35。`local.properties` 需指向本机 SDK（该文件不入库）。
 
 ```bash
 ./gradlew :app:testDebugUnitTest   # 单元测试
+./gradlew :app:lintDebug            # Android lint（CI 也跑，当前 0 error）
 ./gradlew :app:assembleDebug        # 调试包 → app/build/outputs/apk/debug/
 ./gradlew :app:assembleRelease      # 正式包（R8 混淆 + 资源收缩）
+./scripts/archive-release.sh        # 归档 APK / mapping.txt / seeds.txt（发版必做）
 ```
+
+`mapping.txt` 要**每个版本各存一档**，否则用户回报的崩溃栈无法还原；`scripts/archive-release.sh` 把 APK、mapping、seeds 和 SHA-256 一起放进 `~/Documents/Android/onebnu-mappings/v<版本>/`（可用 `ONEBNU_MAPPING_DIR` 改目录）。
 
 依赖仓库默认先走阿里云镜像；设置了 `CI` 环境变量的环境（如 GitHub Actions）直连官方源。Gradle wrapper 使用腾讯云镜像，
 可自行改回 `services.gradle.org`。
@@ -157,7 +162,7 @@ app/src/test/      单元测试与脱敏后的页面样本
 docs/              技术说明、截图、校内联系方式的原始整理稿
 ```
 
-技术栈：Kotlin、Jetpack Compose（Material 3）、OkHttp、Jsoup，minSdk 26 / targetSdk 34。
+技术栈：Kotlin、Jetpack Compose（Material 3）、OkHttp、Jsoup，minSdk 26 / targetSdk 35。
 与学校系统对接的细节见 [docs/architecture.md](docs/architecture.md)。
 
 ## 数据维护
@@ -178,7 +183,6 @@ docs/              技术说明、截图、校内联系方式的原始整理稿
 - 小组件后台刷新依赖「记住密码」；换新设备需要短信验证时后台不会自动完成。
 - 小米、华为等 ROM 需在应用信息里允许自启动、将省电策略设为「无限制」并允许忽略电池优化，上课提醒才可靠；
   闹钟提醒用系统的闹钟通道登记（状态栏会出现闹钟图标），受这类限制的影响比通知提醒小。
-- 桌面小组件由启动器渲染，深浅色跟随系统，不受应用内主题设置影响。
 - 测试账号为 2026 级新生，成绩与考试的行解析按真实表头加构造数据验证，等有真实数据后需复核。
 
 ## 参与贡献

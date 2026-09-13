@@ -103,8 +103,17 @@ object ScheduleLayout {
     /**
      * 网格一列里的一个格子。纵向位置以「行」为单位：第 k 节占 [k-1, k)，
      * 课程落在整行上，日程按具体时刻落在行内的任意位置（见 `PeriodMapper.span`）。
+     *
+     * [pinned] 表示这条日程整段落在午休、晚上开课前这类长空档里 —— 网格没有对应的高度，
+     * 它只是被「贴」在下一节的上沿。这种格子与那一节课在真实时间上并不重叠，
+     * 因此不参与重叠分簇，界面上单独占一条细带。
      */
-    data class GridItem<T>(val top: Float, val bottom: Float, val payload: T) {
+    data class GridItem<T>(
+        val top: Float,
+        val bottom: Float,
+        val payload: T,
+        val pinned: Boolean = false,
+    ) {
 
         /** 首尾相接不算重叠。 */
         fun overlaps(other: GridItem<*>): Boolean = top < other.bottom && other.top < bottom
@@ -149,10 +158,13 @@ object ScheduleLayout {
             }
             .sortedBy { it.top }
 
+        // 贴在长空档里的日程自成一簇：它和下一节课在真实时间上并不重叠，
+        // 只是被挤到同一个行坐标上，不能因此藏进 ⇅ 切换格里。
+        val (pinnedItems, placed) = sorted.partition { it.pinned }
         val clusters = ArrayList<MutableList<GridItem<T>>>()
         var current: MutableList<GridItem<T>>? = null
         var clusterEnd = 0f
-        for (item in sorted) {
+        for (item in placed) {
             val c = current
             if (c == null || item.top >= clusterEnd) {
                 current = arrayListOf(item).also { clusters += it }
@@ -162,6 +174,9 @@ object ScheduleLayout {
                 clusterEnd = maxOf(clusterEnd, item.bottom)
             }
         }
+        // 同一个行沿上的多条空档日程共用一条细带，用 ⇅ 在它们之间切换
+        pinnedItems.groupBy { it.top }.forEach { (_, group) -> clusters += group.toMutableList() }
+        clusters.sortBy { c -> c.minOf { it.top } }
 
         val groups = ArrayList<GridGroup<T>>()
         var block = ArrayList<List<GridItem<T>>>()

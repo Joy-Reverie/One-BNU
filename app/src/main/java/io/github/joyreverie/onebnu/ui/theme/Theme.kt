@@ -334,8 +334,8 @@ val LocalDarkTheme = staticCompositionLocalOf { false }
 fun resolveDarkTheme(): Boolean {
     val system = isSystemInDarkTheme()
     // Compose 预览等场景下 ServiceLocator 尚未初始化，退回系统设置
-    val settings = runCatching { ServiceLocator.settings }.getOrNull() ?: return system
-    val mode by settings.themeMode.collectAsState()
+    val appearance = runCatching { ServiceLocator.appearance }.getOrNull() ?: return system
+    val mode by appearance.themeMode.collectAsState()
     return when (mode) {
         ThemeMode.SYSTEM -> system
         ThemeMode.LIGHT -> false
@@ -348,8 +348,8 @@ fun OneBnuTheme(
     darkTheme: Boolean = resolveDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    val settings = runCatching { ServiceLocator.settings }.getOrNull()
-    val themeFlow = settings?.colorThemeFlow ?: flowOf(ColorTheme.INDIGO)
+    val appearance = runCatching { ServiceLocator.appearance }.getOrNull()
+    val themeFlow = appearance?.colorThemeFlow ?: flowOf(ColorTheme.INDIGO)
     val colorTheme by themeFlow.collectAsState(initial = ColorTheme.INDIGO)
     val palette = colorTheme.palette(darkTheme)
     val colors = palette.toColorScheme(darkTheme)
