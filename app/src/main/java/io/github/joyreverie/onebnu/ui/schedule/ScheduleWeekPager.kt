@@ -14,7 +14,6 @@ import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 
 /** 分页负责单指水平拖动与回弹，网格继续负责纵向滚动和双指缩放。 */
 @Composable
@@ -31,12 +30,14 @@ internal fun ScheduleWeekPager(
     val pager = rememberPagerState(initialPage = state.week - 1, pageCount = { state.maxWeek })
     val change = rememberUpdatedState(onWeekChange)
     LaunchedEffect(state.week) {
-        if (pager.settledPage != state.week - 1) {
+        if (!pager.isScrollInProgress && pager.currentPage != state.week - 1) {
             pager.animateScrollToPage(state.week - 1, animationSpec = tween(280))
         }
     }
     LaunchedEffect(pager) {
-        snapshotFlow { pager.settledPage }.distinctUntilChanged().drop(1).collect {
+        // currentPage changes as soon as the swipe crosses the page threshold,
+        // so the top bar updates during the gesture instead of waiting for settle.
+        snapshotFlow { pager.currentPage }.distinctUntilChanged().collect {
             change.value(it + 1)
         }
     }

@@ -77,7 +77,6 @@ import io.github.joyreverie.onebnu.data.model.PeriodMapper
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
 import io.github.joyreverie.onebnu.ui.components.EmptyBox
-import io.github.joyreverie.onebnu.ui.components.DataStatusRow
 import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.InfoRow
 import io.github.joyreverie.onebnu.ui.components.LoadingBox
@@ -157,11 +156,16 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
                     }
                     Box {
                         // 点周次即可挑周；本周单列一项，一步回到当前
-                        TextButton(onClick = { weekMenu = true }) {
-                            Text(
-                                "第 ${s.week} 周",
-                                fontWeight = if (s.isCurrentWeek) FontWeight.Bold else FontWeight.Normal,
-                            )
+                        Box(Modifier.width(72.dp), contentAlignment = Alignment.Center) {
+                            TextButton(
+                                onClick = { weekMenu = true },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    "第 ${s.week} 周",
+                                    fontWeight = if (s.isCurrentWeek) FontWeight.Bold else FontWeight.Normal,
+                                )
+                            }
                         }
                         WeekMenu(
                             expanded = weekMenu,
@@ -179,7 +183,6 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             Column(Modifier.fillMaxSize()) {
-            DataStatusRow(s.freshness, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), onRefresh = { vm.load(s.term, true) })
             when {
                 s.loading -> LoadingBox("正在加载课表…")
                 s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }

@@ -375,13 +375,6 @@ fun ReminderCard() {
                 )
             }
         }
-        Text(
-            style.description,
-            Modifier.padding(top = 6.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.outline,
-        )
-
         if (enabled) {
             // 已经放行就不再占地方：这几行只在系统真的会拦截提醒时出现，授权后自动消失
             if (!batteryOk) {

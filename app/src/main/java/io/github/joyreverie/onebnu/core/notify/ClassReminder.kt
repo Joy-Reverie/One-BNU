@@ -11,6 +11,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -42,7 +44,9 @@ import java.time.format.DateTimeFormatter
  */
 object ClassReminder {
 
-    const val CHANNEL_ID = "class_reminder"
+    // v2 ensures users who previously lowered the old channel importance get
+    // a fresh high-importance channel for heads-up reminder popups.
+    const val CHANNEL_ID = "class_reminder_popup_v2"
     const val ACTION_ALARM = "io.github.joyreverie.onebnu.reminder.ALARM"
     private const val EXTRA_START = "start_epoch"
     private const val REQUEST_ALARM = 2001
@@ -58,6 +62,15 @@ object ClassReminder {
         val channel = NotificationChannel(CHANNEL_ID, "上课提醒", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "每节课开始前提前提醒"
             enableVibration(true)
+            vibrationPattern = longArrayOf(0, 220, 120, 220)
+            setSound(
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build(),
+            )
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             setShowBadge(false)
         }
         nm.createNotificationChannel(channel)
@@ -252,7 +265,9 @@ object ClassReminder {
             .setColor(0xFF1B3C6E.toInt())
             .setContentTitle(item.title)
             .setContentText(text)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(if (item.isEvent) NotificationCompat.CATEGORY_EVENT else NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setShowWhen(false)

@@ -158,11 +158,6 @@ fun SettingsScreen(
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("网络诊断", style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                "逐项检查各系统可达性，查看或重置本机设备标识",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline,
-                            )
                         }
                         Icon(
                             Icons.AutoMirrored.Outlined.ArrowForward, null,

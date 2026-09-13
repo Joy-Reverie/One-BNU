@@ -141,11 +141,6 @@ fun UpdateCard(currentVersion: String, checker: UpdateChecker) {
         ) {
             Column(Modifier.weight(1f)) {
                 Text("自动检查更新", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    "联网启动时检查一次，有新版本再询问",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
             }
             Switch(
                 checked = autoCheck,
