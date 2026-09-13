@@ -29,6 +29,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * 上课提醒与日程提醒：课程、日程开始前 N 分钟提醒一次，两类各自开关、共用一个提前时间。
@@ -54,6 +55,13 @@ object ClassReminder {
     private const val REQUEST_OPEN = 2002
     private const val LOOKAHEAD_DAYS = 8 // 仅用于到点时取出同一时刻的事项，不限制排程范围。
     private const val NOTIFICATION_BASE_ID = 3000
+    private const val NOTIFICATION_PREFS = "onebnu_notification_settings"
+    private const val KEY_POPUP_SETTINGS_OPENED = "popup_settings_opened"
+
+    private val vendorNotificationSettings = setOf(
+        "huawei", "honor", "xiaomi", "redmi", "poco", "oppo", "realme", "vivo",
+        "iqoo", "oneplus", "meizu", "nubia", "zte", "lenovo",
+    )
 
     private val TIME_FMT = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -97,9 +105,18 @@ object ClassReminder {
         return channel != null && channel.importance >= NotificationManager.IMPORTANCE_HIGH
     }
 
-    /** 打开当前提醒频道，用户可在系统设置中恢复横幅、声音和震动。 */
+    /** 国产系统可能还有独立的「悬浮通知」开关，标准 API 无法读取，只需引导一次。 */
+    fun floatingNotificationSetupRequired(context: Context): Boolean {
+        if (!notificationsAllowed(context)) return false
+        if (!isVendorNotificationUi()) return !notificationsReady(context)
+        val opened = context.getSharedPreferences(NOTIFICATION_PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_POPUP_SETTINGS_OPENED, false)
+        return !notificationsReady(context) || !opened
+    }
+
+    /** 打开应用通知设置，用户可恢复悬浮通知、声音和震动。 */
     fun openNotificationSettings(context: Context) {
-        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isVendorNotificationUi()) {
             Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
                 putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
                 putExtra(Settings.EXTRA_CHANNEL_ID, CHANNEL_ID)
@@ -109,7 +126,19 @@ object ClassReminder {
                 putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
             }
         }
-        runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        runCatching {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            context.getSharedPreferences(NOTIFICATION_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_POPUP_SETTINGS_OPENED, true)
+                .apply()
+        }
+    }
+
+    private fun isVendorNotificationUi(): Boolean {
+        val manufacturer = Build.MANUFACTURER.lowercase(Locale.ROOT)
+        val brand = Build.BRAND.lowercase(Locale.ROOT)
+        return manufacturer in vendorNotificationSettings || brand in vendorNotificationSettings
     }
 
     fun ignoringBatteryOptimizations(context: Context): Boolean =

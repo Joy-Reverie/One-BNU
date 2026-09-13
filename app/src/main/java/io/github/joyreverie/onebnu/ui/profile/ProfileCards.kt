@@ -246,23 +246,12 @@ fun ReminderCard() {
     var exactOk by remember { mutableStateOf(ClassReminder.canScheduleExact(context)) }
     var notifyOk by remember { mutableStateOf(ClassReminder.notificationsAllowed(context)) }
     var notifyReady by remember { mutableStateOf(ClassReminder.notificationsReady(context)) }
-    val enabled = remindClasses || remindEvents
-
-    // 从系统设置页回来时刷新各项权限状态
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                batteryOk = ClassReminder.ignoringBatteryOptimizations(context)
-                exactOk = ClassReminder.canScheduleExact(context)
-                notifyOk = ClassReminder.notificationsAllowed(context)
-                notifyReady = ClassReminder.notificationsReady(context)
-                next = ClassReminder.nextDescription(context)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    var popupSetupRequired by remember {
+        mutableStateOf(ClassReminder.floatingNotificationSetupRequired(context))
     }
+    // 正在等待用户完成通知或悬浮通知授权的开关；回到页面后自动继续开启。
+    var awaiting by remember { mutableStateOf<Boolean?>(null) }
+    val enabled = remindClasses || remindEvents
 
     /** 提醒范围一变，下一次是谁也就变了。 */
     fun apply(isEvent: Boolean, on: Boolean) {
@@ -275,28 +264,70 @@ fun ReminderCard() {
         }
         ClassReminder.reschedule(context)
         notifyReady = ClassReminder.notificationsReady(context)
+        popupSetupRequired = ClassReminder.floatingNotificationSetupRequired(context)
         next = ClassReminder.nextDescription(context)
     }
 
+    // 从系统设置页回来时刷新各项权限状态
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                batteryOk = ClassReminder.ignoringBatteryOptimizations(context)
+                exactOk = ClassReminder.canScheduleExact(context)
+                notifyOk = ClassReminder.notificationsAllowed(context)
+                notifyReady = ClassReminder.notificationsReady(context)
+                popupSetupRequired = ClassReminder.floatingNotificationSetupRequired(context)
+                next = ClassReminder.nextDescription(context)
+                awaiting?.let { pending ->
+                    if (notifyReady && !popupSetupRequired) {
+                        awaiting = null
+                        apply(pending, true)
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // 两个开关都要先有通知权限；记下是哪一个在等授权，授权回来接着开它
-    var awaiting by remember { mutableStateOf<Boolean?>(null) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         notifyOk = granted
         notifyReady = ClassReminder.notificationsReady(context)
+        popupSetupRequired = ClassReminder.floatingNotificationSetupRequired(context)
         val isEvent = awaiting
-        awaiting = null
-        if (granted && isEvent != null) apply(isEvent, true)
-        if (!granted) Toast.makeText(context, "需要允许通知才能提醒", Toast.LENGTH_LONG).show()
+        when {
+            !granted -> {
+                awaiting = null
+                Toast.makeText(context, "需要允许通知才能提醒", Toast.LENGTH_LONG).show()
+            }
+            isEvent != null && notifyReady && !popupSetupRequired -> {
+                awaiting = null
+                apply(isEvent, true)
+            }
+            isEvent != null -> ClassReminder.openNotificationSettings(context)
+        }
     }
 
     fun toggle(isEvent: Boolean, on: Boolean) {
         when {
-            !on -> apply(isEvent, false)
+            !on -> {
+                awaiting = null
+                apply(isEvent, false)
+            }
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notifyOk -> {
                 awaiting = isEvent
                 permission.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
-            else -> apply(isEvent, true)
+            !notifyReady || popupSetupRequired -> {
+                awaiting = isEvent
+                ClassReminder.openNotificationSettings(context)
+            }
+            else -> {
+                awaiting = null
+                apply(isEvent, true)
+            }
         }
     }
 
@@ -337,7 +368,7 @@ fun ReminderCard() {
                 )
             }
 
-            if (!notifyReady) {
+            if (!notifyReady || popupSetupRequired) {
                 Spacer(Modifier.height(8.dp))
                 Row(
                     Modifier
@@ -355,9 +386,13 @@ fun ReminderCard() {
                     )
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("通知弹窗未开启", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            "允许通知后，提醒才会在屏幕顶部弹出",
+                            if (!notifyOk) "通知权限未开启" else "悬浮通知未开启",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            if (!notifyOk) "允许通知后，提醒才会在屏幕顶部弹出"
+                            else "开启后，提醒才会在屏幕顶部弹出",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer,
                         )
