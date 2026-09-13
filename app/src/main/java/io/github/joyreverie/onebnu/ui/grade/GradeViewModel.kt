@@ -1,5 +1,6 @@
 package io.github.joyreverie.onebnu.ui.grade
 
+import io.github.joyreverie.onebnu.data.repo.DataFreshness
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class GradeUiState(
+    val freshness: DataFreshness? = null,
     val loading: Boolean = true,
     val error: String? = null,
     val emptyReason: String? = null,
@@ -41,7 +43,10 @@ class GradeViewModel : ViewModel() {
         _state.value = _state.value.copy(loading = true, error = null, emptyReason = null)
         viewModelScope.launch {
             when (val r = repo.grades(forceRefresh = forceRefresh)) {
-                is Outcome.Ok -> applyGrades(r.data)
+                is Outcome.Ok -> {
+                    _state.value = _state.value.copy(freshness = r.freshness)
+                    applyGrades(r.data)
+                }
                 is Outcome.Empty -> _state.value = _state.value.copy(
                     loading = false, grades = emptyList(), emptyReason = r.reason,
                 )

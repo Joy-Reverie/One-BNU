@@ -47,7 +47,7 @@ object ClassReminder {
     private const val EXTRA_START = "start_epoch"
     private const val REQUEST_ALARM = 2001
     private const val REQUEST_OPEN = 2002
-    private const val LOOKAHEAD_DAYS = 8
+    private const val LOOKAHEAD_DAYS = 8 // 仅用于到点时取出同一时刻的事项，不限制排程范围。
     private const val NOTIFICATION_BASE_ID = 3000
 
     private val TIME_FMT = DateTimeFormatter.ofPattern("HH:mm")
@@ -94,14 +94,24 @@ object ClassReminder {
             .takeIf { it > 0 }
             ?.let { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneId.systemDefault()) }
 
+    private fun nextReminder(now: LocalDateTime): Pair<LocalDateTime, List<ReminderItem>>? {
+        val settings = ServiceLocator.settings
+        return ReminderPlanner.nextOccurrence(
+            schedule = if (settings.remindClasses) ServiceLocator.scheduleCache.load()?.schedule else null,
+            events = if (settings.remindEvents) ServiceLocator.events.all() else emptyList(),
+            now = now,
+            leadMinutes = settings.reminderLeadMinutes,
+            periodTimes = settings.periodTimes,
+            deliveredThrough = deliveredThrough(),
+        )
+    }
+
     /** 下一次提醒的说明，如「周五 07:50 · 高级算法设计」；没有则为 null。 */
     fun nextDescription(context: Context): String? {
         val settings = ServiceLocator.settings
         if (!settings.remindersEnabled) return null
         val now = LocalDateTime.now()
-        val (at, items) = ReminderPlanner.next(
-            upcoming(context, now), now, settings.reminderLeadMinutes, deliveredThrough(),
-        ) ?: return null
+        val (at, items) = nextReminder(now) ?: return null
         val day = when (at.toLocalDate()) {
             now.toLocalDate() -> "今天"
             now.toLocalDate().plusDays(1) -> "明天"
@@ -120,9 +130,7 @@ object ClassReminder {
             return
         }
         val now = LocalDateTime.now()
-        val next = ReminderPlanner.next(
-            upcoming(context, now), now, settings.reminderLeadMinutes, deliveredThrough(),
-        )
+        val next = nextReminder(now)
         if (next == null) {
             am.cancel(pi)
             return

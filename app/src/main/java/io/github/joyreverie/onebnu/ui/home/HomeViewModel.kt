@@ -1,5 +1,6 @@
 package io.github.joyreverie.onebnu.ui.home
 
+import io.github.joyreverie.onebnu.data.repo.DataFreshness
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
@@ -20,6 +21,7 @@ import java.time.temporal.ChronoUnit
 data class TodayCourse(val course: Course, val session: ClassSession)
 
 data class HomeUiState(
+    val freshness: DataFreshness? = null,
     val loading: Boolean = true,
     val error: String? = null,
     val userName: String = "",
@@ -83,6 +85,7 @@ class HomeViewModel : ViewModel() {
                                 userName = s.data.studentName.ifBlank { ctx?.userName.orEmpty() },
                                 subtitle = "${term.name} · 第 $week 周 · 周${dayLabel(today)}",
                                 todayCourses = slots,
+                                freshness = s.freshness,
                                 todayEvents = _state.value.todayEvents,
                                 todayHint = "第 $week 周 周${dayLabel(today)} 没有排课",
                                 periodTimes = settings.periodTimes,

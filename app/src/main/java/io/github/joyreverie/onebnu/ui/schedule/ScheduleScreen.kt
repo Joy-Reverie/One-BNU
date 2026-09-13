@@ -77,6 +77,7 @@ import io.github.joyreverie.onebnu.data.model.PeriodMapper
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
 import io.github.joyreverie.onebnu.ui.components.EmptyBox
+import io.github.joyreverie.onebnu.ui.components.DataStatusRow
 import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.InfoRow
 import io.github.joyreverie.onebnu.ui.components.LoadingBox
@@ -177,6 +178,8 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
+            Column(Modifier.fillMaxSize()) {
+            DataStatusRow(s.freshness, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), onRefresh = { vm.load(s.term, true) })
             when {
                 s.loading -> LoadingBox("正在加载课表…")
                 s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
@@ -186,10 +189,11 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
                     if (schedule == null) {
                         EmptyBox("暂无课表数据", onRetry = { vm.load(forceRefresh = true) })
                     } else {
-                        ScheduleGrid(
+                        ScheduleWeekPager(
                             schedule = schedule,
                             state = s,
                             zoom = zoom,
+                            onWeekChange = vm::setWeek,
                             onZoom = {
                                 zoom = ScheduleLayout.clampZoom(zoom * it)
                                 zoomHint = true
@@ -204,6 +208,7 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
                         )
                     }
                 }
+            }
             }
         }
     }

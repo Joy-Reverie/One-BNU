@@ -48,6 +48,9 @@ import io.github.joyreverie.onebnu.ui.theme.LocalAccents
 import io.github.joyreverie.onebnu.ui.theme.LocalDarkTheme
 import io.github.joyreverie.onebnu.ui.theme.Shape
 import java.time.LocalTime
+import java.text.DateFormat
+import java.util.Date
+import io.github.joyreverie.onebnu.data.repo.DataFreshness
 
 /**
  * 应用统一的卡片：白面 + 极淡描边 + 很轻的投影。
@@ -91,18 +94,28 @@ fun OfflineBanner(modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+fun DataStatusRow(freshness: DataFreshness?, modifier: Modifier = Modifier, onRefresh: (() -> Unit)? = null) {
+    if (freshness == null) return
+    val time = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(freshness.savedAt))
+    Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f), shape = RoundedCornerShape(10.dp)) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (freshness.cached) "本地缓存 · $time" else "已同步 · $time", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+            if (onRefresh != null) TextButton(onClick = onRefresh) { Text("刷新") }
+        }
+    }
+}
+
 /** 统一的轻投影，暗色下自动减弱（暗背景上强阴影会变成黑块）。 */
 @Composable
 fun Modifier.shadowSoft(shape: RoundedCornerShape, elevation: Dp = 2.dp): Modifier {
     val dark = LocalDarkTheme.current
-    return this.then(
-        shadow(
+    return this.shadow(
             elevation = if (dark) 0.dp else elevation,
             shape = shape,
             ambientColor = Color(0x1A1B3C6E),
             spotColor = Color(0x141B3C6E),
-        ),
-    )
+        )
 }
 
 /** 骨架屏方块：比转圈更能表达「内容马上就来」，也不会让页面高度跳动。 */

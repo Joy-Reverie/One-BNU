@@ -1,5 +1,6 @@
 package io.github.joyreverie.onebnu.ui.classroom
 
+import io.github.joyreverie.onebnu.data.repo.DataFreshness
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
@@ -18,6 +19,7 @@ import java.time.LocalDate
 private const val DEFAULT_MAX_WEEK = 25
 
 data class ClassroomUiState(
+    val freshness: DataFreshness? = null,
     val loading: Boolean = false,
     val loadingOptions: Boolean = true,
     val error: String? = null,
@@ -161,7 +163,7 @@ class ClassroomViewModel : ViewModel() {
         viewModelScope.launch {
             when (val r = repo.classrooms(term, campusOpt.code, building.code, forceRefresh = forceRefresh)) {
                 is Outcome.Ok -> _state.value = _state.value.copy(
-                    loading = false, rooms = r.data, queried = true, error = null, emptyReason = null,
+                    loading = false, rooms = r.data, freshness = r.freshness, queried = true, error = null, emptyReason = null,
                 )
                 is Outcome.Empty -> _state.value = _state.value.copy(
                     loading = false, rooms = emptyList(), queried = true, emptyReason = r.reason,

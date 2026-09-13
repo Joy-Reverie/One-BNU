@@ -24,6 +24,50 @@ data class ReminderItem(
  */
 object ReminderPlanner {
 
+    /** 直接按课表周次、日程日期计算下一次发生时间，不依赖固定天数窗口。 */
+    fun nextOccurrence(
+        schedule: Schedule?,
+        events: List<PersonalEvent>,
+        now: LocalDateTime,
+        leadMinutes: Int,
+        periodTimes: List<String>,
+        deliveredThrough: LocalDateTime? = null,
+        useOfficialCalendar: Boolean = true,
+    ): Pair<LocalDateTime, List<ReminderItem>>? {
+        val after = maxOf(now, deliveredThrough ?: now)
+        val candidates = ArrayList<ReminderItem>()
+        val monday = schedule?.let { AcademicCalendar.firstMonday(it.term, useOfficialCalendar) }
+        if (monday != null) {
+            schedule.courses.forEach { course ->
+                course.sessions.forEach { session ->
+                    val start = periodTimes.getOrNull(session.startPeriod - 1)?.let(PeriodMapper::parsePeriod)?.first
+                    val end = periodTimes.getOrNull(session.endPeriod - 1)?.let(PeriodMapper::parsePeriod)?.second
+                    if (start != null && end != null && session.dayOfWeek in 1..7) {
+                        session.weeks.asSequence().filter { it >= 1 }.sorted().map { week ->
+                            monday.plusWeeks(week.toLong() - 1).plusDays(session.dayOfWeek.toLong() - 1)
+                        }.firstOrNull { it.atTime(start).isAfter(after) }?.let { date ->
+                            candidates += ReminderItem(date.atTime(start), date.atTime(end), course.name, session.location, false)
+                        }
+                    }
+                }
+            }
+        }
+        events.forEach { event ->
+            val from = maxOf(event.date, after.toLocalDate())
+            val date = if (!event.repeats) {
+                event.date.takeIf { it.atTime(event.start).isAfter(after) }
+            } else {
+                // 每周重复最多只需查 8 个日期；起点直接跳到日程开始日，哪怕它在几年后。
+                (0L..7L).asSequence().map { from.plusDays(it) }
+                    .firstOrNull { event.occursOn(it) && it.atTime(event.start).isAfter(after) }
+            }
+            date?.let {
+                candidates += ReminderItem(it.atTime(event.start), it.atTime(event.end), event.title, event.location, true)
+            }
+        }
+        return next(candidates, now, leadMinutes, deliveredThrough)
+    }
+
     /** 从 [from] 起 [days] 天内的全部课程与日程，按开始时间排序。 */
     fun items(
         schedule: Schedule?,

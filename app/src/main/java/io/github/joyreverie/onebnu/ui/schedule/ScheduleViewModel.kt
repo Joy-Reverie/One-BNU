@@ -1,5 +1,6 @@
 package io.github.joyreverie.onebnu.ui.schedule
 
+import io.github.joyreverie.onebnu.data.repo.DataFreshness
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
@@ -17,6 +18,7 @@ import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
 data class ScheduleUiState(
+    val freshness: DataFreshness? = null,
     val loading: Boolean = true,
     val error: String? = null,
     val emptyReason: String? = null,
@@ -109,6 +111,7 @@ class ScheduleViewModel : ViewModel() {
                         terms = terms,
                         term = target,
                         schedule = s.data,
+                        freshness = s.freshness,
                         termStart = start,
                         currentWeek = cur?.takeIf { it in 1..max },
                         week = (cur ?: 1).coerceIn(1, max),

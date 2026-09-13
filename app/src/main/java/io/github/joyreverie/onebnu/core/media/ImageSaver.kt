@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.annotation.DrawableRes
+import android.annotation.SuppressLint
 import androidx.core.content.ContextCompat
 import java.io.File
 import java.time.LocalDateTime
@@ -35,6 +36,8 @@ object ImageSaver {
      * 把 JPEG 资源 [res] 存到相册的 Pictures/One BNU 下，文件名为「[baseName]_时间戳.jpg」。
      * 成功返回相册中的展示路径，便于提示用户去哪里找。
      */
+    // openRawResource 支持直接读取 drawable 中的 JPEG 文件，保留原始字节与画质。
+    @SuppressLint("ResourceType")
     fun saveJpegResource(context: Context, @DrawableRes res: Int, baseName: String): Result<String> = runCatching {
         val bytes = context.resources.openRawResource(res).use { it.readBytes() }
         val fileName = "${baseName}_${LocalDateTime.now().format(STAMP)}.jpg"

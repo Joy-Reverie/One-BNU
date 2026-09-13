@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- RemoteViews 由系统 ImageView 渲染，必须保留 android:tint；app:tint 不会由启动器处理。 -->
 <!-- 小组件选择器里的静态预览（Android 12+），内容为示例；版式与 widget_today.xml / widget_row.xml 保持一致。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="UseAppTint"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/widget_bg"

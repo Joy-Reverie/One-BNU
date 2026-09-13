@@ -1,5 +1,6 @@
 package io.github.joyreverie.onebnu.ui.exam
 
+import io.github.joyreverie.onebnu.data.repo.DataFreshness
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class ExamUiState(
+    val freshness: DataFreshness? = null,
     val loading: Boolean = true,
     val error: String? = null,
     val emptyReason: String? = null,
@@ -65,6 +67,7 @@ class ExamViewModel : ViewModel() {
         when (val e = repo.exams(round.code, forceRefresh = forceRefresh)) {
             is Outcome.Ok -> _state.value = ExamUiState(
                 loading = false, rounds = rounds, round = round,
+                freshness = e.freshness,
                 exams = e.data.sortedBy { it.date ?: "9999" },
             )
             is Outcome.Empty -> _state.value = ExamUiState(

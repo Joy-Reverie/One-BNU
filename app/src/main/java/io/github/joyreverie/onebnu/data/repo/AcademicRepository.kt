@@ -42,7 +42,7 @@ class AcademicRepository(
 
     /** 空数据不是错误：界面要显示「本学期暂无…」而不是报错。 */
     sealed interface Outcome<out T> {
-        data class Ok<T>(val data: T) : Outcome<T>
+        data class Ok<T>(val data: T, val freshness: DataFreshness? = null) : Outcome<T>
         data class Empty(val reason: String) : Outcome<Nothing>
         data class Error(val message: String, val needLogin: Boolean = false) : Outcome<Nothing>
     }
@@ -93,7 +93,7 @@ class AcademicRepository(
         forceRefresh: Boolean = false,
     ): Outcome<T> = dataMutex.withLock {
         if (!forceRefresh) {
-            cachedParsed(key, parse)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
+            cachedParsed(key, parse)?.takeIf { shouldCache(it.data) }?.let { return@withLock it }
         }
         val live = call(request)
         if (live is Outcome.Ok) {
@@ -106,16 +106,16 @@ class AcademicRepository(
                     }
                 } else {
                     // 空表/半截页面不能覆盖上一次有效快照；瞬态空响应时直接继续用旧数据。
-                    cachedParsed(key, parse)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
+                    cachedParsed(key, parse)?.takeIf { shouldCache(it.data) }?.let { return@withLock it }
                 }
-                return@withLock Outcome.Ok(value)
+                return@withLock Outcome.Ok(value, DataFreshness(System.currentTimeMillis(), false))
             }
 
-            cachedParsed(key, parse)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
+            cachedParsed(key, parse)?.takeIf { shouldCache(it.data) }?.let { return@withLock it }
             return@withLock Outcome.Error(parsed.exceptionOrNull()?.message ?: "解析教务数据失败")
         }
 
-        cachedParsed(key, parse)?.takeIf(shouldCache)?.let { return@withLock Outcome.Ok(it) }
+        cachedParsed(key, parse)?.takeIf { shouldCache(it.data) }?.let { return@withLock it }
         @Suppress("UNCHECKED_CAST")
         live as Outcome<T>
     }
@@ -144,10 +144,10 @@ class AcademicRepository(
         return@withLock live
     }
 
-    private suspend fun <T> cachedParsed(key: String, parse: (String) -> T): T? =
+    private suspend fun <T> cachedParsed(key: String, parse: (String) -> T): Outcome.Ok<T>? =
         offlineCache?.let { cache ->
             withContext(Dispatchers.IO) {
-                cache.loadText(key)?.let { snapshot -> runCatching { parse(snapshot.text) }.getOrNull() }
+                cache.loadText(key)?.let { snapshot -> runCatching { Outcome.Ok(parse(snapshot.text), DataFreshness(snapshot.savedAt, true)) }.getOrNull() }
             }
         }
 
