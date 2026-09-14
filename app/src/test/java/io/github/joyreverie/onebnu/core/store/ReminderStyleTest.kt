@@ -1,6 +1,7 @@
 package io.github.joyreverie.onebnu.core.store
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -27,5 +28,8 @@ class ReminderStyleTest {
         assertEquals("闹钟提醒", ReminderStyle.ALARM.label)
         assertTrue(ReminderStyle.NOTIFICATION.description.contains("通知"))
         assertTrue(ReminderStyle.ALARM.description.contains("响铃"))
+        // 实际行为是两分钟自动停、随时可停；「需手动停止」这句旧文案与之矛盾，不能再出现
+        assertTrue(ReminderStyle.ALARM.description.contains("两分钟"))
+        assertFalse(ReminderStyle.ALARM.description.contains("手动"))
     }
 }

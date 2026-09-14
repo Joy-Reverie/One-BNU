@@ -279,6 +279,9 @@ fun WebScreen(
                                     request: WebResourceRequest?,
                                 ): Boolean {
                                     val u = request?.url ?: return false
+                                    // 只处理主框架的跳转：页面里内嵌的站外 iframe 不该把用户甩到系统浏览器，
+                                    // 也不该触发下面的 OneVPN / 认证中转逻辑。
+                                    if (!request.isForMainFrame) return false
                                     if (u.host == "one.bnu.edu.cn" || u.host == "one.bnuzh.edu.cn") lastPortalPage = u.toString()
                                     // 应用侧明明已有 OneVPN 会话，WebView 却被送去登录：多半是两边票据不一致。
                                     // 先把应用侧票据同步过来、回到代理页；**不能**再登录一次 —— OneVPN 单会话，
@@ -479,6 +482,14 @@ fun WebScreen(
                             post { loadUrl(pageUrl) }
                             webView = this
                         }
+                    },
+                    onRelease = { view ->
+                        // 离开页面就销毁 WebView，不然它连同页面和回调一直活到进程结束
+                        if (webView === view) webView = null
+                        view.stopLoading()
+                        view.webViewClient = android.webkit.WebViewClient()
+                        view.webChromeClient = null
+                        view.destroy()
                     },
                 )
                 if (progress in 1..99) {

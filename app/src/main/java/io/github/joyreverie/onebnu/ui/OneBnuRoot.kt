@@ -166,7 +166,7 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                     withContext(Dispatchers.IO) {
                         if (ServiceLocator.ensureSession()) {
                             SsoWarmup.warm(ServiceLocator.http, ServiceLocator.auth, activeCampus)
-                            ServiceLocator.repo.prefetchBasicData()
+                            ServiceLocator.repo.prefetchBasicDataInBackground()
                         }
                     }
                 }

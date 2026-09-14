@@ -28,3 +28,6 @@ secrets*
 # Kotlin 2.x 编译器缓存、Android Studio「Generate Signed Bundle」的默认输出目录
 .kotlin/
 /app/release/
+
+# Claude Code 子代理的临时 worktree
+.claude/worktrees/

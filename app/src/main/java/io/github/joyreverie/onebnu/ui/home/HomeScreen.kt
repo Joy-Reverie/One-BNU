@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.ui.components.OnResumed
 import io.github.joyreverie.onebnu.core.net.OneVpnSso
 import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.data.model.PeriodMapper
@@ -144,6 +145,7 @@ private data class EditorTarget(val event: PersonalEvent?)
 @Composable
 fun HomeScreen(nav: NavHostController, vm: HomeViewModel = viewModel()) {
     val s by vm.state.collectAsState()
+    OnResumed { vm.onResumed() }
     val store = ServiceLocator.events
     HomeContent(
         s = s,

@@ -37,9 +37,16 @@ data class ContactRow(
     val extraText: String
         get() = extra.replace(EMAIL, "").replace(Regex("^[\\s·]+|[\\s·]+$"), "").replace(Regex("\\s*·\\s*·\\s*"), " · ")
 
-    fun matches(needle: String): Boolean =
-        listOf(what, who, where, extra).any { normalize(it).contains(needle) } ||
-            tels.any { it.number.contains(needle) || normalize(it.ext).contains(needle) }
+    fun matches(needle: String): Boolean {
+        if (listOf(what, who, where, extra).any { normalize(it).contains(needle) }) return true
+        // 号码按界面显示的完整拨号串比（「010 5880 6110」去掉空格、连字符），只输 8 位校内号也能命中
+        val numeric = needle.isNotEmpty() && needle.all { it.isDigit() || it == '-' }
+        val digits = needle.filter { it.isDigit() }
+        return tels.any { tel ->
+            normalize(tel.ext).contains(needle) ||
+                (numeric && digits.isNotEmpty() && (tel.dial.contains(digits) || tel.number.contains(digits)))
+        }
+    }
 
     companion object {
         val EMAIL = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")

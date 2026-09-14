@@ -81,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.ui.components.OnResumed
 import io.github.joyreverie.onebnu.data.model.ClassSession
 import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PeriodMapper
@@ -108,6 +109,7 @@ private val DAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "日")
 @Composable
 fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
     val s by vm.state.collectAsState()
+    OnResumed { vm.onResumed() }
     var selected by remember { mutableStateOf<Pair<Course, ClassSession>?>(null) }
     var termMenu by remember { mutableStateOf(false) }
     var weekMenu by remember { mutableStateOf(false) }
@@ -449,7 +451,7 @@ private fun GridFrame(
 
 @Composable
 private fun WeekHeader(state: ScheduleUiState, gutter: Dp, modifier: Modifier = Modifier) {
-    val today = ScheduleViewModel.todayDayOfWeek()
+    val today = state.today.dayOfWeek.value
     val isCurrentWeek = state.isCurrentWeek
     val dates = state.weekDates
     Row(modifier.fillMaxWidth().padding(horizontal = 2.dp)) {
@@ -564,7 +566,7 @@ internal fun DayColumns(
     // 重叠格子当前显示第几个，键为「周:星期:起始节」
     val shown = remember { mutableStateMapOf<String, Int>() }
     val s = state
-    val today = ScheduleViewModel.todayDayOfWeek()
+    val today = s.today.dayOfWeek.value
     val isCurrentWeek = s.isCurrentWeek
     val dates = s.weekDates
     // 4% 的今日底色在深色主题下基本看不见，深色下加重一档

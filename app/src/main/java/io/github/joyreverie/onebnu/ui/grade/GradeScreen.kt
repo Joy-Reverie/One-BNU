@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Info
@@ -73,6 +75,7 @@ import io.github.joyreverie.onebnu.ui.components.BnuCard
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
 import io.github.joyreverie.onebnu.ui.theme.Shape
 import io.github.joyreverie.onebnu.ui.theme.GlowBlob
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,6 +88,7 @@ fun GradeScreen(vm: GradeViewModel = viewModel()) {
             TopAppBar(
                 title = { Text("成绩与绩点") },
                 actions = {
+                    IconButton(onClick = { vm.load(forceRefresh = true) }) { Icon(Icons.Filled.Refresh, "刷新") }
                     Box {
                         IconButton(onClick = { scaleMenu = true }) {
                             Icon(Icons.Filled.Tune, "绩点算法")
@@ -176,8 +180,15 @@ internal fun GradeContent(
             }
         }
 
+        s.overall?.takeIf { it.supersededCount > 0 }?.let { summary ->
+            item {
+                NoteCard("有 ${summary.supersededCount} 门课程存在重修或补考记录，只计入最后一次成绩。")
+            }
+        }
+
         s.overall?.let { summary ->
-            val unavailableCount = summary.excludedCount - summary.deferredCount - summary.manuallyExcludedCount
+            val unavailableCount = summary.excludedCount - summary.deferredCount -
+                summary.manuallyExcludedCount - summary.supersededCount
             if (unavailableCount > 0) {
                 item {
                     NoteCard(
@@ -201,7 +212,8 @@ internal fun GradeContent(
         item {
             Text("全部课程", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
         }
-        items(s.grades, key = { it.calculationKey }) { g ->
+        // 键带下标：没有课程号的同名课会算出同一个 calculationKey，重复键会让 LazyColumn 直接崩溃
+        itemsIndexed(s.grades, key = { index, g -> "${g.calculationKey}#$index" }) { _, g ->
             GradeRow(g, s.scale, manuallyExcluded = g.calculationKey in s.manuallyExcludedCourseKeys)
         }
     }
@@ -287,7 +299,7 @@ private fun CourseSelectionDialog(
                 )
                 Spacer(Modifier.height(10.dp))
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
-                    items(s.grades, key = { it.calculationKey }) { grade ->
+                    itemsIndexed(s.grades, key = { index, g -> "${g.calculationKey}#$index" }) { _, grade ->
                         val selectable = GpaCalculator.isEligible(grade, s.scale)
                         val checked = selectable && grade.calculationKey in selectedKeys
                         val rowModifier = if (selectable) {
@@ -349,7 +361,7 @@ private fun selectionDetail(grade: Grade, scale: GpaScale): String = when {
     !GpaCalculator.isEligible(grade, scale) -> "当前口径下没有可用绩点"
     else -> buildString {
         append("${grade.termLabel} · ${grade.credits} 学分")
-        scale.pointOf(grade)?.let { append(" · 绩点 ${String.format("%.2f", it)}") }
+        scale.pointOf(grade)?.let { append(" · 绩点 ${"%.2f".format(Locale.ROOT, it)}") }
     }
 }
 
@@ -395,7 +407,7 @@ private fun OverallCard(summary: GpaSummary, scale: GpaScale) {
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        summary.weightedAverage?.let { "加权均分 " + String.format("%.2f", it) } ?: "暂无均分",
+                        summary.weightedAverage?.let { "加权均分 " + "%.2f".format(Locale.ROOT, it) } ?: "暂无均分",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.8f),
                     )
@@ -404,8 +416,8 @@ private fun OverallCard(summary: GpaSummary, scale: GpaScale) {
 
             Spacer(Modifier.height(20.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HeroStat("已获学分", String.format("%.1f", summary.earnedCredits), Modifier.weight(1f))
-                HeroStat("计点学分", String.format("%.1f", summary.gradedCredits), Modifier.weight(1f))
+                HeroStat("已获学分", "%.1f".format(Locale.ROOT, summary.earnedCredits), Modifier.weight(1f))
+                HeroStat("计点学分", "%.1f".format(Locale.ROOT, summary.gradedCredits), Modifier.weight(1f))
                 HeroStat("课程数", summary.courseCount.toString(), Modifier.weight(1f))
             }
         }
@@ -436,12 +448,12 @@ private fun GpaDial(sweep: Float, value: Double?, max: Double, modifier: Modifie
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                value?.let { String.format("%.2f", it) } ?: "—",
+                value?.let { "%.2f".format(Locale.ROOT, it) } ?: "—",
                 style = MaterialTheme.typography.headlineSmall,
                 color = Color.White,
             )
             Text(
-                "/ " + String.format("%.1f", max),
+                "/ " + "%.1f".format(Locale.ROOT, max),
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.7f),
             )
@@ -485,13 +497,13 @@ private fun TermCard(label: String, summary: GpaSummary) {
             Column {
                 Text(label, style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "${summary.courseCount} 门 · ${String.format("%.1f", summary.earnedCredits)} 学分",
+                    "${summary.courseCount} 门 · ${"%.1f".format(Locale.ROOT, summary.earnedCredits)} 学分",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Text(
-                summary.gpa?.let { String.format("%.2f", it) } ?: "—",
+                summary.gpa?.let { "%.2f".format(Locale.ROOT, it) } ?: "—",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary,
@@ -533,7 +545,7 @@ private fun GradeRow(g: Grade, scale: GpaScale, manuallyExcluded: Boolean) {
                     when {
                         g.isDeferredExam -> append(" · 缓考，不计入绩点")
                         manuallyExcluded && GpaCalculator.isEligible(g, scale) -> append(" · 已从计算范围排除")
-                        point != null -> append(" · 绩点 ${String.format("%.2f", point)}")
+                        point != null -> append(" · 绩点 ${"%.2f".format(Locale.ROOT, point)}")
                     }
                     if (g.remark.isNotBlank() && !(g.isDeferredExam && g.remark.trim() == "缓考")) {
                         append(" · ${g.remark}")

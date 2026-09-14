@@ -57,5 +57,10 @@
             android:exported="true"
             android:label="Schedule preview"
             android:theme="@style/Theme.OneBNU" />
+        <activity
+            android:name=".widget.ZyfwProbeActivity"
+            android:exported="true"
+            android:label="Zyfw probe"
+            android:theme="@style/Theme.OneBNU" />
     </application>
 </manifest>

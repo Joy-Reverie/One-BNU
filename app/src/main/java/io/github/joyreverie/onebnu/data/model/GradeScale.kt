@@ -97,6 +97,8 @@ data class GpaSummary(
     val deferredCount: Int = 0,
     /** 用户在「计算范围」中手动取消勾选的、原本可计算的课程数。 */
     val manuallyExcludedCount: Int = 0,
+    /** 被之后的重修 / 补考替代的更早一次修读；不计绩点，学分也只算最后一次。 */
+    val supersededCount: Int = 0,
 )
 
 object GpaCalculator {
@@ -122,8 +124,16 @@ object GpaCalculator {
         var excluded = 0
         var deferred = 0
         var manuallyExcluded = 0
+        var superseded = 0
+        val supersededIndices = supersededIndices(grades)
 
-        for (g in grades) {
+        for ((index, g) in grades.withIndex()) {
+            if (index in supersededIndices) {
+                // 更早那次修读已被之后的重修 / 补考替代：不计绩点，学分也只算最后一次
+                excluded++
+                superseded++
+                continue
+            }
             val passed = isPassed(g)
             if (passed) earned += g.credits
 
@@ -158,8 +168,43 @@ object GpaCalculator {
             excludedCount = excluded,
             deferredCount = deferred,
             manuallyExcludedCount = manuallyExcluded,
+            supersededCount = superseded,
         )
     }
+
+    /**
+     * 同一门课有多条成绩（重修、补考）时只有最后一次算数，返回应当排除的下标。
+     * 判定要有依据：同一课程号（没有课程号时按课程名 + 学分）下存在更晚的记录，且本条不及格，
+     * 或更晚那条明确标了重修 / 补考。全部及格的同号课程（如每学期都修的「形势与政策」）不是重修，各自计入。
+     */
+    fun supersededIndices(grades: List<Grade>): Set<Int> {
+        val out = HashSet<Int>()
+        grades.indices.groupBy { identityOf(grades[it]) }.values.forEach { group ->
+            if (group.size < 2) return@forEach
+            // 同一学期里标了重修 / 补考的那条视为更晚的一次
+            val ordered = group.sortedWith(
+                compareBy({ termOrder(grades[it]) }, { if (grades[it].isRetake) 1 else 0 }, { it }),
+            )
+            ordered.forEachIndexed { position, index ->
+                val later = ordered.drop(position + 1).map { grades[it] }
+                if (later.isEmpty()) return@forEachIndexed
+                val g = grades[index]
+                val failed = !g.isDeferredExam && !isPassed(g)
+                if (failed || later.any { it.isRetake }) out += index
+            }
+        }
+        return out
+    }
+
+    private fun identityOf(g: Grade): String {
+        val code = g.courseCode.replace(Regex("[\\[\\]\\s]"), "").uppercase()
+        return if (code.isNotBlank()) "code:$code" else "name:${g.courseName.replace(Regex("\\s+"), "")}|${g.credits}"
+    }
+
+    /** 学年、学期的数值序，用来判断先后；解析不出的排最前。 */
+    internal fun termOrder(g: Grade): Long =
+        (g.xn.toLongOrNull() ?: Regex("""\d{4}""").find(g.termLabel)?.value?.toLongOrNull() ?: 0L) * 10 +
+            (g.xq.toLongOrNull() ?: 0L)
 
     /** 判定是否取得学分。 */
     fun isPassed(g: Grade): Boolean {
@@ -169,13 +214,17 @@ object GpaCalculator {
         return s >= 60
     }
 
-    /** 按学期分组统计，最近的学期排在前面。 */
+    /**
+     * 按学期分组统计，最近的学期排在前面。按学年、学期的数值排，不按标签字串 ——
+     * 「秋季」的字串序在「春季」之后，按字串排会把同一学年更早的秋季放到春季前面。
+     */
     fun byTerm(
         grades: List<Grade>,
         scale: GpaScale,
         manuallyExcludedCourseKeys: Set<String> = emptySet(),
     ): List<Pair<String, GpaSummary>> =
         grades.groupBy { it.termLabel }
-            .map { (label, list) -> label to summarize(list, scale, manuallyExcludedCourseKeys) }
-            .sortedByDescending { it.first }
+            .map { (label, list) -> Triple(label, list, list.maxOf { termOrder(it) }) }
+            .sortedWith(compareByDescending<Triple<String, List<Grade>, Long>> { it.third }.thenByDescending { it.first })
+            .map { (label, list, _) -> label to summarize(list, scale, manuallyExcludedCourseKeys) }
 }

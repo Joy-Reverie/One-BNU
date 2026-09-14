@@ -79,6 +79,17 @@ class CasClient(
         // 而 one.bnu.edu.cn 存在分区解析（会 CNAME 到 onevpn），
         // 在部分运营商网络下行为不一致，没必要让登录依赖它。
         service: String,
+    ): AuthResult = synchronized(SsoCoordinator.lock) {
+        // 登录是多跳流程，与 SSO 跳转、OneVPN 握手共用同一把锁：超时重试时上一次的 OkHttp 调用
+        // 还在 IO 线程上跑，不串行化的话两次登录会互相覆盖票据。
+        loginToServiceLocked(username, password, captcha, service)
+    }
+
+    private fun loginToServiceLocked(
+        username: String,
+        password: String,
+        captcha: String,
+        service: String,
     ): AuthResult {
         // 必须在取登录页之前判断：这一次 GET 本身就会让服务端补发 devInfo，
         // 取完再读就永远是 true，看不出「这台机器服务端认不认识」。
@@ -162,7 +173,10 @@ class CasClient(
 
     /** 二次认证第二步：提交短信验证码，通过后立即完成登录（等价于网页端 realSubmit）。 */
     @Throws(IOException::class)
-    override fun completeSecondAuth(pending: AuthPending, smsCode: String): AuthResult {
+    override fun completeSecondAuth(pending: AuthPending, smsCode: String): AuthResult =
+        synchronized(SsoCoordinator.lock) { completeSecondAuthLocked(pending, smsCode) }
+
+    private fun completeSecondAuthLocked(pending: AuthPending, smsCode: String): AuthResult {
         val p = pending.value as? Pending ?: return AuthResult.Failed("二次认证状态已失效，请重新登录")
         val res = postSecondAuth(p, mapOf("method" to "login", "code" to smsCode))
         val json = res.json ?: return AuthResult.Failed(res.problem!!)
@@ -187,8 +201,11 @@ class CasClient(
         login(username, password, "") is AuthResult.Success
 
     override fun logout() {
-        runCatching { http.get("$CAS_BASE/cas/logout") }
+        val logoutUrl = "$CAS_BASE/cas/logout"
+        // 先在本地清会话（界面据此立刻判定为未登录），再带着刚才那份 Cookie 到后台注销服务端 TGT。
+        val cookieHeader = http.cookieHeaderFor(logoutUrl)
         http.cookies.clear()
+        http.fireAndForget(logoutUrl, cookieHeader)
     }
 
     /** 让服务端重新把本机当作陌生设备（下次登录会重新要短信验证）。 */

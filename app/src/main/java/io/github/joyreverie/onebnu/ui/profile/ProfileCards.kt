@@ -1,6 +1,7 @@
 package io.github.joyreverie.onebnu.ui.profile
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -26,10 +27,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.AddToHomeScreen
+import androidx.compose.material.icons.outlined.AlarmOff
+import androidx.compose.material.icons.outlined.BatteryAlert
 import androidx.compose.material.icons.outlined.EditCalendar
 import androidx.compose.material.icons.outlined.NotificationsOff
+import androidx.compose.material.icons.outlined.NotificationsPaused
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.ScreenLockPortrait
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
@@ -229,7 +234,12 @@ private fun ManualPinDialog(size: WidgetSize, onDismiss: () -> Unit) {
     )
 }
 
-/** 「我的」页：上课 / 日程提醒的开关、提前时间、提醒方式、后台运行权限。 */
+/**
+ * 「我的」页：上课 / 日程提醒的开关、提前时间、提醒方式。
+ *
+ * 下面的状态行只在系统**确实**会拦住提醒时出现，放行后自动消失，不会变成一行「已授权」；
+ * 每行一个按钮由用户自己去系统页，进「我的」时绝不自动跳，打不开也会说一声。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReminderCard() {
@@ -242,21 +252,20 @@ fun ReminderCard() {
     var style by remember { mutableStateOf(settings.reminderStyle) }
     val ringing by AlarmService.ringing.collectAsState()
     var next by remember { mutableStateOf(ClassReminder.nextDescription(context)) }
-    var batteryOk by remember { mutableStateOf(ClassReminder.ignoringBatteryOptimizations(context)) }
-    var exactOk by remember { mutableStateOf(ClassReminder.canScheduleExact(context)) }
-    var notifyOk by remember { mutableStateOf(ClassReminder.notificationsAllowed(context)) }
-    var notifyReady by remember { mutableStateOf(ClassReminder.notificationsReady(context)) }
-    var popupSetupRequired by remember {
-        mutableStateOf(ClassReminder.floatingNotificationSetupRequired(context))
-    }
+    var status by remember { mutableStateOf(ReminderStatus.read(context)) }
     // 正在等待用户授予通知权限的开关；授权回来后自动继续开启。
     var awaiting by remember { mutableStateOf<Boolean?>(null) }
     val enabled = remindClasses || remindEvents
 
-    /** 去系统通知设置；打不开就说一声，不能点了没反应。 */
-    fun openNotificationSettings() {
-        if (!ClassReminder.openNotificationSettings(context)) {
-            Toast.makeText(context, "没能打开系统通知设置，请到「设置 - 应用 - One BNU」里开启", Toast.LENGTH_LONG).show()
+    fun refresh() {
+        status = ReminderStatus.read(context)
+        next = ClassReminder.nextDescription(context)
+    }
+
+    /** 系统设置页只由按钮打开；打不开就说一声，不能点了没反应。 */
+    fun openSystemPage(open: () -> Boolean) {
+        if (!open()) {
+            Toast.makeText(context, "没能打开系统设置，请到「设置 - 应用 - One BNU」里处理", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -270,9 +279,7 @@ fun ReminderCard() {
             settings.remindClasses = on
         }
         ClassReminder.reschedule(context)
-        notifyReady = ClassReminder.notificationsReady(context)
-        popupSetupRequired = ClassReminder.floatingNotificationSetupRequired(context)
-        next = ClassReminder.nextDescription(context)
+        refresh()
     }
 
     // 从系统设置页回来时刷新各项权限状态
@@ -280,14 +287,9 @@ fun ReminderCard() {
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                batteryOk = ClassReminder.ignoringBatteryOptimizations(context)
-                exactOk = ClassReminder.canScheduleExact(context)
-                notifyOk = ClassReminder.notificationsAllowed(context)
-                notifyReady = ClassReminder.notificationsReady(context)
-                popupSetupRequired = ClassReminder.floatingNotificationSetupRequired(context)
-                next = ClassReminder.nextDescription(context)
+                refresh()
                 awaiting?.let { pending ->
-                    if (notifyOk) {
+                    if (status.notifyOk) {
                         awaiting = null
                         apply(pending, true)
                     }
@@ -300,14 +302,23 @@ fun ReminderCard() {
 
     // 两个开关都要先有通知权限；记下是哪一个在等授权，授权回来接着开它
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        notifyOk = granted
-        notifyReady = ClassReminder.notificationsReady(context)
-        popupSetupRequired = ClassReminder.floatingNotificationSetupRequired(context)
         val isEvent = awaiting
         awaiting = null
+        refresh()
         when {
-            !granted -> Toast.makeText(context, "需要允许通知才能提醒", Toast.LENGTH_LONG).show()
-            isEvent != null -> apply(isEvent, true)
+            granted && isEvent != null -> apply(isEvent, true)
+            granted -> Unit
+            isEvent != null -> Toast.makeText(context, "需要允许通知才能提醒", Toast.LENGTH_LONG).show()
+            // 从状态行的按钮来的：系统弹窗被拒或已不再弹出，那就去设置页
+            else -> openSystemPage { ClassReminder.openNotificationSettings(context) }
+        }
+    }
+
+    fun requestNotifications() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            openSystemPage { ClassReminder.openNotificationSettings(context) }
         }
     }
 
@@ -322,13 +333,9 @@ fun ReminderCard() {
                 awaiting = null
                 apply(isEvent, false)
             }
-            !notifyOk -> {
+            !status.notifyOk -> {
                 awaiting = isEvent
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                } else {
-                    openNotificationSettings()
-                }
+                requestNotifications()
             }
             else -> {
                 awaiting = null
@@ -373,28 +380,6 @@ fun ReminderCard() {
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
-
-            // 通知权限是硬条件（红），悬浮通知只影响「弹不弹出来」（中性），
-            // 两者都在卡片里给一个按钮，不再自动把用户甩到系统设置页
-            if (!notifyOk) {
-                Spacer(Modifier.height(8.dp))
-                NoticeRow(
-                    title = "通知权限未开启",
-                    detail = "允许通知后才会收到提醒",
-                    container = MaterialTheme.colorScheme.errorContainer,
-                    onContainer = MaterialTheme.colorScheme.onErrorContainer,
-                    onOpen = ::openNotificationSettings,
-                )
-            } else if (!notifyReady || popupSetupRequired) {
-                Spacer(Modifier.height(8.dp))
-                NoticeRow(
-                    title = "悬浮通知未开启",
-                    detail = "开启后提醒会在屏幕顶部弹出",
-                    container = MaterialTheme.colorScheme.surfaceVariant,
-                    onContainer = MaterialTheme.colorScheme.onSurfaceVariant,
-                    onOpen = ::openNotificationSettings,
-                )
-            }
         }
 
         Divider(Modifier.padding(vertical = 8.dp))
@@ -419,7 +404,10 @@ fun ReminderCard() {
                     if (style == ReminderStyle.ALARM && AlarmService.silencedByDnd(context)) {
                         Toast.makeText(context, "勿扰模式已开，闹钟只震动不响铃", Toast.LENGTH_LONG).show()
                     }
-                    ClassReminder.showTest(context, style)
+                    // 通知权限没开时什么都显示不出来，得说一声，不能点了没反应
+                    if (!ClassReminder.showTest(context, style)) {
+                        Toast.makeText(context, "通知权限未开启，提醒发不出来", Toast.LENGTH_LONG).show()
+                    }
                 }) { Text("试一下") }
             }
         }
@@ -430,58 +418,77 @@ fun ReminderCard() {
                     onClick = {
                         style = s
                         settings.reminderStyle = s
-                        // 闹钟与通知登记方式不同，改完要重排下一次
+                        // 闹钟与通知登记方式不同，改完要重排下一次；闹钟方式还要看精确闹钟、全屏通知两项权限
                         ClassReminder.reschedule(context)
-                        next = ClassReminder.nextDescription(context)
+                        refresh()
                     },
                     shape = SegmentedButtonDefaults.itemShape(index = i, count = ReminderStyle.entries.size),
                     label = { Text(s.label) },
                 )
             }
         }
+
         if (enabled) {
-            // 已经放行就不再占地方：这几行只在系统真的会拦截提醒时出现，授权后自动消失
-            if (!batteryOk) {
-                Divider(Modifier.padding(vertical = 8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("后台运行", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "未忽略电池优化，提醒可能被系统延后或拦截",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                    TextButton(onClick = {
-                        runCatching {
-                            context.startActivity(
-                                Intent(
-                                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                                    Uri.parse("package:${context.packageName}"),
-                                ),
-                            )
-                        }
-                    }) { Text("允许") }
+            val alarm = style == ReminderStyle.ALARM
+            // 只在系统真的会拦住提醒时出现，放行后自动消失。红底是发不出去，灰底只是效果打折。
+            val rows = buildList {
+                when {
+                    !status.notifyOk -> add(
+                        StatusItem(
+                            Icons.Outlined.NotificationsOff, "通知权限未开启",
+                            if (alarm) "允许后闹钟响时才会有「停止」按钮" else "允许通知后才会收到提醒",
+                            error = true, action = "去开启",
+                        ) { requestNotifications() },
+                    )
+                    !alarm && status.reminderChannelBlocked -> add(
+                        StatusItem(
+                            Icons.Outlined.NotificationsOff, "「上课提醒」通知已关闭", "系统里关掉了这一类通知，提醒发不出来",
+                            error = true, action = "去开启",
+                        ) { openSystemPage { ClassReminder.openNotificationSettings(context) } },
+                    )
+                    !alarm && status.reminderChannelQuiet -> add(
+                        StatusItem(
+                            Icons.Outlined.NotificationsPaused, "悬浮通知未开启", "提醒只进通知栏，不在屏幕顶部弹出",
+                            error = false, action = "去开启",
+                        ) { openSystemPage { ClassReminder.openNotificationSettings(context) } },
+                    )
+                    alarm && status.alarmChannelBlocked -> add(
+                        StatusItem(
+                            Icons.Outlined.NotificationsOff, "「上课闹钟」通知已关闭", "响铃时通知栏里不会有「停止」",
+                            error = true, action = "去开启",
+                        ) { openSystemPage { ClassReminder.openNotificationSettings(context, AlarmService.CHANNEL_ID) } },
+                    )
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !status.exactOk) {
+                    add(
+                        StatusItem(
+                            Icons.Outlined.AlarmOff, "闹钟和提醒权限未开启",
+                            if (alarm) "闹钟无法准时响铃" else "提醒可能延后送达",
+                            error = true, action = "去开启",
+                        ) { openSystemPage { ClassReminder.openExactAlarmSettings(context) } },
+                    )
+                }
+                if (alarm && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && !status.fullScreenOk) {
+                    add(
+                        StatusItem(
+                            Icons.Outlined.ScreenLockPortrait, "全屏通知权限未开启", "锁屏时闹钟不会全屏弹出",
+                            error = false, action = "去开启",
+                        ) { openSystemPage { ClassReminder.openFullScreenIntentSettings(context) } },
+                    )
+                }
+                if (!status.batteryOk) {
+                    add(
+                        StatusItem(
+                            Icons.Outlined.BatteryAlert, "后台运行受限", "未忽略电池优化，提醒可能被延后或拦截",
+                            error = true, action = "允许",
+                        ) { openSystemPage { ClassReminder.requestIgnoreBatteryOptimizations(context) } },
+                    )
                 }
             }
-            if (!exactOk && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                Divider(Modifier.padding(vertical = 8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("准时送达", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "系统的「闹钟和提醒」权限未开，通知可能晚几分钟",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                    TextButton(onClick = {
-                        runCatching {
-                            context.startActivity(
-                                Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")),
-                            )
-                        }
-                    }) { Text("去开启") }
+            if (rows.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rows.forEach { StatusRow(it) }
                 }
             }
         }
@@ -502,15 +509,43 @@ fun ReminderCard() {
     }
 }
 
-/** 提醒卡里的一条状态提示：标题、一行说明、一个「去开启」按钮。 */
-@Composable
-private fun NoticeRow(
-    title: String,
-    detail: String,
-    container: androidx.compose.ui.graphics.Color,
-    onContainer: androidx.compose.ui.graphics.Color,
-    onOpen: () -> Unit,
+/** 提醒卡片要看的系统状态，一次读齐；进页面、从系统设置回来、换提醒方式时重读。 */
+private data class ReminderStatus(
+    val notifyOk: Boolean,
+    val reminderChannelBlocked: Boolean,
+    val reminderChannelQuiet: Boolean,
+    val alarmChannelBlocked: Boolean,
+    val exactOk: Boolean,
+    val fullScreenOk: Boolean,
+    val batteryOk: Boolean,
 ) {
+    companion object {
+        fun read(context: Context) = ReminderStatus(
+            notifyOk = ClassReminder.notificationsAllowed(context),
+            reminderChannelBlocked = ClassReminder.channelBlocked(context),
+            reminderChannelQuiet = ClassReminder.channelQuiet(context),
+            alarmChannelBlocked = ClassReminder.channelBlocked(context, AlarmService.CHANNEL_ID),
+            exactOk = ClassReminder.canScheduleExact(context),
+            fullScreenOk = ClassReminder.canUseFullScreenIntent(context),
+            batteryOk = ClassReminder.ignoringBatteryOptimizations(context),
+        )
+    }
+}
+
+/** 提醒卡里的一行状态：图标、标题、一行说明、一个按钮。 */
+private class StatusItem(
+    val icon: ImageVector,
+    val title: String,
+    val detail: String,
+    val error: Boolean,
+    val action: String,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun StatusRow(item: StatusItem) {
+    val container = if (item.error) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant
+    val onContainer = if (item.error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         Modifier
             .fillMaxWidth()
@@ -519,13 +554,13 @@ private fun NoticeRow(
             .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Outlined.NotificationsOff, null, Modifier.size(18.dp), tint = onContainer)
+        Icon(item.icon, null, Modifier.size(18.dp), tint = onContainer)
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium, color = onContainer)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = onContainer)
+            Text(item.title, style = MaterialTheme.typography.bodyMedium, color = onContainer)
+            Text(item.detail, style = MaterialTheme.typography.bodySmall, color = onContainer)
         }
-        TextButton(onClick = onOpen) { Text("去开启") }
+        TextButton(onClick = item.onClick) { Text(item.action) }
     }
 }
 

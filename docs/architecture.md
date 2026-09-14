@@ -27,7 +27,11 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
 认证服务靠 `devInfo` Cookie 认设备，不认识的设备要求短信验证。这份记号必须跨进程留存
 （`core/store/DeviceIdentity.kt`），否则每次启动都是「新设备」。登录表单里的 `device` 字段网页端用的是
 浏览器指纹，这里换成**安装时生成的随机值**：同一台设备保持一致，又不采集任何硬件信息，清除应用数据即可切断关联。
-「我的 → 设置 → 网络诊断」可以查看并重置。
+「我的 → 设置 → 网络诊断」可以查看并重置。只有认证主机自己下发的 `devInfo` 会更新这份记号。
+
+`core/net/BnuCookieJar.kt` 是内存态 Cookie 罐，按 (域, 名字, 路径) 存：OneVPN 代理下 wengine 自己与被代理的教务、
+门户在同一主机的不同路径上各有一枚 `JSESSIONID`，按 (域, 名字) 存会互相覆盖。`CASTGC` 一律收窄为认证主机的
+host-only Cookie。退出登录先清本地 Cookie，再带着注销前那份 Cookie 到后台线程请求 `/cas/logout`（主线程发不出去）。
 
 ## 明文与重定向
 
@@ -66,6 +70,8 @@ POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进�
   不该每次进页面都重新连一次教务。旧写法把「空」判成「没有缓存」，蜂窝 / 校外因此一直转圈最后报错。
 - 写入仍有保护：有内容就写；结果为空时只在还没有任何有内容的快照时才写，教务的瞬态空响应不会抹掉好数据。
 - `dataMutex` 只锁**真正发请求**的那一段。读快照在锁外，登录后那一轮预取（十几个串行请求）不会把页面一起堵住。
+- 预取（`prefetchBasicDataInBackground`）跑在仓库自己的后台作用域里，一次会话只跑一遍；它以前挂在 Root 的
+  `LaunchedEffect` 上，旋转一次屏幕就整轮重来。退出登录、换账号后 `resetPrefetch()`。
 - 课表、成绩、考试三页在拿到快照后由各自的 ViewModel 在后台再取一次（`refreshInBackground`）：
   成功就静默替换、提示消失；失败保留快照与提示，不弹错误。
 - `ZyfwApi.ensureSession` 在蜂窝下先走 OneVPN 代理、失败再试一次直连；两条都失败后进入 2 分钟退避，
@@ -210,8 +216,11 @@ token、Cookie、空白页、跨设备引导四类情况各有一次性重载，
 「课程性质」> 网上选课结果（兜底）> 推断（`data/model/CreditLedger.kt` 的 `CategoryRules`）。培养方案模块按每个
 课表学期查询并合并，避免只用当前学期导致往年课程被粗略推断。公共课先按课程名称识别；这是为兼容珠海校区公共课
 不统一使用 `GRA` 前缀的情况。官方「专业选修」归入「专业拓展」，「专业必修 / 学位必修」归入「学位专业」。
-「重修」显示但不计学分，手动归类存本机。
-（`CreditCategoryStore`）。
+「重修」显示但不计学分，手动归类存本机（`CreditCategoryStore`）。
+
+成绩页的 GPA（`data/model/GradeScale.kt`）对多次修读只计最后一次：同一课程号（无课程号时按课程名 + 学分）下存在更晚的
+记录、且本条不及格或更晚那条标了「重修 / 补考」，本条不计绩点、学分也不重复算；全部及格的同号课程（如每学期都修的
+「形势与政策」）各自计入。各学期卡片按学年、学期数值排序，不按标签字串。
 
 ## 校内联系方式
 
@@ -220,10 +229,23 @@ token、Cookie、空白页、跨设备引导四类情况各有一次性重载，
 来源标在小节上（`ContactSection.sourceUrl` / `sourceDate`）而不是分区上。`docs/bnu-directory.html` 是检索时的原始整理稿。校内 5880 号段用手机拨必须
 加区号，界面上一律显示完整的「010 5880 xxxx」。`CampusContactsTest` 校验分区数、条数与号码格式。
 
+## 版本命名
+
+版本名是 `<学年><学期>.<序号>`：`2627s1.01` 是 2026-2027 学年第一学期（秋季）的第 1 个版本，`2627s2.01` 是同一学年
+第二学期（春季）的第 1 个版本。学年取起止两年的后两位，第二个年份总是起始年 +1；序号每学期从 01 重新数起。先后一律按
+学年 → 学期 → 序号，春季学期因此排在同学年秋季之后。tag、APK 文件名、归档目录都用这个串（`v2627s1.01`）。
+1.9.37 及更早是旧的数字版本，按第一段就已经更旧。
+
+`versionCode` 由版本名推导（`学年 * 100000 + 学期 * 10000 + 序号`，`2627s1.01` → 262710001），发版只改
+`app/build.gradle.kts` 里的 `versionName` 一处；格式写错直接让构建失败，`UpdateCheckerTest` 另外锁住本包的
+版本名与 versionCode 的对应关系。**应用内比较版本名的 `UpdateChecker.parts` 必须与这套先后规则一致** ——
+它取出版本名里所有数字串按顺序比，`2627s1.03` → [2627, 1, 3]；只取每段前导数字的写法会把 `s1`、`s2` 一起丢掉，
+春季学期的更新就推送不出去。
+
 ## 应用内更新
 
 `core/update/UpdateChecker.kt` 请求 GitHub 公开接口 `GET /repos/{owner}/{repo}/releases/latest`（仓库名来自
-`BuildConfig.GITHUB_REPO`，fork 后在 `app/build.gradle.kts` 改一处即可），按点分数字段比较版本号。下载交给系统
+`BuildConfig.GITHUB_REPO`，fork 后在 `app/build.gradle.kts` 改一处即可），按上一节的规则比较版本号。下载交给系统
 DownloadManager，文件落在应用私有外部目录，经 FileProvider 授权给系统安装器；系统安装时校验签名与已装版本一致。
 应用在后台时下载完成改为发通知，回到设置页也能继续安装。
 

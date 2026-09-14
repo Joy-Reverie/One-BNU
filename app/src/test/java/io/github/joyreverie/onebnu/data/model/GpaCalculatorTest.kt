@@ -103,4 +103,76 @@ class GpaCalculatorTest {
         assertEquals(65.0, GradeScale.letterToScore("及格")!!, 0.001)
         assertEquals(45.0, GradeScale.letterToScore("不及格")!!, 0.001)
     }
+
+
+    // ------------------------------------------------------------------
+    // 重修 / 补考与学期排序
+    // ------------------------------------------------------------------
+
+    private fun attempt(
+        code: String,
+        name: String,
+        score: Double,
+        xn: String,
+        xq: String,
+        credits: Double = 2.0,
+        remark: String = "",
+    ) = Grade(
+        xn = xn,
+        xq = xq,
+        termLabel = "$xn-${xn.toInt() + 1} ${if (xq == "0") "秋季" else "春季"}学期",
+        courseCode = code,
+        courseName = name,
+        credits = credits,
+        scoreText = score.toInt().toString(),
+        score = score,
+        officialPoint = null,
+        remark = remark,
+    )
+
+    @Test
+    fun `首修不及格再重修通过：只计最后一次，不重复计学分`() {
+        val first = attempt("AIS001", "高等代数", 55.0, "2025", "0", credits = 3.0)
+        val retake = attempt("AIS001", "高等代数", 85.0, "2025", "1", credits = 3.0, remark = "重修")
+        val other = attempt("AIS002", "概率论", 90.0, "2025", "0", credits = 2.0)
+
+        assertEquals(setOf(0), GpaCalculator.supersededIndices(listOf(first, retake, other)))
+        val s = GpaCalculator.summarize(listOf(first, retake, other), GpaScale.LINEAR_5)
+        assertEquals(1, s.supersededCount)
+        assertEquals(1, s.excludedCount)
+        assertEquals(5.0, s.earnedCredits, 0.001)
+        assertEquals(5.0, s.gradedCredits, 0.001)
+        // 3.5 × 3 + 4.0 × 2 = 18.5，/ 5 = 3.7
+        assertEquals(3.7, s.gpa!!, 0.001)
+    }
+
+    @Test
+    fun `首修及格后标了重修再修：学分只算一次，成绩按后一次`() {
+        val first = attempt("AIS003", "数据结构", 62.0, "2024", "1", credits = 3.0)
+        val retake = attempt("AIS003", "数据结构", 88.0, "2025", "0", credits = 3.0, remark = "重修")
+        val s = GpaCalculator.summarize(listOf(retake, first), GpaScale.LINEAR_5)
+        assertEquals(1, s.supersededCount)
+        assertEquals(3.0, s.earnedCredits, 0.001)
+        assertEquals(3.8, s.gpa!!, 0.001)
+    }
+
+    @Test
+    fun `每学期都修且都及格的同号课程不是重修，各自计入`() {
+        val a = attempt("GRA001", "形势与政策", 90.0, "2024", "0", credits = 0.5)
+        val b = attempt("GRA001", "形势与政策", 92.0, "2024", "1", credits = 0.5)
+        val c = attempt("GRA001", "形势与政策", 95.0, "2025", "0", credits = 0.5)
+        val s = GpaCalculator.summarize(listOf(a, b, c), GpaScale.LINEAR_5)
+        assertEquals(0, s.supersededCount)
+        assertEquals(1.5, s.earnedCredits, 0.001)
+        assertEquals(3, s.courseCount - s.excludedCount)
+    }
+
+    @Test
+    fun `各学期按学年学期先后排序，同一学年春季排在秋季前面`() {
+        val autumn = attempt("A", "甲", 80.0, "2025", "0")
+        val spring = attempt("B", "乙", 80.0, "2025", "1")
+        val older = attempt("C", "丙", 80.0, "2024", "1")
+        val labels = GpaCalculator.byTerm(listOf(autumn, older, spring), GpaScale.LINEAR_5).map { it.first }
+        assertEquals(listOf("2025-2026 春季学期", "2025-2026 秋季学期", "2024-2025 春季学期"), labels)
+    }
 }

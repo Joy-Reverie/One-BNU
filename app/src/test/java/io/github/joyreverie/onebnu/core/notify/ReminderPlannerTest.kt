@@ -148,8 +148,8 @@ class ReminderPlannerTest {
         // 正常提前 10 分钟，允许几秒的触发延迟
         assertEquals("10 分钟后开始", ClassReminder.remainingLabel(LocalDateTime.of(2026, 9, 10, 15, 7), now))
         assertEquals("10 分钟后开始", ClassReminder.remainingLabel(LocalDateTime.of(2026, 9, 10, 15, 6, 58), now))
-        // 已经到点或过点
+        // 到点了；系统把闹钟压后才送达时如实说已开始，不再说「即将开始」
         assertEquals("即将开始", ClassReminder.remainingLabel(now, now))
-        assertEquals("即将开始", ClassReminder.remainingLabel(now.minusMinutes(1), now))
+        assertEquals("已开始 1 分钟", ClassReminder.remainingLabel(now.minusMinutes(1), now))
     }
 }

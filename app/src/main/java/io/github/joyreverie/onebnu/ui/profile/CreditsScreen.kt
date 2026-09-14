@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
@@ -68,6 +69,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 data class CreditsUiState(
     val loading: Boolean = true,
@@ -163,6 +165,9 @@ fun CreditsScreen(onBack: () -> Unit, vm: CreditsViewModel = viewModel()) {
                 title = { Text("学分核算") },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
+                },
+                actions = {
+                    IconButton(onClick = { vm.load(forceRefresh = true) }) { Icon(Icons.Filled.Refresh, "刷新") }
                 },
             )
         },
@@ -441,4 +446,4 @@ private fun categoryColor(c: CourseCategory): Color {
     return accents[c.ordinal % accents.size]
 }
 
-private fun fmt(v: Double): String = if (v == v.toLong().toDouble()) v.toLong().toString() else String.format("%.1f", v)
+private fun fmt(v: Double): String = if (v == v.toLong().toDouble()) v.toLong().toString() else "%.1f".format(Locale.ROOT, v)

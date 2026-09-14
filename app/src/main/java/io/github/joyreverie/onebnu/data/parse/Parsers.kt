@@ -363,12 +363,15 @@ object Parsers {
             val building = Regex("""楼房\s*[：:]\s*(\S+)""").find(info)?.groupValues?.get(1).orEmpty()
             val type = Regex("""教室类型\s*[：:]\s*(\S+)""").find(info)?.groupValues?.get(1).orEmpty()
 
-            // 向后找这间教室对应的课程表格
+            // 向后找这间教室自己的课程表格；走到下一间教室的标题块就停。没排课的教室在页面里
+            // 根本没有表格，以前会顺着找到下一间的表格，把别人的占用「继承」过来、显示成有课。
             var el = wrapper.nextElementSibling()
-            while (el != null && !el.tagName().equals("table", ignoreCase = true)) {
+            var table: Element? = null
+            while (el != null) {
+                if (el.tagName().equals("table", ignoreCase = true)) { table = el; break }
+                if (el.selectFirst("label#lbl_classroom") != null) break
                 el = el.nextElementSibling()
             }
-            val table = el ?: doc.select("table").firstOrNull { it.text().contains("节次") }
             val busy = if (table != null) parseRoomBusy(table) else emptyList()
 
             out += Classroom(building, room, capacity, type, busy)
@@ -393,6 +396,13 @@ object Parsers {
             if (weeksRaw.isBlank() || periodRaw.isBlank()) continue
             val name = cells.getOrNull(iName).orEmpty().replace(Regex("""^\[[^\]]+]\s*"""), "")
             val teacher = cells.getOrNull(iTeacher).orEmpty()
+            // 周次可能带单双周标记，如 "1-16(单)"；不识别的话单周课会把双周也占掉
+            val parity = when {
+                weeksRaw.contains("单") -> "单"
+                weeksRaw.contains("双") -> "双"
+                else -> ""
+            }
+            val weeks = expandWeeks(weeksRaw.replace(Regex("""[^\d,，\-]"""), ""), parity)
 
             // 节次形如 "二[7-8节]"，一行内可能有多段
             for (pm in Regex("""([一二三四五六日天])\s*[\[【]\s*(\d+)\s*(?:-\s*(\d+))?\s*节?\s*[]】]""").findAll(periodRaw)) {
@@ -400,7 +410,7 @@ object Parsers {
                 val start = pm.groupValues[2].toIntOrNull() ?: continue
                 val end = pm.groupValues[3].toIntOrNull() ?: start
                 busy += ClassSession(
-                    weeks = expandWeeks(weeksRaw),
+                    weeks = weeks,
                     weeksLabel = weeksRaw,
                     dayOfWeek = day,
                     startPeriod = start,
@@ -507,25 +517,6 @@ object Parsers {
             out += InfoItem(name, credit.ifBlank { "—" })
         }
         return out
-    }
-
-    /** 学籍页是 label/value 交替的表格。 */
-    fun parseInfoTable(html: String): List<InfoItem> {
-        val doc = Jsoup.parse(html)
-        val out = LinkedHashMap<String, String>()
-        for (row in doc.select("tr")) {
-            val cells = row.select("td, th").map { it.cleanText() }
-            var i = 0
-            while (i + 1 < cells.size) {
-                val label = cells[i].trimEnd('：', ':')
-                val value = cells[i + 1]
-                if (label.isNotBlank() && label.length <= 12 && value.isNotBlank() && !value.contains("　　")) {
-                    out.putIfAbsent(label, value)
-                }
-                i += 2
-            }
-        }
-        return out.map { InfoItem(it.key, it.value) }
     }
 
     // ------------------------------------------------------------------

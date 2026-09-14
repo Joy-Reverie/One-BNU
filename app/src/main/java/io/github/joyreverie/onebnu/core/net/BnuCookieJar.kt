@@ -13,12 +13,16 @@ import okhttp3.HttpUrl
  *
  * 唯一的例外是 [DEVICE_COOKIE]：那是服务端用来认设备的记号，不是凭据。
  * 它必须跨进程留存，否则每次启动都被当成新设备、每次登录都要重新做短信二次认证。
+ *
+ * 一枚 Cookie 由 (名字, 域, 路径) 共同标识（RFC 6265）。以前只按 (域, 名字) 存，
+ * OneVPN 代理下教务、门户与 wengine 自己落在同一主机不同路径上的同名 `JSESSIONID` 会互相覆盖。
  */
 class BnuCookieJar(
     private val device: DeviceMarkStore? = null,
     private val casHost: String = DEFAULT_CAS_HOST,
 ) : CookieJar {
 
+    /** 域 → (名字 + 路径 → Cookie)。 */
     private val store = LinkedHashMap<String, MutableMap<String, Cookie>>()
 
     init {
@@ -28,13 +32,17 @@ class BnuCookieJar(
 
     @Synchronized
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        for (cookie in cookies) {
+        val now = System.currentTimeMillis()
+        for (raw in cookies) {
+            val cookie = scoped(url, raw)
             val bucket = store.getOrPut(cookie.domain) { mutableMapOf() }
-            if (cookie.expiresAt < System.currentTimeMillis()) {
-                bucket.remove(cookie.name)
+            val key = keyOf(cookie)
+            if (cookie.expiresAt < now) {
+                bucket.remove(key)
             } else {
-                bucket[cookie.name] = cookie
-                if (cookie.name == DEVICE_COOKIE) device?.serverMark = cookie.value
+                bucket[key] = cookie
+                // 设备标记只认认证主机自己下发的；别的站点下发的同名 Cookie 不能覆盖持久化的那份。
+                if (cookie.name == DEVICE_COOKIE && url.host == casHost) device?.serverMark = cookie.value
             }
         }
     }
@@ -43,17 +51,17 @@ class BnuCookieJar(
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
         val now = System.currentTimeMillis()
         val out = ArrayList<Cookie>()
-        val seen = HashSet<String>()
         for ((domain, bucket) in store) {
             if (!url.host.domainMatches(domain)) continue
             val it = bucket.entries.iterator()
             while (it.hasNext()) {
                 val cookie = it.next().value
                 if (cookie.expiresAt < now) { it.remove(); continue }
-                if (!cookie.matches(url)) continue
-                if (seen.add(cookie.name)) out += cookie
+                if (cookie.matches(url)) out += cookie
             }
         }
+        // 与浏览器一致：路径更具体的排在前面，服务端取第一个同名值时拿到的是最贴近这条路径的那份。
+        out.sortByDescending { it.path.length }
         return out
     }
 
@@ -69,7 +77,7 @@ class BnuCookieJar(
         val now = System.currentTimeMillis()
         return store.any { (domain, bucket) ->
             casHost.domainMatches(domain) &&
-                bucket[CAS_TICKET]?.let { it.expiresAt >= now && it.value.isNotBlank() } == true
+                bucket.values.any { it.name == CAS_TICKET && it.expiresAt >= now && it.value.isNotBlank() }
         }
     }
 
@@ -88,6 +96,28 @@ class BnuCookieJar(
         device?.reset()
     }
 
+    /**
+     * CASTGC 只该留在认证主机上：服务端若带了 `Domain=.bnu.edu.cn`，这里收窄成 host-only，
+     * 不让全局票据随请求扩散到其他子域。
+     */
+    private fun scoped(url: HttpUrl, cookie: Cookie): Cookie {
+        if (cookie.name != CAS_TICKET || cookie.hostOnly) return cookie
+        return Cookie.Builder()
+            .name(cookie.name)
+            .value(cookie.value)
+            .hostOnlyDomain(url.host)
+            .path(cookie.path)
+            .expiresAt(cookie.expiresAt)
+            .apply {
+                if (cookie.secure) secure()
+                if (cookie.httpOnly) httpOnly()
+            }
+            .build()
+    }
+
+    /** 名字和路径都不可能含换行，用它分隔最稳妥。 */
+    private fun keyOf(cookie: Cookie): String = cookie.name + "\n" + cookie.path
+
     private fun seedDeviceCookie(value: String) {
         val cookie = Cookie.Builder()
             .name(DEVICE_COOKIE)
@@ -97,7 +127,7 @@ class BnuCookieJar(
             .path("/")
             .expiresAt(System.currentTimeMillis() + DEVICE_COOKIE_TTL_MS)
             .build()
-        store.getOrPut(cookie.domain) { mutableMapOf() }[cookie.name] = cookie
+        store.getOrPut(cookie.domain) { mutableMapOf() }[keyOf(cookie)] = cookie
     }
 
     private fun String.domainMatches(domain: String): Boolean =

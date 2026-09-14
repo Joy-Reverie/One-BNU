@@ -24,7 +24,6 @@ internal object PortalSso {
         val portalHost: String,
         val portalPath: String,
         val clientId: String,
-        val hasCasDelegate: Boolean,
     )
 
     private val configs = mapOf(
@@ -33,15 +32,12 @@ internal object PortalSso {
             portalHost = BEIJING_PORTAL,
             portalPath = "/tp_nup",
             clientId = BEIJING_CLIENT,
-            hasCasDelegate = true,
         ),
         Campus.ZHUHAI to Config(
             casHost = CAS_ZHUHAI,
             portalHost = ZHUHAI_PORTAL,
             portalPath = ZHUHAI_PORTAL_PATH,
             clientId = ZHUHAI_CLIENT,
-            // cas.html 直接把缺省的 JS null 拼进查询串，官方请求实际是 casDelegate=null。
-            hasCasDelegate = true,
         ),
     )
 
@@ -211,7 +207,8 @@ internal object PortalSso {
         .addPathSegments("gateway/sems-authc/oauth2/casToken")
         .addPathSegment(code)
         .addPathSegment(config.clientId)
-        .apply { addQueryParameter("casDelegate", casDelegate ?: if (config.hasCasDelegate) "null" else "") }
+        // cas.html 直接把缺省的 JS null 拼进查询串，两校区官方请求实际都是 casDelegate=null。
+        .apply { addQueryParameter("casDelegate", casDelegate ?: "null") }
         .build()
         .toString()
 

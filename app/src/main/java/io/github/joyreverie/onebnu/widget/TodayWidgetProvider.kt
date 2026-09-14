@@ -1,5 +1,7 @@
 package io.github.joyreverie.onebnu.widget
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
@@ -12,13 +14,15 @@ import android.os.Bundle
  *
  * 渲染只读本地缓存（见 ScheduleCache），不联网；缓存由应用加载课表时写入，
  * 或由 [WidgetRefreshJob] 在后台定时 / 手动刷新。系统按 updatePeriodMillis 每半小时唤起一次，
- * 保证过了零点后课表能翻到新的一天，也让「进行中 / 已结束」的标记跟着时间走。
+ * 保证过了零点后课表能翻到新的一天；「进行中 / 已结束」的标记另外由 [scheduleTick] 在下一个变化点
+ * （某节开始或结束）准点重绘，不再最多滞后半小时。
  */
 open class TodayWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         ids.forEach { render(context, manager, it) }
         WidgetRefreshJob.scheduleIfStale(context)
+        scheduleTick(context)
     }
 
     override fun onAppWidgetOptionsChanged(
@@ -36,9 +40,14 @@ open class TodayWidgetProvider : AppWidgetProvider() {
 
     override fun onDisabled(context: Context) {
         WidgetRefreshJob.cancel(context)
+        context.getSystemService(AlarmManager::class.java)?.cancel(tickIntent(context))
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_TICK) {
+            updateAll(context)
+            return
+        }
         if (intent.action == ACTION_REFRESH) {
             WidgetState(context, io.github.joyreverie.onebnu.core.di.ServiceLocator.activeCampus).refreshing = true
             updateAll(context)
@@ -50,6 +59,9 @@ open class TodayWidgetProvider : AppWidgetProvider() {
 
     companion object {
         const val ACTION_REFRESH = "io.github.joyreverie.onebnu.widget.REFRESH"
+
+        /** 到了某节课开始 / 结束的时刻：只重绘，不联网。 */
+        const val ACTION_TICK = "io.github.joyreverie.onebnu.widget.TICK"
 
         /** 各默认尺寸对应的 receiver，重绘时都要照顾到。 */
         private val PROVIDERS: List<Class<out AppWidgetProvider>> = listOf(
@@ -65,7 +77,27 @@ open class TodayWidgetProvider : AppWidgetProvider() {
         /** 重绘桌面上的每一个实例（所有尺寸）；没有放小组件时什么也不做。 */
         fun updateAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context) ?: return
-            allIds(context, manager).forEach { render(context, manager, it) }
+            val ids = allIds(context, manager)
+            ids.forEach { render(context, manager, it) }
+            if (ids.isNotEmpty()) scheduleTick(context)
+        }
+
+        private fun tickIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
+            context,
+            2102,
+            Intent(context, TodayWidgetProvider::class.java).setAction(ACTION_TICK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        /**
+         * 在下一个「进行中 / 已结束」变化点重绘一次。用的是非精确闹钟（不需要权限，系统可能合并推迟一会儿），
+         * 但远好过等系统半小时一次的唤起。每次重绘都会重排，所以永远只挂着下一个点。
+         */
+        private fun scheduleTick(context: Context) {
+            val alarms = context.getSystemService(AlarmManager::class.java) ?: return
+            runCatching {
+                alarms.set(AlarmManager.RTC, TodayWidgetRenderer.nextChangeMillis(context) + 1_000L, tickIntent(context))
+            }
         }
 
         /**

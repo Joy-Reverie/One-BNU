@@ -13,10 +13,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -66,11 +69,13 @@ fun ExamScreen(onBack: () -> Unit, vm: ExamViewModel = viewModel()) {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                 },
                 actions = {
+                    IconButton(onClick = { vm.load(forceRefresh = true) }) { Icon(Icons.Filled.Refresh, "刷新") }
                     if (s.rounds.isNotEmpty()) {
                         Box {
                             TextButton(onClick = { menu = true }) {
                                 Text(
-                                    s.round?.name?.take(14) ?: "选择轮次",
+                                    s.round?.name ?: "选择轮次",
+                                    modifier = Modifier.widthIn(max = 220.dp),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -112,7 +117,8 @@ fun ExamScreen(onBack: () -> Unit, vm: ExamViewModel = viewModel()) {
                         contentPadding = LocalScreenInfo.current.listPadding(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        items(s.exams, key = { it.courseName + it.time }) { ExamCard(it) }
+                        // 同一门课同一时段可能有两条（分教室 / 分座位），键带下标避免重复键崩溃
+                        itemsIndexed(s.exams, key = { index, e -> "${e.courseName}|${e.time}#$index" }) { _, e -> ExamCard(e) }
                     }
                 }
             }

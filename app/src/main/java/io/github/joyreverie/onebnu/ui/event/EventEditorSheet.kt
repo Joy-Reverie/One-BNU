@@ -87,7 +87,9 @@ fun EventEditorSheet(
     var editingRepeat by remember { mutableStateOf(false) }
 
     val timeOk = end.isAfter(start)
-    val valid = title.isNotBlank() && timeOk
+    // 重复结束日期早于开始日期的日程永远不会发生，不让它存下来
+    val repeatOk = repeatDays.isEmpty() || repeatUntil?.isBefore(date) != true
+    val valid = title.isNotBlank() && timeOk && repeatOk
     val preview = PersonalEvent("", "", date, start, end, repeatDays = repeatDays, repeatUntil = repeatUntil)
 
     ModalBottomSheet(
@@ -128,6 +130,14 @@ fun EventEditorSheet(
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "结束时间需要晚于开始时间",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (!repeatOk) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "重复结束日期不能早于开始日期",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )

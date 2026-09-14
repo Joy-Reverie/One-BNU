@@ -71,6 +71,18 @@ object TodayWidgetRenderer {
         return render(context, base, w, h)
     }
 
+    /**
+     * 小组件上「进行中 / 已结束」下一次会变的时刻（毫秒）；今天没有变化了就用明天零点（翻到新的一天）。
+     * 系统自己的半小时唤起太粗，只靠它「进行中」会滞后最多半小时。
+     */
+    fun nextChangeMillis(context: Context): Long {
+        val today = LocalDate.now()
+        val now = LocalTime.now()
+        val rows = TodayWidgetModel.build(input(loadBase(context), 10_000, today, now)).rows
+        val at = TodayWidgetModel.nextChange(rows, now)?.let { today.atTime(it) } ?: today.plusDays(1).atStartOfDay()
+        return at.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+    }
+
     private fun loadBase(context: Context): Base {
         val state = WidgetState(context, ServiceLocator.activeCampus)
         return Base(

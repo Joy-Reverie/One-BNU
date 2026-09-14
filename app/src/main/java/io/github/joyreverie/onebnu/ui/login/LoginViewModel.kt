@@ -104,8 +104,22 @@ class LoginViewModel : ViewModel() {
     /** 是否已保存凭据，可直接尝试自动登录。 */
     fun canAutoLogin(): Boolean = secure.hasCredentials
 
+    private var autoLoginTried = false
+
+    /**
+     * 带着已保存的凭据自动登录，一个 ViewModel 只做一次。以前这个标记放在界面里，
+     * 旋转屏幕重建界面就再来一次 —— 密码错时会连着失败、很快被要求验证码。
+     */
+    fun autoLogin(onSuccess: () -> Unit) {
+        if (autoLoginTried || !canAutoLogin()) return
+        autoLoginTried = true
+        login(onSuccess)
+    }
+
     fun login(onSuccess: () -> Unit) {
         val s = _state.value
+        // 已经在登录了（例如旋转屏幕后自动登录再次触发），不再发第二个并发请求
+        if (s.loading) return
         if (s.username.isBlank()) {
             _state.update { it.copy(error = "请输入学工号") }
             return
@@ -246,7 +260,7 @@ class LoginViewModel : ViewModel() {
             _state.update {
                 it.copy(
                     loading = false,
-                    error = "登录请求超时，请检查校园网、代理或 VPN 后重试",
+                    error = "登录请求超时，请检查网络后重试",
                 )
             }
             null

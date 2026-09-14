@@ -152,6 +152,7 @@ object ServiceLocator {
         OneVpnSso.reset()
         current.auth.logout()
         current.api.invalidate()
+        current.repo.resetPrefetch()
         current.session.clear()
         if (forgetCredentials) current.secure.clear()
         WidgetState(app, activeCampus).clear()
@@ -166,6 +167,7 @@ object ServiceLocator {
         current.scheduleCache.clear()
         current.session.clear()
         current.api.invalidate()
+        current.repo.resetPrefetch()
         PortalSso.clear(activeCampus)
         WidgetState(app, activeCampus).clear()
     }

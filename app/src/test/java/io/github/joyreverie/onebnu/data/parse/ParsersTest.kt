@@ -298,4 +298,28 @@ class ParsersTest {
             Parsers.parseCourseCategories(html),
         )
     }
+
+
+    @Test
+    fun `没有课表的教室不会继承下一间的占用，且识别单双周`() {
+        val html = """
+            <div><div><label id="lbl_classroom">教室</label>：教二101(60)</div>
+                 <div><label id="lbl_louf">楼房</label>：教二</div></div>
+            <div><div><label id="lbl_classroom">教室</label>：教二102(60)</div>
+                 <div><label id="lbl_louf">楼房</label>：教二</div></div>
+            <table>
+              <tr><th>课程</th><th>周次</th><th>节次</th></tr>
+              <tr><td>[X001]示例课程</td><td>1-16(单)</td><td>一[1-2节]</td></tr>
+            </table>
+        """.trimIndent()
+        val rooms = Parsers.parseClassrooms(html)
+        assertEquals(listOf("教二101", "教二102"), rooms.map { it.name })
+        assertTrue("没有表格的教室应当没有占用", rooms[0].busy.isEmpty())
+
+        val slot = rooms[1].busy.single()
+        assertEquals(setOf(1, 3, 5, 7, 9, 11, 13, 15), slot.weeks)
+        assertEquals("1-16(单)", slot.weeksLabel)
+        assertTrue("双周应空闲", rooms[1].isFreeAt(2, 1, 1..2))
+        assertTrue("单周被占", !rooms[1].isFreeAt(3, 1, 1..2))
+    }
 }

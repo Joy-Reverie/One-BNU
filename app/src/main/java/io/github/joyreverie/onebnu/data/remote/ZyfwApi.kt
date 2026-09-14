@@ -30,9 +30,6 @@ class ZyfwApi(
         private const val TAG = "OneBNU/Zyfw"
         const val BASE = "http://zyfw.bnu.edu.cn"
 
-        /** 教务系统只提供 HTTP；移动网络下由北京 OneVPN 以 HTTPS 代理访问。 */
-        const val NOTE_CLEARTEXT = "zyfw.bnu.edu.cn 仅支持 HTTP，流量网络使用 OneVPN 代理"
-
         /** OneVPN 短暂故障时避免每个接口都重新等待一次代理超时。 */
         private const val PROXY_BACKOFF_MS = 2 * 60 * 1000L
 
@@ -450,9 +447,6 @@ class ZyfwApi(
             ).body,
         )
     }
-
-    /** 用于在 WebView 中免密打开教务/门户页面。 */
-    fun ssoUrl(service: String): String = auth.ssoUrl(service)
 
     private val home: String get() = "$activeBase/frame/homes.html"
 }

@@ -101,6 +101,8 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 
 `mapping.txt` 要**每个版本各存一档**，否则用户回报的崩溃栈无法还原；`scripts/archive-release.sh` 把 APK、mapping、seeds 和 SHA-256 一起放进 `~/Documents/Android/onebnu-mappings/v<版本>/`（可用 `ONEBNU_MAPPING_DIR` 改目录）。
 
+版本名按学期命名：`2627s1.01` = 2026-2027 学年第一学期（秋季）第 1 版，`2627s2.01` = 同一学年第二学期（春季）第 1 版，先后按 学年 → 学期 → 序号。发版只改 `app/build.gradle.kts` 里的 `versionName`，`versionCode` 由它推导。
+
 依赖仓库默认先走阿里云镜像；设置了 `CI` 环境变量的环境（如 GitHub Actions）直连官方源。Gradle wrapper 使用腾讯云镜像，
 可自行改回 `services.gradle.org`。
 

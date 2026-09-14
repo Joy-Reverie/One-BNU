@@ -56,7 +56,27 @@ class HomeViewModel : ViewModel() {
         }
     }
 
+    /** 当前状态是按哪一天算的；回到前台时若已跨天就整页重算。 */
+    private var stateDate: LocalDate = LocalDate.now()
+
+    /**
+     * 回到前台：跨过零点就重刷今日课程与日程（进程留后台过夜后第二天还显示昨天），
+     * 否则只把问候语换成当前时段的。
+     */
+    fun onResumed() {
+        val today = LocalDate.now()
+        if (today != stateDate) {
+            _state.value = _state.value.copy(
+                todayEvents = events.events.value.filter { it.occursOn(today) }.sortedBy { it.start },
+            )
+            refresh()
+        } else {
+            _state.value = _state.value.copy(greeting = greetingFor(LocalTime.now()))
+        }
+    }
+
     fun refresh(forceRefresh: Boolean = false) {
+        stateDate = LocalDate.now()
         _state.value = _state.value.copy(loading = true, error = null)
         viewModelScope.launch {
             val today = LocalDate.now().dayOfWeek.value

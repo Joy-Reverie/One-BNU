@@ -15,7 +15,12 @@ import io.github.joyreverie.onebnu.data.model.Schedule
 import io.github.joyreverie.onebnu.data.model.Term
 import io.github.joyreverie.onebnu.data.parse.Parsers
 import io.github.joyreverie.onebnu.data.remote.ZyfwApi
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -389,34 +394,6 @@ class AcademicRepository(
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("这栋楼没有查询到教室课表", o.freshness) else o
     }
 
-    suspend fun studentInfo(forceRefresh: Boolean = false): Outcome<List<InfoItem>> {
-        return dataMutex.withLock {
-            if (!forceRefresh) {
-                offlineCache?.let { cache ->
-                    withContext(Dispatchers.IO) { cache.loadInfoItems(OfflineCache.STUDENT_INFO_ITEMS) }
-                }?.takeIf { it.isNotEmpty() }?.let { return@withLock Outcome.Ok(it) }
-            }
-            val live = call { Parsers.parseInfoTable(api.studentInfoHtml()) }
-            if (live is Outcome.Ok) {
-                if (live.data.isNotEmpty()) {
-                    offlineCache?.let { cache ->
-                        withContext(Dispatchers.IO) { cache.saveInfoItems(OfflineCache.STUDENT_INFO_ITEMS, live.data) }
-                    }
-                } else {
-                    offlineCache?.let { cache ->
-                        withContext(Dispatchers.IO) { cache.loadInfoItems(OfflineCache.STUDENT_INFO_ITEMS) }
-                    }?.takeIf { it.isNotEmpty() }?.let { return@withLock Outcome.Ok(it) }
-                }
-                return@withLock if (live.data.isEmpty()) Outcome.Empty("没有查询到学籍信息") else live
-            }
-            val cached = offlineCache?.let { cache ->
-                withContext(Dispatchers.IO) { cache.loadInfoItems(OfflineCache.STUDENT_INFO_ITEMS) }
-            }
-            if (cached != null) return@withLock if (cached.isEmpty()) Outcome.Empty("没有查询到学籍信息") else Outcome.Ok(cached)
-            return@withLock live
-        }
-    }
-
     suspend fun creditRequirement(forceRefresh: Boolean = false): Outcome<List<InfoItem>> = cachedHtml(
         key = OfflineCache.CREDIT_REQUIREMENTS,
         request = { api.creditRequirementHtml() },
@@ -427,29 +404,62 @@ class AcademicRepository(
         if (o is Outcome.Ok && o.data.isEmpty()) Outcome.Empty("没有查询到毕业学分要求", o.freshness) else o
     }
 
+    private val prefetchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var prefetchJob: Job? = null
+    private var prefetchDone = false
+
     /**
-     * 登录成功后后台预热基本数据。每项独立失败，不能因为某个校区接口暂时不可用
-     * 而阻断其余快照；各方法自身仍会把成功响应写入本地并在断网时回退。
+     * 登录成功后在后台预热基本数据。一次会话只跑一遍，且不随界面重建而取消或重跑：
+     * 它原来挂在 Root 的 LaunchedEffect 上，旋转一次屏幕就把十几个串行请求重来一遍。
+     */
+    @Synchronized
+    fun prefetchBasicDataInBackground() {
+        if (prefetchDone || prefetchJob?.isActive == true) return
+        prefetchJob = prefetchScope.launch {
+            prefetchBasicData()
+            synchronized(this@AcademicRepository) { prefetchDone = true }
+        }
+    }
+
+    /** 换账号或退出登录后允许再预取一次。 */
+    @Synchronized
+    fun resetPrefetch() {
+        prefetchJob?.cancel()
+        prefetchJob = null
+        prefetchDone = false
+    }
+
+    /**
+     * 每项独立失败，不能因为某个接口暂时不可用而阻断其余快照；
+     * 各方法自身仍会把成功响应写入本地并在断网时回退。
      */
     suspend fun prefetchBasicData() {
-        val allTerms = (terms(forceRefresh = true) as? Outcome.Ok)?.data.orEmpty()
-        allTerms.forEach { term -> runCatching { schedule(term, forceRefresh = true) } }
+        val allTerms = (quietly { terms(forceRefresh = true) } as? Outcome.Ok)?.data.orEmpty()
+        allTerms.forEach { term -> quietly { schedule(term, forceRefresh = true) } }
         if (allTerms.isNotEmpty()) {
-            allTerms.forEach { term -> runCatching { courseModules(term, forceRefresh = true) } }
+            allTerms.forEach { term -> quietly { courseModules(term, forceRefresh = true) } }
         } else {
-            runCatching { courseModules(forceRefresh = true) }
+            quietly { courseModules(forceRefresh = true) }
         }
-        runCatching { grades(forceRefresh = true) }
-        runCatching { selectionCategories(forceRefresh = true) }
-        runCatching { studentInfo(forceRefresh = true) }
-        runCatching { creditRequirement(forceRefresh = true) }
+        quietly { grades(forceRefresh = true) }
+        quietly { selectionCategories(forceRefresh = true) }
+        quietly { creditRequirement(forceRefresh = true) }
 
-        val rounds = (examRounds(forceRefresh = true) as? Outcome.Ok)?.data.orEmpty()
-        rounds.forEach { round -> runCatching { exams(round.code, forceRefresh = true) } }
+        val rounds = (quietly { examRounds(forceRefresh = true) } as? Outcome.Ok)?.data.orEmpty()
+        rounds.forEach { round -> quietly { exams(round.code, forceRefresh = true) } }
 
-        val classroomCampus = classroomCampus(forceRefresh = true)
+        val classroomCampus = quietly { classroomCampus(forceRefresh = true) }
         if (classroomCampus is Outcome.Ok) {
-            runCatching { buildings(classroomCampus.data.code, forceRefresh = true) }
+            quietly { buildings(classroomCampus.data.code, forceRefresh = true) }
         }
+    }
+
+    /** 吞掉单项失败，但取消要照常传播 —— runCatching 会把 CancellationException 一起吞掉。 */
+    private suspend fun <T> quietly(block: suspend () -> T): T? = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
     }
 }

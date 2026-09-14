@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -342,12 +343,14 @@ private fun ResultList(s: ClassroomUiState) {
             }
         }
 
-        items(free, key = { it.name }) { room -> RoomCard(room) }
+        itemsIndexed(free, key = { index, room -> "${room.building}|${room.name}#$index" }) { _, room ->
+            RoomCard(room, s.week)
+        }
     }
 }
 
 @Composable
-private fun RoomCard(room: Classroom) {
+private fun RoomCard(room: Classroom, week: Int) {
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -366,7 +369,8 @@ private fun RoomCard(room: Classroom) {
                     listOfNotNull(
                         room.type.takeIf { it.isNotBlank() },
                         room.capacity?.let { "$it 座" },
-                        "本周共 ${room.busy.size} 次排课",
+                        // 只数所查那一周真正发生的，不是整学期的排课条数
+                        "本周共 ${room.busy.count { it.occursOn(week) }} 次排课",
                     ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

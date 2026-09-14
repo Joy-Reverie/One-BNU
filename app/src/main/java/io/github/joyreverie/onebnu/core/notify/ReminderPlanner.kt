@@ -130,4 +130,11 @@ object ReminderPlanner {
 
     /** 在 [start] 这一刻开始的事项。 */
     fun startingAt(items: List<ReminderItem>, start: LocalDateTime): List<ReminderItem> = items.filter { it.start == start }
+
+    /**
+     * 到点送达时真正要送的事项。系统可能把闹钟压后很久才送达（Doze、省电策略、关机再开机），
+     * 那时课可能已经开始甚至结束：已经结束的不再送 —— 送了也只是打扰；已开始还没结束的照送，
+     * 文案由 [ClassReminder.remainingLabel] 如实写成「已开始 N 分钟」。
+     */
+    fun due(items: List<ReminderItem>, now: LocalDateTime): List<ReminderItem> = items.filter { it.end.isAfter(now) }
 }

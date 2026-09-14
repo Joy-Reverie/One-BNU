@@ -95,13 +95,8 @@ fun LoginScreen(
     val state by vm.state.collectAsState()
     val screen = LocalScreenInfo.current
 
-    var autoTried by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        if (!autoTried && vm.canAutoLogin()) {
-            autoTried = true
-            vm.login(onLoggedIn)
-        }
-    }
+    // 自动登录只做一次；标记放在 ViewModel 里，旋转屏幕重建界面不会再触发
+    LaunchedEffect(Unit) { vm.autoLogin(onLoggedIn) }
 
     Box(Modifier.fillMaxSize()) {
         AuroraBackground()

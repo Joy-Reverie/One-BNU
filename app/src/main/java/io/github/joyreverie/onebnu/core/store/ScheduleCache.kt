@@ -32,7 +32,8 @@ class ScheduleCache(
     @Synchronized
     fun save(schedule: Schedule) {
         // 先写临时文件再改名，进程中途被杀也不会留下半截 JSON
-        val tmp = File(file.parentFile, "$FILE_NAME.tmp")
+        // 临时文件跟着正式文件名走：两校区各有一份缓存，共用一个 .tmp 会互相踩
+        val tmp = File(file.parentFile, "${file.name}.tmp")
         tmp.writeText(ScheduleJson.encode(schedule))
         if (!tmp.renameTo(file)) {
             file.delete()

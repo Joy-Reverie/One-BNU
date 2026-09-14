@@ -77,6 +77,27 @@ class Http(val client: OkHttpClient, val cookies: BnuCookieJar) {
     fun get(url: String, referer: String? = null, headers: Map<String, String> = emptyMap()): HttpResult =
         execute(newRequest(url, referer, headers).get().build())
 
+    /** 当前 Cookie 罐里会随 [url] 一起发出的 Cookie，按请求头格式拼好；没有则为空串。 */
+    fun cookieHeaderFor(url: String): String =
+        cookies.loadForRequest(url.toHttpUrl()).joinToString("; ") { "${it.name}=${it.value}" }
+
+    /**
+     * 在后台线程发一次不经 Cookie 罐的 GET，结果忽略。退出登录用它注销服务端会话：
+     * 本地 Cookie 已经先清掉了，所以要把注销前那份 Cookie 显式带上。
+     * 以前这一步直接在主线程发请求，NetworkOnMainThreadException 被吞掉，服务端票据从来没注销过。
+     */
+    fun fireAndForget(url: String, cookieHeader: String) {
+        if (cookieHeader.isBlank()) return
+        kotlin.concurrent.thread(name = "onebnu-fire-and-forget", isDaemon = true) {
+            runCatching {
+                client.newBuilder().cookieJar(okhttp3.CookieJar.NO_COOKIES).build()
+                    .newCall(newRequest(url, null, mapOf("Cookie" to cookieHeader)).get().build())
+                    .execute()
+                    .close()
+            }
+        }
+    }
+
     /** 只提交一跳表单；适合 CAS 登录，只需确认 CASTGC，不应等待业务站点的最终页面。 */
     internal fun postFormOnce(
         url: String,

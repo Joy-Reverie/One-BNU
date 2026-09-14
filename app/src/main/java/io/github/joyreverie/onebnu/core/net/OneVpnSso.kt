@@ -42,7 +42,6 @@ internal object OneVpnSso {
     fun markSessionEstablished() { sessionEstablished = true }
 
     fun reset() { sessionEstablished = false }
-    const val LOGIN_SERVICE = "https://onevpn.bnu.edu.cn/login?cas_login=true"
     const val COURSE_CENTER_BASE =
         "https://kczx.bnu.edu.cn/www/dd/vue/spa/jw-pyfa#"
     const val COURSE_CENTER = "${COURSE_CENTER_BASE}/pyfa"

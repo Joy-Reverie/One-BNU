@@ -67,6 +67,10 @@ class GradePreviewActivity : ComponentActivity() {
             grade("2026-2027 秋季学期", "AIS002", "统计学习", 82.0, 3.2),
             grade("2026-2027 秋季学期", "AIS003", "深度学习", 0.0, 0.0, remark = "缓考"),
             grade("2025-2026 春季学期", "GRA001", "学术英语", 88.0, 3.8),
+            // 首修不及格、下学期重修通过：只计最后一次
+            grade("2025-2026 春季学期", "AIS004", "高级算法设计", 85.0, 3.5, remark = "重修"),
+            grade("2025-2026 秋季学期", "AIS004", "高级算法设计", 52.0, 0.0),
+            grade("2025-2026 秋季学期", "AIS005", "人工智能导论", 91.0, 4.1),
         )
 
         val cached = intent.getBooleanExtra("cached", false)

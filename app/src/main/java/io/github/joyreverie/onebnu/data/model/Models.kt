@@ -106,6 +106,10 @@ data class Grade(
     val isDeferredExam: Boolean
         get() = listOf(scoreText, remark, examType).any { it.replace(Regex("\\s"), "").contains("缓考") }
 
+    /** 教务在考核方式、备注或课程性质里标了重修 / 补考：这条成绩是对更早一次修读的替代。 */
+    val isRetake: Boolean
+        get() = listOf(examType, remark, courseType).any { it.contains("重修") || it.contains("补考") }
+
     /**
      * 手动选择计算范围时使用的稳定、本机键。只由学期和课程标识组成，不含姓名、学号等身份信息。
      * 用哈希保存到设置，避免把课程名称等原文作为偏好项键写入磁盘。

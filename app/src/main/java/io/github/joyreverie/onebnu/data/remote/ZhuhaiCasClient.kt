@@ -28,7 +28,10 @@ class ZhuhaiCasClient(private val http: Http) : SessionAuthenticator {
         )
     }
 
-    override fun login(username: String, password: String, captcha: String): AuthResult {
+    override fun login(username: String, password: String, captcha: String): AuthResult =
+        synchronized(io.github.joyreverie.onebnu.core.net.SsoCoordinator.lock) { loginLocked(username, password) }
+
+    private fun loginLocked(username: String, password: String): AuthResult {
         // 珠海教务要求账号从珠海统一认证进入；使用教务首页作为 CAS service，
         // 成功后 CAS 会签发一次性 ticket，教务再把它换成本地 JSESSIONID。
         val service = "$JWXT_BASE/caslogin"
@@ -82,8 +85,11 @@ class ZhuhaiCasClient(private val http: Http) : SessionAuthenticator {
         login(username, password, "") is AuthResult.Success
 
     override fun logout() {
-        runCatching { http.get("$CAS_BASE/cas/logout") }
+        val logoutUrl = "$CAS_BASE/cas/logout"
+        // 与北京一致：本地先清，服务端注销放到后台，不再在主线程发请求
+        val cookieHeader = http.cookieHeaderFor(logoutUrl)
         http.cookies.clear()
+        http.fireAndForget(logoutUrl, cookieHeader)
     }
 
     override fun ssoUrl(service: String): String =

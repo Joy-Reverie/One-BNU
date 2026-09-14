@@ -149,4 +149,40 @@ class BnuCookieJarTest {
         assertEquals(1, mark.resetCount)
         assertTrue(j.loadForRequest(casUrl).isEmpty())
     }
+
+
+    // ------------------------------------------------------------------
+    // 路径与主机收窄
+    // ------------------------------------------------------------------
+
+    /** OneVPN 代理下 wengine 自己与被代理的教务都在同一主机上各设一枚 JSESSIONID，按路径区分、都要发出去。 */
+    @Test
+    fun `同名不同路径的 Cookie 各自保留，路径更长的排在前面`() {
+        val vpn = "https://onevpn.bnu.edu.cn/".toHttpUrl()
+        val proxied = "https://onevpn.bnu.edu.cn/http/77726476706e69737468656265737421/frame/homes.html".toHttpUrl()
+        val j = jar()
+        j.saveFromResponse(vpn, listOf(cookie("JSESSIONID=vpn; Path=/", vpn)))
+        j.saveFromResponse(proxied, listOf(cookie("JSESSIONID=zyfw; Path=/http/77726476706e69737468656265737421/", proxied)))
+
+        assertEquals(listOf("zyfw", "vpn"), j.loadForRequest(proxied).map { it.value })
+        assertEquals(listOf("vpn"), j.loadForRequest(vpn).map { it.value })
+    }
+
+    @Test
+    fun `带 Domain 的 CASTGC 收窄到认证主机，不会带给其他子域`() {
+        val j = jar()
+        j.saveFromResponse(casUrl, listOf(cookie("CASTGC=TGT-1-xyz; Domain=.bnu.edu.cn; Path=/")))
+        assertTrue(j.hasCasTicket())
+        assertEquals("TGT-1-xyz", j.loadForRequest(casUrl).single().value)
+        assertTrue(j.loadForRequest(zyfwUrl).isEmpty())
+    }
+
+    @Test
+    fun `其他站点下发的 devInfo 不会覆盖认证主机的设备标记`() {
+        val mark = FakeMark(serverMark = "ABC123")
+        val j = jar(mark)
+        j.saveFromResponse(zyfwUrl, listOf(cookie("devInfo=EVIL; Max-Age=2592000", zyfwUrl)))
+        assertEquals("ABC123", mark.serverMark)
+        assertEquals("ABC123", j.loadForRequest(casUrl).single().value)
+    }
 }

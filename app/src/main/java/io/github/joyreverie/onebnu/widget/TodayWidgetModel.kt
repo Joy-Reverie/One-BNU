@@ -239,6 +239,12 @@ object TodayWidgetModel {
         )
     }
 
+    /** 各行「进行中 / 已结束」下一次会变化的时刻（某节开始或结束）；今天已经不会再变时为 null。 */
+    fun nextChange(rows: List<Row>, now: LocalTime): LocalTime? =
+        rows.flatMap { listOfNotNull(parseTime(it.start), parseTime(it.end)) }
+            .filter { it.isAfter(now) }
+            .minOrNull()
+
     private fun statusOf(start: String, end: String, now: LocalTime): Status {
         val s = parseTime(start) ?: return Status.UPCOMING
         val e = parseTime(end) ?: return Status.UPCOMING

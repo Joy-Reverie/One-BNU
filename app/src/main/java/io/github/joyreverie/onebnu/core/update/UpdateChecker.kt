@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 
 /** GitHub Releases 上的一个发布版本。 */
 data class ReleaseInfo(
-    /** 去掉前缀 v 的版本号，如 `1.8.0`。 */
+    /** 去掉前缀 v 的版本号，如 `2627s1.01`。 */
     val version: String,
     val tag: String,
     val title: String,
@@ -149,7 +149,7 @@ class UpdateChecker(
         fun isNewer(latest: String, current: String): Boolean = compare(latest, current) > 0
 
         /**
-         * 按点分数字段逐段比较，缺省段按 0（`1.8` 等于 `1.8.0`）；
+         * 逐段比较版本号，缺省段按 0（`1.8` 等于 `1.8.0`）；
          * `-beta` / `+build` 之类的后缀不参与比较。
          */
         fun compare(a: String, b: String): Int {
@@ -163,10 +163,17 @@ class UpdateChecker(
             return 0
         }
 
-        private fun parts(version: String): List<Int> = normalize(version)
-            .substringBefore('-')
-            .substringBefore('+')
-            .split('.')
-            .map { seg -> seg.takeWhile { it.isDigit() }.toIntOrNull() ?: 0 }
+        /**
+         * 取出版本名里所有数字串，按出现顺序比较：
+         * `2627s1.03` → [2627, 1, 3]，`2627s2.01` → [2627, 2, 1]，`1.9.38` → [1, 9, 38]。
+         *
+         * 学期那一段不能丢：只取每段前导数字的话 `2627s1` 与 `2627s2` 都会变成 2627，
+         * 春季学期的版本就不比同学年秋季的新，更新提示与安装器都会把它当旧版拒掉。
+         * 数字串溢出 Int 时按最大值处理，比不出来也好过静默当 0。
+         */
+        private fun parts(version: String): List<Int> = Regex("""\d+""")
+            .findAll(normalize(version).substringBefore('-').substringBefore('+'))
+            .map { it.value.toIntOrNull() ?: Int.MAX_VALUE }
+            .toList()
     }
 }

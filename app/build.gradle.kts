@@ -26,6 +26,30 @@ if (releaseStoreFile == null) {
     logger.warn("未找到可用的 release 签名库（keystore.properties → storeFile），release 包将不签名")
 }
 
+// ---------------------------------------------------------------------------
+// 版本命名 `<学年><学期>.<序号>`：`2627s1.01` 是 2026-2027 学年第一学期（秋季）的第 1 个版本，
+// `2627s2.01` 是同一学年第二学期（春季）的第 1 个版本。学年取起止两年的后两位，第二个年份
+// 总是起始年 +1；序号每学期从 01 重新数起。先后一律按 学年 → 学期 → 序号，春季学期因此排在
+// 同一学年的秋季之后。tag、APK 文件名、归档目录都用这个串（`v2627s1.01`）。
+//
+// versionCode 由版本名推导，发版时只改下面 defaultConfig 里的 versionName 一处：
+//     学年 * 100000 + 学期 * 10000 + 序号
+//     2627s1.01 → 262710001，2627s2.01 → 262720001，2728s1.01 → 272810001
+// 严格递增，也远大于旧数字版本的最后一个 versionCode（1.9.37 = 57），升级方向不会反。
+// 写错格式直接让构建失败，而不是发出一个排序不对的包；应用内比较版本名的是
+// `core/update/UpdateChecker.parts`，两边的先后规则必须一致（有单元测试锁定）。
+// ---------------------------------------------------------------------------
+fun semesterVersionCode(name: String): Int {
+    val m = Regex("""^(\d{2})(\d{2})s([12])\.(\d{1,3})$""").matchEntire(name)
+        ?: throw GradleException("版本名「$name」不符合 <学年><学期>.<序号>，例：2627s1.01（2026-2027 学年第一学期第 1 版）")
+    val (from, to, semester, serial) = m.destructured
+    if (to.toInt() != (from.toInt() + 1) % 100) {
+        throw GradleException("版本名「$name」的学年要写连续两年，例：2627 表示 2026-2027 学年")
+    }
+    if (serial.toInt() < 1) throw GradleException("版本名「$name」的序号从 01 起数")
+    return "$from$to".toInt() * 100_000 + semester.toInt() * 10_000 + serial.toInt()
+}
+
 android {
     namespace = "io.github.joyreverie.onebnu"
     compileSdk = 35
@@ -34,8 +58,8 @@ android {
         applicationId = "io.github.joyreverie.onebnu"
         minSdk = 26
         targetSdk = 35
-        versionCode = 57
-        versionName = "1.9.37"
+        versionName = "2627s1.01"
+        versionCode = semesterVersionCode(versionName!!)
 
         // 「检查更新」查询的 GitHub 仓库；fork 后改这里即可指向自己的 Releases
         buildConfigField("String", "GITHUB_REPO", "\"Joy-Reverie/One-BNU\"")

@@ -37,6 +37,8 @@ data class ScheduleUiState(
     val termStart: LocalDate? = null,
     /** 全部个人日程；网格按所显示周的日期筛。 */
     val events: List<PersonalEvent> = emptyList(),
+    /** 界面上「今天」的依据；跨过零点后由 [ScheduleViewModel.onResumed] 刷新。 */
+    val today: LocalDate = LocalDate.now(),
 ) {
     /** 当前显示这一周里，周一到周日的日期。 */
     val weekDates: List<LocalDate>
@@ -155,6 +157,7 @@ class ScheduleViewModel : ViewModel() {
                     schedule = s.data,
                     freshness = s.freshness,
                     termStart = start,
+                    today = LocalDate.now(),
                     currentWeek = cur?.takeIf { it in 1..max },
                     week = (cur ?: 1).coerceIn(1, max),
                     maxWeek = max,
@@ -185,8 +188,19 @@ class ScheduleViewModel : ViewModel() {
         _state.value = _state.value.copy(week = w.coerceIn(1, _state.value.maxWeek))
     }
 
-    fun backToCurrentWeek() {
-        _state.value.currentWeek?.let { setWeek(it) }
+    /** 回到前台：跨过零点的话「今天」和「本周」都要重算，不然放一夜的进程第二天还标着昨天。 */
+    fun onResumed() {
+        val s = _state.value
+        val today = LocalDate.now()
+        if (today == s.today) return
+        val term = s.term
+        val start = s.termStart
+        val cur = if (term != null && start != null) {
+            currentWeekIn(term, start, maxOf(s.schedule?.maxWeek ?: 1, MIN_WEEKS))
+        } else {
+            null
+        }
+        _state.value = s.copy(today = today, currentWeek = cur?.takeIf { it in 1..s.maxWeek })
     }
 
     /**
@@ -221,8 +235,5 @@ class ScheduleViewModel : ViewModel() {
     companion object {
         /** 课表至少铺满这么多周，方便往后翻。 */
         private const val MIN_WEEKS = 20
-
-        /** 今天是周几（1=周一）。 */
-        fun todayDayOfWeek(): Int = LocalDate.now().dayOfWeek.value
     }
 }

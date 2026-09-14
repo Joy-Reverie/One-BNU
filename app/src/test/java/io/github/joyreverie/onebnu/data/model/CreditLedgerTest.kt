@@ -126,4 +126,15 @@ class CreditLedgerTest {
         assertEquals(CourseCategory.EXPANSION, automatic.entries.single().category)
         assertEquals(CategorySource.SCHEDULE, automatic.entries.single().source)
     }
+
+
+    @Test
+    fun `课程名启发式不再把专业课误判为公共课`() {
+        assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.infer(course("AIS21158399", "机器学习理论与实践", 2.0)))
+        assertEquals(CourseCategory.DEGREE_BASIC, CategoryRules.infer(course("PHI21100001", "生命伦理学", 3.0)))
+        assertEquals(CourseCategory.DEGREE_MAJOR, CategoryRules.infer(course("PES21100002", "体育社会学", 2.0)))
+        assertEquals(CourseCategory.PUBLIC_ELECTIVE, CategoryRules.infer(course("GRA20220301", "体育（1）", 1.0)))
+        assertEquals(CourseCategory.PUBLIC_REQUIRED, CategoryRules.infer(course("GRA20225822", "新时代中国特色社会主义理论与实践", 2.0)))
+        assertEquals(CourseCategory.PUBLIC_REQUIRED, CategoryRules.infer(course("GRA20225823", "工程伦理", 1.0)))
+    }
 }
