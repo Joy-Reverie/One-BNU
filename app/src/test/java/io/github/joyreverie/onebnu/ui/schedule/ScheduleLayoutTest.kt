@@ -72,6 +72,27 @@ class ScheduleLayoutTest {
     }
 
     @Test
+    fun `非本周的课只填空着的位置：与本周的课或日程有交集的不画，首尾相接与贴边日程不算挡`() {
+        val occupied = listOf(
+            GridItem.periods(1, 2, "数学"),
+            event("组会", "14:00", "16:00"),                // 约第 5–7 节
+            GridItem(8f, 8.1f, "取快递", pinned = true),      // 晚饭空档里的日程，贴在第 9 节上沿
+        )
+        val candidates = listOf(
+            GridItem.periods(1, 2, "单周英语"),   // 与数学完全重合
+            GridItem.periods(2, 3, "近代史"),     // 第 2 节与数学相交
+            GridItem.periods(3, 4, "程序设计"),   // 紧接着数学，不算
+            GridItem.periods(5, 6, "统计"),       // 与组会相交
+            GridItem.periods(7, 8, "数据挖掘"),   // 16:00 落在第 7 节里，仍与组会相交
+            GridItem.periods(9, 10, "论文写作"),  // 只碰到贴边的取快递，照画
+        )
+        assertEquals(
+            listOf("程序设计", "论文写作"),
+            ScheduleLayout.unoccupied(candidates, occupied).map { it.payload },
+        )
+    }
+
+    @Test
     fun `真正重叠的日程并成一簇，与课程重叠的日程也一样`() {
         val groups = ScheduleLayout.groupColumn(listOf(event("吃饭", "08:00", "09:30"), event("自习", "09:00", "10:00")))
         assertEquals(1, groups.size)

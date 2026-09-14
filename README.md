@@ -12,7 +12,7 @@
 
 ## 功能
 
-- **课表**：周视图、课程详情、多学期切换、双指缩放行高；左右滑动或点周次切周，离开本周时顶栏给一个「今」按钮；表头标注日期，当天整列高亮，列上一条随时间走动的「现在」指针，指针以上已经上过的课洗淡
+- **课表**：周视图、课程详情、多学期切换、双指缩放行高；左右滑动或点周次切周，离开本周时顶栏给一个「今」按钮；表头标注日期，当天整列高亮，列上一条随时间走动的「现在」指针，指针以上已经上过的课洗淡；设置里可选「显示非本周课程」，把排在别的周的课洗淡、描虚线并标「非本周」，只填本周空着的格子
 - **今日课表桌面小组件**：2×2 / 4×2 / 4×3 / 4×4 四种尺寸，跟随应用内的深浅色与色系，后台按需刷新；正在上的那节课下面一只小猫沿进度轨道奔跑，位置就是这节课过去了几成
 - **成绩与 GPA**：官方 / 4.0 / 4.3 等多种绩点口径换算，按学期统计；缓考（即使暂记为 0 分）自动不计入，可手动勾选计算范围
 - **考试安排**：含倒计时
@@ -129,7 +129,7 @@ debug 包内置了几个不登录就能打开的页面，用 adb 直接拉起：
 ```bash
 P=io.github.joyreverie.onebnu
 adb shell am start -n $P/.widget.HomePreviewActivity                       # 首页时间轴（--es mode empty 看空态）
-adb shell am start -n $P/.widget.SchedulePreviewActivity                   # 课表网格与日程编辑（--es now 09:00 钉住「现在」指针）
+adb shell am start -n $P/.widget.SchedulePreviewActivity                   # 课表网格与日程编辑（--es now 09:00 钉住「现在」指针，--ez others true 显示非本周课程）
 adb shell am start -n $P/.widget.WidgetPreviewActivity --es mode sample    # 小组件各尺寸（mode: sample|empty|loggedout|error）
 adb shell am start -n $P/.widget.ContactsPreviewActivity                   # 校内联系方式
 adb shell am start -n $P/.widget.CreditsPreviewActivity                    # 学分核算

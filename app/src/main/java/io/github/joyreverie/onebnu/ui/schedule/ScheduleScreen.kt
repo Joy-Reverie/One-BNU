@@ -69,7 +69,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -390,7 +398,8 @@ private fun Modifier.pinchToZoom(onZoom: (Float) -> Unit, onEnd: () -> Unit): Mo
 
 /** 网格里的一个格子是课还是日程。 */
 private sealed interface GridPayload {
-    data class CourseSlot(val course: Course, val session: ClassSession) : GridPayload
+    /** [otherWeek] 为真：这门课这一周不上，只是按「显示非本周课程」洗淡画出来的。 */
+    data class CourseSlot(val course: Course, val session: ClassSession, val otherWeek: Boolean = false) : GridPayload
     data class Event(val event: PersonalEvent) : GridPayload
 }
 
@@ -586,7 +595,7 @@ internal fun DayColumns(
     Row(modifier) {
         for (day in 1..7) {
             val date = dates.getOrNull(day - 1)
-            val items = schedule.slotsOn(s.week, day).map { (course, sess) ->
+            val current = schedule.slotsOn(s.week, day).map { (course, sess) ->
                 ScheduleLayout.GridItem.periods(
                     sess.startPeriod,
                     sess.endPeriod,
@@ -603,7 +612,22 @@ internal fun DayColumns(
                     pinned = PeriodMapper.insideLongBreak(e.start, e.end, s.periodTimes),
                 )
             }
-            val groups = ScheduleLayout.groupColumn(items)
+            // 「显示非本周课程」：别的周的课只填本周空着的位置，洗淡画出来，从不和本周的格子抢位置
+            val others = if (s.showOtherWeeks) {
+                ScheduleLayout.unoccupied(
+                    schedule.otherWeekSlotsOn(s.week, day).map { (course, sess) ->
+                        ScheduleLayout.GridItem.periods(
+                            sess.startPeriod,
+                            sess.endPeriod,
+                            GridPayload.CourseSlot(course, sess, otherWeek = true) as GridPayload,
+                        )
+                    },
+                    current,
+                )
+            } else {
+                emptyList()
+            }
+            val groups = ScheduleLayout.groupColumn(current + others)
             val isToday = isCurrentWeek && day == today
 
             Box(Modifier.weight(1f)) {
@@ -630,7 +654,8 @@ internal fun DayColumns(
                                 val key = "${s.week}:$day:${group.start}:$clusterIndex"
                                 val shownIndex = (shown[key] ?: 0).mod(items.size)
                                 val item = items[shownIndex]
-                                val conflicting = items.count { it.payload is GridPayload.CourseSlot } > 1
+                                // 只有本周真上的课撞在一起才算冲突；非本周的课彼此挤在一格只是都排在别的周
+                                val conflicting = items.count { (it.payload as? GridPayload.CourseSlot)?.otherWeek == false } > 1
                                 val inset = if (items.size > 1) OVERLAP_STRIP else 0.dp
                                 val shift = if (item.pinned) 0.dp else reserved[item.top] ?: 0.dp
                                 // 按时刻定位、按时长取高；太短的日程保证一个最小高度，能读出标题
@@ -654,6 +679,7 @@ internal fun DayColumns(
                                             course = p.course,
                                             session = p.session,
                                             conflicting = conflicting,
+                                            otherWeek = p.otherWeek,
                                             titleSize = titleSize,
                                             subSize = subSize,
                                             bottomInset = inset,
@@ -672,11 +698,15 @@ internal fun DayColumns(
                                         )
                                     }
                                     if (items.size > 1) {
+                                        // 非本周的课从不与本周的格子同簇，看当前显示的这个就知道整簇是不是洗淡的
+                                        val muted = (item.payload as? GridPayload.CourseSlot)?.otherWeek == true
                                         OverlapSwitch(
                                             index = shownIndex + 1,
                                             total = items.size,
                                             subSize = subSize,
-                                            modifier = Modifier.align(Alignment.BottomCenter),
+                                            modifier = Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .alpha(if (muted) OTHER_WEEK_SWITCH_ALPHA else 1f),
                                         ) { shown[key] = shownIndex + 1 }
                                     }
                                 }
@@ -900,70 +930,144 @@ private fun EventCell(
     }
 }
 
+/**
+ * 课程格子。[otherWeek] 为真时这门课这一周不上，只是按设置洗淡画出来：底色与强调条压到四成、
+ * 字压到六成、四周描一圈虚线，底部横过一条「非本周」标签带 —— 一眼分得出它不是这周的，也不会当成空格。
+ */
 @Composable
 private fun CourseCell(
     course: Course,
     session: ClassSession,
     modifier: Modifier = Modifier,
     conflicting: Boolean = false,
+    otherWeek: Boolean = false,
     titleSize: TextUnit = 10.sp,
     subSize: TextUnit = 9.sp,
     bottomInset: Dp = 0.dp,
 ) {
+    val density = LocalDensity.current
     val accent = courseAccent(course.name)
+    val fill = courseColor(course.name)
+    val textAlpha = if (otherWeek) OTHER_WEEK_TEXT_ALPHA else 1f
+    // 标签带的高度：一行小字加上下各一点余量；本周的课没有这条带
+    val tagBand: Dp = if (otherWeek) with(density) { (subSize * LINE_SPACING).toDp() } + TAG_BAND_PADDING * 2 else 0.dp
 
     Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(10.dp),
-        color = courseColor(course.name),
+        modifier = if (otherWeek) {
+            modifier.dashedOutline(MaterialTheme.colorScheme.outline.copy(alpha = OTHER_WEEK_OUTLINE_ALPHA), CELL_RADIUS)
+        } else {
+            modifier
+        },
+        shape = RoundedCornerShape(CELL_RADIUS),
+        color = if (otherWeek) fill.copy(alpha = OTHER_WEEK_FILL_ALPHA) else fill,
         border = if (conflicting) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else null,
     ) {
-        Row(Modifier.fillMaxSize()) {
-            // 左侧强调条：同色系但更深，让每块课在浅底上有明确归属
-            Box(Modifier.width(3.dp).fillMaxHeight().background(accent))
+        Box(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxSize()) {
+                // 左侧强调条：同色系但更深，让每块课在浅底上有明确归属
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .fillMaxHeight()
+                        .background(if (otherWeek) accent.copy(alpha = OTHER_WEEK_FILL_ALPHA) else accent),
+                )
 
-            // 行数按实际可用高度算出来。写死 2/3 行的话，跨 4 节的大格子
-            // 明明还空着一大片，课名却已经被截成「…」。
-            BoxWithConstraints(
-                Modifier.fillMaxSize().padding(start = 5.dp, end = 5.dp, top = 4.dp, bottom = 4.dp + bottomInset),
-            ) {
-                val density = LocalDensity.current
-                val titleLineDp: Dp = with(density) { (titleSize * LINE_SPACING).toDp() }
-                val subLineDp: Dp = with(density) { (subSize * LINE_SPACING).toDp() }
-                val avail = maxHeight
+                // 行数按实际可用高度算出来。写死 2/3 行的话，跨 4 节的大格子
+                // 明明还空着一大片，课名却已经被截成「…」。
+                BoxWithConstraints(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(start = 5.dp, end = 5.dp, top = 4.dp, bottom = 4.dp + bottomInset + tagBand),
+                ) {
+                    val titleLineDp: Dp = with(density) { (titleSize * LINE_SPACING).toDp() }
+                    val subLineDp: Dp = with(density) { (subSize * LINE_SPACING).toDp() }
+                    val avail = maxHeight
 
-                // 先给地点留一行，剩下全归课名；空间特别富裕时地点也放开到两行
-                val subLines = if (avail >= titleLineDp * 4 + subLineDp * 2) 2 else 1
-                val titleLines = ((avail - subLineDp * subLines - GAP) / titleLineDp)
-                    .toInt().coerceIn(1, 10)
-
-                Column {
-                    Text(
-                        course.name,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontSize = titleSize,
-                        lineHeight = titleSize * LINE_SPACING,
-                        maxLines = titleLines,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    if (session.location.isNotBlank()) {
-                        Spacer(Modifier.height(GAP))
-                        Text(
-                            session.location,
-                            fontSize = subSize,
-                            lineHeight = subSize * LINE_SPACING,
-                            maxLines = subLines,
-                            overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    // 先给地点留一行，剩下全归课名；空间特别富裕时地点也放开到两行。
+                    // 非本周的格子已经让出了标签带，矮到连「一行课名 + 一行地点」都放不下时先丢地点。
+                    val hasLocation = session.location.isNotBlank() &&
+                        (!otherWeek || avail >= titleLineDp + subLineDp + GAP)
+                    val subLines = when {
+                        !hasLocation -> 0
+                        avail >= titleLineDp * 4 + subLineDp * 2 -> 2
+                        else -> 1
                     }
+                    val titleLines = ((avail - subLineDp * subLines - (if (hasLocation) GAP else 0.dp)) / titleLineDp)
+                        .toInt().coerceIn(1, 10)
+
+                    Column {
+                        Text(
+                            course.name,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = titleSize,
+                            lineHeight = titleSize * LINE_SPACING,
+                            maxLines = titleLines,
+                            overflow = TextOverflow.Ellipsis,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = textAlpha),
+                        )
+                        if (hasLocation) {
+                            Spacer(Modifier.height(GAP))
+                            Text(
+                                session.location,
+                                fontSize = subSize,
+                                lineHeight = subSize * LINE_SPACING,
+                                maxLines = subLines,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = textAlpha),
+                            )
+                        }
+                    }
+                }
+            }
+            if (otherWeek) {
+                // 「非本周」标签带：横过整格底部（切换条之上），最窄的一列也放得下这三个字
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(bottom = bottomInset)
+                        .height(tagBand)
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = OTHER_WEEK_BAND_ALPHA)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "非本周",
+                        fontSize = subSize,
+                        lineHeight = subSize * LINE_SPACING,
+                        maxLines = 1,
+                        softWrap = false,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
     }
 }
+
+/** 非本周课的虚线描边：画在内容之上、沿着圆角内缩半个线宽，颜色淡到不抢眼。 */
+private fun Modifier.dashedOutline(color: Color, radius: Dp, width: Dp = 1.dp): Modifier = drawWithContent {
+    drawContent()
+    val w = width.toPx()
+    drawRoundRect(
+        color = color,
+        topLeft = Offset(w / 2f, w / 2f),
+        size = Size(size.width - w, size.height - w),
+        cornerRadius = CornerRadius(radius.toPx()),
+        style = Stroke(width = w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))),
+    )
+}
+
+private val CELL_RADIUS = 10.dp
+
+/** 非本周课程洗淡到什么程度：底色与强调条、文字、虚线、标签带、⇅ 切换条。 */
+private const val OTHER_WEEK_FILL_ALPHA = 0.45f
+private const val OTHER_WEEK_TEXT_ALPHA = 0.62f
+private const val OTHER_WEEK_OUTLINE_ALPHA = 0.55f
+private const val OTHER_WEEK_BAND_ALPHA = 0.06f
+private const val OTHER_WEEK_SWITCH_ALPHA = 0.7f
+private val TAG_BAND_PADDING = 1.5.dp
 
 private const val LINE_SPACING = 1.22f
 private val GAP = 2.dp

@@ -92,6 +92,22 @@ class Settings(
         get() = prefs.getFloat(KEY_SCHEDULE_ZOOM, 1f)
         set(value) { prefs.edit().putFloat(KEY_SCHEDULE_ZOOM, value).apply() }
 
+    private val _showOtherWeeks = MutableStateFlow(prefs.getBoolean(KEY_SHOW_OTHER_WEEKS, false))
+
+    /**
+     * 课表网格是否把这一周不上、排在别的周的课也画出来。画出来的洗淡、描虚线并标「非本周」，
+     * 只填本周真正空着的位置。默认关：老用户看到的网格保持原样。
+     */
+    var showOtherWeeks: Boolean
+        get() = _showOtherWeeks.value
+        set(value) {
+            prefs.edit().putBoolean(KEY_SHOW_OTHER_WEEKS, value).apply()
+            _showOtherWeeks.value = value
+        }
+
+    /** 以流的形式暴露：设置里一切换，课表页立即跟着变。 */
+    val showOtherWeeksFlow: StateFlow<Boolean> get() = _showOtherWeeks
+
     /** 上课提醒开关。与「日程提醒」平级，各自独立。 */
     var remindClasses: Boolean
         get() = prefs.getBoolean(KEY_REMIND_CLASSES, false)
@@ -168,6 +184,7 @@ class Settings(
         private const val KEY_GPA_EXCLUDED_COURSES = "gpa_excluded_course_keys"
         private const val KEY_LOCK = "require_unlock"
         private const val KEY_SCHEDULE_ZOOM = "schedule_zoom"
+        private const val KEY_SHOW_OTHER_WEEKS = "schedule_show_other_weeks"
         private const val KEY_REMIND_CLASSES = "remind_classes"
         private const val KEY_REMIND_EVENTS = "remind_events"
         private const val KEY_REMIND_LEAD = "reminder_lead_minutes"

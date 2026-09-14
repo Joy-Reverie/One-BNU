@@ -37,6 +37,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -71,7 +72,7 @@ import io.github.joyreverie.onebnu.widget.TodayWidgetProvider
 import java.time.LocalTime
 
 /**
- * 设置：外观、绩点口径、作息时间、网络诊断、检查更新。
+ * 设置：外观、绩点口径、课表、作息时间、网络诊断、检查更新。
  * 「关于与支持」不在这里 —— 它是「我的」页的一级入口，与设置并列。
  *
  * [currentVersion] 默认取构建版本号；debug 包的预览入口可以传一个旧版本号来演练更新流程。
@@ -172,6 +173,8 @@ fun SettingsScreen(
                 }
             }
 
+            item { ScheduleCard() }
+
             item { PeriodTimesCard() }
 
             item {
@@ -200,6 +203,29 @@ fun SettingsScreen(
             }
 
             item { UpdateCard(currentVersion, checker) }
+        }
+    }
+}
+
+/**
+ * 课表：「显示非本周课程」。开关一切换，课表页通过 `Settings.showOtherWeeksFlow` 立即跟着变，
+ * 别的周的课洗淡、描虚线并标「非本周」，只填本周空着的格子。
+ */
+@Composable
+private fun ScheduleCard() {
+    val settings = ServiceLocator.settings
+    val showOtherWeeks by settings.showOtherWeeksFlow.collectAsState()
+    SectionCard("课表") {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { settings.showOtherWeeks = !showOtherWeeks }
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("显示非本周课程", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Switch(checked = showOtherWeeks, onCheckedChange = { settings.showOtherWeeks = it })
         }
     }
 }

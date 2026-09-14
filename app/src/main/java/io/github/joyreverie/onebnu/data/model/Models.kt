@@ -68,11 +68,19 @@ data class Schedule(
 ) {
     val totalCredits: Double get() = courses.sumOf { it.credits }
 
+    /** 某天全部的固定安排，不看周次，按起始节排序；[slotsOn] 与 [otherWeekSlotsOn] 把它一分为二。 */
+    fun slotsOnDay(dayOfWeek: Int): List<Pair<Course, ClassSession>> =
+        courses.flatMap { c -> c.sessions.map { c to it } }
+            .filter { (_, s) -> s.dayOfWeek == dayOfWeek }
+            .sortedBy { (_, s) -> s.startPeriod }
+
     /** 展开成 (课程, 单次安排) 便于按格渲染。 */
     fun slotsOn(week: Int, dayOfWeek: Int): List<Pair<Course, ClassSession>> =
-        courses.flatMap { c -> c.sessions.map { c to it } }
-            .filter { (_, s) -> s.dayOfWeek == dayOfWeek && s.occursOn(week) }
-            .sortedBy { (_, s) -> s.startPeriod }
+        slotsOnDay(dayOfWeek).filter { (_, s) -> s.occursOn(week) }
+
+    /** 该天排在别的周、这一周不上的安排；「显示非本周课程」把它们洗淡画进本周空着的格子。 */
+    fun otherWeekSlotsOn(week: Int, dayOfWeek: Int): List<Pair<Course, ClassSession>> =
+        slotsOnDay(dayOfWeek).filterNot { (_, s) -> s.occursOn(week) }
 
     val maxWeek: Int
         get() = courses.flatMap { it.sessions }.flatMap { it.weeks }.maxOrNull() ?: 20

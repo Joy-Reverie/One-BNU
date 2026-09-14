@@ -145,6 +145,14 @@ object ScheduleLayout {
     }
 
     /**
+     * 非本周的课只填本周真正空着的位置：与本周任何一格（课或日程）在时间上有交集的候选一律不画，
+     * 否则每门单双周交替的课都会在本周那一格上多出一个 ⇅ 切换条，而且会被误判成冲突。
+     * 首尾相接不算交集；贴在行沿上的空档日程（[GridItem.pinned]）只占一条细带，不挡 —— 课照常让出那段高度。
+     */
+    fun <T> unoccupied(candidates: List<GridItem<T>>, occupied: List<GridItem<*>>): List<GridItem<T>> =
+        candidates.filter { c -> occupied.none { !it.pinned && it.overlaps(c) } }
+
+    /**
      * 把一列里的格子分块：先按时间重叠关系连成簇（与簇内任一格子有交集即并入，首尾相接不算），
      * 再把行范围有交集的簇合成一块，供界面按行顺序布局。
      * 只按上沿排序且保持稳定：同一时刻开始的，调用方先放进来的（课程）排在前面、默认显示。

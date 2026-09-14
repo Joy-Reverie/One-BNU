@@ -46,7 +46,8 @@ import kotlinx.coroutines.launch
  * 开发用：不登录直接看课表网格在当前屏幕（含横屏）下的行高与缩放效果。
  * 启动：adb shell am start -n io.github.joyreverie.onebnu/.widget.SchedulePreviewActivity [--ef zoom 1.3] [--es now 09:00]
  * --es now 把「现在」指针钉在指定时刻（示例课表的本周就是真实的这一周，指针落在今天那一列）；
- * --ez plain true 隐藏顶栏的调试按钮，用来截 README 里的图。
+ * --ez plain true 隐藏顶栏的调试按钮，用来截 README 里的图；
+ * --ez others true 打开「显示非本周课程」：示例里周一 5-6 / 9-10、周三 3-4 单双周、周四 1-2、周六 1-2 两门都排在别的周。
  * 只在 debug 包里。
  */
 class SchedulePreviewActivity : ComponentActivity() {
@@ -58,6 +59,7 @@ class SchedulePreviewActivity : ComponentActivity() {
         val initialZoom = intent.getFloatExtra("zoom", 1f)
         val fixedNow = intent.getStringExtra("now")?.let { runCatching { LocalTime.parse(it) }.getOrNull() }
         val plain = intent.getBooleanExtra("plain", false)
+        val others = intent.getBooleanExtra("others", false)
         val state = ScheduleUiState(
             loading = false,
             term = Term("2026", "0", "2026-2027学年秋季学期"),
@@ -67,6 +69,7 @@ class SchedulePreviewActivity : ComponentActivity() {
             maxWeek = 20,
             periodTimes = ServiceLocator.settings.periodTimes,
             termStart = LocalDate.of(2026, 9, 7),
+            showOtherWeeks = others,
             events = listOf(
                 PersonalEvent("e1", "体检", LocalDate.of(2026, 9, 18), LocalTime.of(8, 0), LocalTime.of(10, 0), "校医院", "带学生卡"),
                 // 与周四 5-6 节的课重叠，验证并排与上下对齐
@@ -140,10 +143,12 @@ class SchedulePreviewActivity : ComponentActivity() {
         }
     }
 
-    /** 照着真实课表的样子造的一周示例。 */
+    /** 照着真实课表的样子造的一周示例，外加几门排在别的周的课（「显示非本周课程」用）。 */
     private fun sample(): Schedule {
         val weeks = (1..16).toSet()
         fun s(dow: Int, a: Int, b: Int, where: String) = ClassSession(weeks, "1-16", dow, a, b, where)
+        fun w(weeks: Iterable<Int>, label: String, dow: Int, a: Int, b: Int, where: String) =
+            ClassSession(weeks.toSet(), label, dow, a, b, where)
         fun c(name: String, teacher: String, vararg sess: ClassSession) =
             Course(name, name, 2.0, 32, "01", listOf(teacher), sess.toList())
         return Schedule(
@@ -157,6 +162,17 @@ class SchedulePreviewActivity : ComponentActivity() {
                 c("人工智能前沿讲座", "刘老师", s(3, 7, 8, "九204")),
                 c("理论与实践课", "周老师", s(4, 7, 8, "七103")),
                 c("研究生英语", "Sarah", s(1, 9, 10, "教二 305")),
+                // 以下都不在第 2 周上，只有打开「显示非本周课程」才洗淡出现：
+                // 周一 5-6 与贴在第 5 节上沿的「取快递」同一行沿 —— 要让出细带；周一 9-10 与「讲座」重叠 —— 第 2 周不画
+                c("数据挖掘", "吴老师", w(9..16, "9-16", 1, 5, 6, "教八 210"), w(9..16, "9-16", 1, 9, 10, "教二 301")),
+                // 周三 3-4 单双周交替：本周上的一门正常显示，另一门与它重叠 —— 不画
+                c("深度学习", "孙老师", w(2..16 step 2, "2-16(双)", 3, 3, 4, "教四 201")),
+                c("统计学习", "何老师", w(1..15 step 2, "1-15(单)", 3, 3, 4, "教四 201")),
+                // 周四 1-2 从第 3 周开始：第 2 周洗淡，第 3 周起正常
+                c("人工智能前沿研讨", "高老师", w(3..10, "3-10", 4, 1, 2, "教七 305")),
+                // 周六 1-2 两门都排在别的周：彼此重叠，洗淡并带 ⇅ 切换条
+                c("科研伦理", "冯老师", w(9..12, "9-12", 6, 1, 2, "教九 101")),
+                c("学术英语", "Emma", w(13..16, "13-16", 6, 1, 2, "教九 101")),
             ),
         )
     }

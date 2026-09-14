@@ -39,6 +39,8 @@ data class ScheduleUiState(
     val events: List<PersonalEvent> = emptyList(),
     /** 界面上「今天」的依据；跨过零点后由 [ScheduleViewModel.onResumed] 刷新。 */
     val today: LocalDate = LocalDate.now(),
+    /** 设置里的「显示非本周课程」：把别的周的课洗淡画进本周空着的格子。 */
+    val showOtherWeeks: Boolean = false,
 ) {
     /** 当前显示这一周里，周一到周日的日期。 */
     val weekDates: List<LocalDate>
@@ -71,6 +73,9 @@ class ScheduleViewModel : ViewModel() {
         viewModelScope.launch {
             // 设置里改了作息，时间刻度与日程的纵向定位要立即跟着变，不必重新查课表
             settings.periodTimesFlow.collect { _state.value = _state.value.copy(periodTimes = it) }
+        }
+        viewModelScope.launch {
+            settings.showOtherWeeksFlow.collect { _state.value = _state.value.copy(showOtherWeeks = it) }
         }
     }
 
