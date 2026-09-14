@@ -58,6 +58,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -97,6 +98,7 @@ import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.courseAccent
 import io.github.joyreverie.onebnu.ui.theme.courseColor
 import java.time.LocalDate
+import java.time.LocalTime
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -144,6 +146,11 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
     fun goToWeek(week: Int) {
         val page = (week - 1).coerceIn(0, (s.maxWeek - 1).coerceAtLeast(0))
         scope.launch { pager.animateScrollToPage(page, animationSpec = tween(280)) }
+    }
+    // 「现在」指针的时钟，每分钟走一格；页面开着跨过零点时顺带让「今天」和「本周」重算
+    val clock = rememberMinuteClock()
+    LaunchedEffect(clock) {
+        snapshotFlow { clock.value }.collect { if (LocalDate.now() != vm.state.value.today) vm.onResumed() }
     }
 
     Scaffold(
@@ -252,6 +259,7 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
                                     },
                                     onClick = { c, sess -> selected = c to sess },
                                     onEventClick = { editing = it },
+                                    clock = clock,
                                 )
                             }
                         }
@@ -551,6 +559,7 @@ private fun PeriodGutter(
 /**
  * 某一周的七列。课与日程放进同一列：课程占整节，日程按起止时刻在行内定位；
  * 时间上真正重叠的才归为一簇（一次显示一个），首尾相接的各自显示。
+ * 本周的「今天」一列上叠着「现在」指针（[NowIndicator]），[clock] 为 null 时不画。
  */
 @Composable
 internal fun DayColumns(
@@ -562,6 +571,7 @@ internal fun DayColumns(
     modifier: Modifier = Modifier,
     onClick: (Course, ClassSession) -> Unit,
     onEventClick: (PersonalEvent) -> Unit = {},
+    clock: State<LocalTime>? = null,
 ) {
     // 重叠格子当前显示第几个，键为「周:星期:起始节」
     val shown = remember { mutableStateMapOf<String, Int>() }
@@ -596,93 +606,102 @@ internal fun DayColumns(
             val groups = ScheduleLayout.groupColumn(items)
             val isToday = isCurrentWeek && day == today
 
-            Column(
-                Modifier
-                    .weight(1f)
-                    .then(if (isToday) Modifier.background(todayTint) else Modifier),
-            ) {
-                var period = 1
-                groups.forEach { group ->
-                    while (period < group.start) {
-                        EmptyCell(rowHeight)
-                        period++
-                    }
-                    val blockHeight = rowHeight * group.span
-                    // 贴在行沿上的日程各自占一条细带，正课让出这段高度，两者都看得见
-                    val reserved = group.clusters
-                        .filter { c -> c.any { it.pinned } }
-                        .associate { c -> c.minOf { it.top } to MIN_CELL_HEIGHT }
-                    Box(Modifier.height(blockHeight).fillMaxWidth()) {
-                        Column { repeat(group.span) { EmptyCell(rowHeight) } }
-                        group.clusters.forEachIndexed { clusterIndex, items ->
-                            // 时间上重叠的一簇不并排挤成细条：一次只显示一个，底部的切换条点一下换下一个
-                            val key = "${s.week}:$day:${group.start}:$clusterIndex"
-                            val shownIndex = (shown[key] ?: 0).mod(items.size)
-                            val item = items[shownIndex]
-                            val conflicting = items.count { it.payload is GridPayload.CourseSlot } > 1
-                            val inset = if (items.size > 1) OVERLAP_STRIP else 0.dp
-                            val shift = if (item.pinned) 0.dp else reserved[item.top] ?: 0.dp
-                            // 按时刻定位、按时长取高；太短的日程保证一个最小高度，能读出标题
-                            val rawHeight = if (item.pinned) {
-                                MIN_CELL_HEIGHT
-                            } else {
-                                maxOf(rowHeight * (item.bottom - item.top) - shift, MIN_CELL_HEIGHT)
-                            }
-                            val cellHeight = minOf(rawHeight, blockHeight)
-                            val cellTop = (rowHeight * (item.top - (group.start - 1)) + shift)
-                                .coerceIn(0.dp, (blockHeight - cellHeight).coerceAtLeast(0.dp))
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = cellTop)
-                                    .height(cellHeight)
-                                    .padding(1.5.dp),
-                            ) {
-                                when (val p = item.payload) {
-                                    is GridPayload.CourseSlot -> CourseCell(
-                                        course = p.course,
-                                        session = p.session,
-                                        conflicting = conflicting,
-                                        titleSize = titleSize,
-                                        subSize = subSize,
-                                        bottomInset = inset,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clickable { onClick(p.course, p.session) },
-                                    )
-                                    is GridPayload.Event -> EventCell(
-                                        event = p.event,
-                                        titleSize = titleSize,
-                                        subSize = subSize,
-                                        bottomInset = inset,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clickable { onEventClick(p.event) },
-                                    )
+            Box(Modifier.weight(1f)) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(if (isToday) Modifier.background(todayTint) else Modifier),
+                ) {
+                    var period = 1
+                    groups.forEach { group ->
+                        while (period < group.start) {
+                            EmptyCell(rowHeight)
+                            period++
+                        }
+                        val blockHeight = rowHeight * group.span
+                        // 贴在行沿上的日程各自占一条细带，正课让出这段高度，两者都看得见
+                        val reserved = group.clusters
+                            .filter { c -> c.any { it.pinned } }
+                            .associate { c -> c.minOf { it.top } to MIN_CELL_HEIGHT }
+                        Box(Modifier.height(blockHeight).fillMaxWidth()) {
+                            Column { repeat(group.span) { EmptyCell(rowHeight) } }
+                            group.clusters.forEachIndexed { clusterIndex, items ->
+                                // 时间上重叠的一簇不并排挤成细条：一次只显示一个，底部的切换条点一下换下一个
+                                val key = "${s.week}:$day:${group.start}:$clusterIndex"
+                                val shownIndex = (shown[key] ?: 0).mod(items.size)
+                                val item = items[shownIndex]
+                                val conflicting = items.count { it.payload is GridPayload.CourseSlot } > 1
+                                val inset = if (items.size > 1) OVERLAP_STRIP else 0.dp
+                                val shift = if (item.pinned) 0.dp else reserved[item.top] ?: 0.dp
+                                // 按时刻定位、按时长取高；太短的日程保证一个最小高度，能读出标题
+                                val rawHeight = if (item.pinned) {
+                                    MIN_CELL_HEIGHT
+                                } else {
+                                    maxOf(rowHeight * (item.bottom - item.top) - shift, MIN_CELL_HEIGHT)
                                 }
-                                if (items.size > 1) {
-                                    OverlapSwitch(
-                                        index = shownIndex + 1,
-                                        total = items.size,
-                                        subSize = subSize,
-                                        modifier = Modifier.align(Alignment.BottomCenter),
-                                    ) { shown[key] = shownIndex + 1 }
+                                val cellHeight = minOf(rawHeight, blockHeight)
+                                val cellTop = (rowHeight * (item.top - (group.start - 1)) + shift)
+                                    .coerceIn(0.dp, (blockHeight - cellHeight).coerceAtLeast(0.dp))
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = cellTop)
+                                        .height(cellHeight)
+                                        .padding(1.5.dp),
+                                ) {
+                                    when (val p = item.payload) {
+                                        is GridPayload.CourseSlot -> CourseCell(
+                                            course = p.course,
+                                            session = p.session,
+                                            conflicting = conflicting,
+                                            titleSize = titleSize,
+                                            subSize = subSize,
+                                            bottomInset = inset,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clickable { onClick(p.course, p.session) },
+                                        )
+                                        is GridPayload.Event -> EventCell(
+                                            event = p.event,
+                                            titleSize = titleSize,
+                                            subSize = subSize,
+                                            bottomInset = inset,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clickable { onEventClick(p.event) },
+                                        )
+                                    }
+                                    if (items.size > 1) {
+                                        OverlapSwitch(
+                                            index = shownIndex + 1,
+                                            total = items.size,
+                                            subSize = subSize,
+                                            modifier = Modifier.align(Alignment.BottomCenter),
+                                        ) { shown[key] = shownIndex + 1 }
+                                    }
                                 }
                             }
                         }
+                        period = group.end + 1
                     }
-                    period = group.end + 1
+                    while (period <= PERIODS) {
+                        EmptyCell(rowHeight)
+                        period++
+                    }
                 }
-                while (period <= PERIODS) {
-                    EmptyCell(rowHeight)
-                    period++
+                // 指针盖在整列之上：先画格子再画它，蒙版才压得住已经上过的课；它不接管触摸，格子照常可点
+                if (isToday && clock != null) {
+                    NowIndicator(clock, s.periodTimes, rowHeight, Modifier.matchParentSize())
                 }
             }
         }
     }
 }
 
-/** 带左右翻周的整块网格。周次的唯一真源是 [pager]，界面从 `currentPage` 读回来。 */
+/**
+ * 带左右翻周的整块网格。周次的唯一真源是 [pager]，界面从 `currentPage` 读回来。
+ * [clock] 是「现在」指针的时钟（见 [rememberMinuteClock]），null 时不画指针。
+ */
 @Composable
 internal fun SchedulePager(
     schedule: Schedule,
@@ -693,6 +712,7 @@ internal fun SchedulePager(
     onZoomEnd: () -> Unit,
     onClick: (Course, ClassSession) -> Unit,
     onEventClick: (PersonalEvent) -> Unit = {},
+    clock: State<LocalTime>? = null,
 ) {
     GridFrame(state, zoom, onZoom, onZoomEnd) { rowHeight, titleSize, subSize ->
         ScheduleWeekPager(
@@ -704,6 +724,7 @@ internal fun SchedulePager(
             subSize = subSize,
             onClick = onClick,
             onEventClick = onEventClick,
+            clock = clock,
         )
     }
 }
@@ -718,6 +739,7 @@ internal fun ScheduleGrid(
     onZoomEnd: () -> Unit,
     onClick: (Course, ClassSession) -> Unit,
     onEventClick: (PersonalEvent) -> Unit = {},
+    clock: State<LocalTime>? = null,
 ) {
     GridFrame(state, zoom, onZoom, onZoomEnd) { rowHeight, titleSize, subSize ->
         DayColumns(
@@ -729,6 +751,7 @@ internal fun ScheduleGrid(
             modifier = Modifier.weight(1f).height(rowHeight * PERIODS),
             onClick = onClick,
             onEventClick = onEventClick,
+            clock = clock,
         )
     }
 }

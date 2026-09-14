@@ -143,11 +143,51 @@
                     android:layout_marginTop="2dp"
                     android:includeFontPadding="false"
                     android:singleLine="true"
-                    android:text="教七楼 201 · 张老师 · 第 1-2 节"
+                    android:text="进行中 · 教七楼 201 · 张老师 · 第 1-2 节"
                     android:textColor="@color/widget_text_secondary"
                     android:textSize="10.5sp" />
             </LinearLayout>
         </LinearLayout>
+
+        <!-- 进行中那节课的进度轨道：静态摆一只跑到四成处的小猫 -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="17dp"
+            android:layout_marginStart="60dp"
+            android:layout_marginBottom="2dp">
+
+            <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_gravity="bottom"
+                android:importantForAccessibility="no"
+                android:scaleType="fitXY"
+                android:src="@drawable/widget_track_line" />
+
+            <ImageView
+                android:layout_width="82dp"
+                android:layout_height="3dp"
+                android:layout_gravity="start|bottom"
+                android:importantForAccessibility="no"
+                android:scaleType="fitXY"
+                android:src="@drawable/widget_track_fill"
+                android:tint="@color/widget_course_1" />
+
+            <ProgressBar
+                android:layout_width="25dp"
+                android:layout_height="17dp"
+                android:layout_gravity="start|bottom"
+                android:layout_marginStart="70dp"
+                android:importantForAccessibility="no"
+                android:indeterminate="true"
+                android:indeterminateDrawable="@drawable/widget_cat_run"
+                android:indeterminateOnly="true"
+                android:indeterminateTint="@color/widget_course_1"
+                android:maxHeight="17dp"
+                android:maxWidth="25dp"
+                android:minHeight="17dp"
+                android:minWidth="25dp" />
+        </FrameLayout>
 
         <LinearLayout
             android:layout_width="match_parent"

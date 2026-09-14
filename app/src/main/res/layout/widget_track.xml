@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  进行中那节课下面的一条进度轨道：底线 + 已走过的填充 + 一只沿着轨道向右跑的小猫。
+  小猫的位置 = 这节课已过去的时长比例；RemoteViews 不能按比例摆放视图，
+  渲染时按小组件宽度算出像素，用 cat_slot 的左内边距推着小猫走，填充的宽度同样算出来设上。
+  高度 17dp（加上行布局里 2dp 的下间距）与 TodayWidgetModel.TRACK_DP 对应。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/track"
+    android:layout_width="match_parent"
+    android:layout_height="17dp">
+
+    <ImageView
+        android:id="@+id/track_line"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_gravity="bottom"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_track_line" />
+
+    <ImageView
+        android:id="@+id/track_fill"
+        android:layout_width="24dp"
+        android:layout_height="3dp"
+        android:layout_gravity="start|bottom"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_track_fill"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/cat_slot"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- 不确定进度的 ProgressBar 是桌面小组件里唯一会自动播放帧动画的控件，借它放小猫 -->
+        <ProgressBar
+            android:id="@+id/cat"
+            android:layout_width="25dp"
+            android:layout_height="17dp"
+            android:layout_gravity="start|bottom"
+            android:importantForAccessibility="no"
+            android:indeterminate="true"
+            android:indeterminateDrawable="@drawable/widget_cat_run"
+            android:indeterminateOnly="true"
+            android:maxHeight="17dp"
+            android:maxWidth="25dp"
+            android:minHeight="17dp"
+            android:minWidth="25dp" />
+    </FrameLayout>
+</FrameLayout>

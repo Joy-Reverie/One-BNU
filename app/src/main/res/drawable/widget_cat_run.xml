@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  小组件里奔跑的小猫：RunCat 365 的 5 帧剪影循环播放（帧由 scripts/gen_cat_frames.py 描成矢量，
+  来源与许可见 third_party/RunCat365/）。
+  RemoteViews 里只有 ProgressBar 会自动启动它的不确定进度动画，所以这份帧动画挂在
+  ProgressBar 的 indeterminateDrawable 上，而不是 ImageView 的 src。
+-->
+<animation-list xmlns:android="http://schemas.android.com/apk/res/android"
+    android:oneshot="false">
+    <item android:drawable="@drawable/widget_cat_0" android:duration="100" />
+    <item android:drawable="@drawable/widget_cat_1" android:duration="100" />
+    <item android:drawable="@drawable/widget_cat_2" android:duration="100" />
+    <item android:drawable="@drawable/widget_cat_3" android:duration="100" />
+    <item android:drawable="@drawable/widget_cat_4" android:duration="100" />
+</animation-list>

@@ -36,6 +36,7 @@ import io.github.joyreverie.onebnu.ui.event.EventEditorSheet
 import io.github.joyreverie.onebnu.ui.schedule.SchedulePager
 import io.github.joyreverie.onebnu.ui.schedule.ScheduleLayout
 import io.github.joyreverie.onebnu.ui.schedule.ScheduleUiState
+import io.github.joyreverie.onebnu.ui.schedule.rememberMinuteClock
 import io.github.joyreverie.onebnu.ui.theme.OneBnuTheme
 import io.github.joyreverie.onebnu.ui.theme.ProvideScreenInfo
 import java.time.LocalDate
@@ -43,7 +44,9 @@ import kotlinx.coroutines.launch
 
 /**
  * 开发用：不登录直接看课表网格在当前屏幕（含横屏）下的行高与缩放效果。
- * 启动：adb shell am start -n io.github.joyreverie.onebnu/.widget.SchedulePreviewActivity [--ef zoom 1.3]
+ * 启动：adb shell am start -n io.github.joyreverie.onebnu/.widget.SchedulePreviewActivity [--ef zoom 1.3] [--es now 09:00]
+ * --es now 把「现在」指针钉在指定时刻（示例课表的本周就是真实的这一周，指针落在今天那一列）；
+ * --ez plain true 隐藏顶栏的调试按钮，用来截 README 里的图。
  * 只在 debug 包里。
  */
 class SchedulePreviewActivity : ComponentActivity() {
@@ -53,6 +56,8 @@ class SchedulePreviewActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val initialZoom = intent.getFloatExtra("zoom", 1f)
+        val fixedNow = intent.getStringExtra("now")?.let { runCatching { LocalTime.parse(it) }.getOrNull() }
+        val plain = intent.getBooleanExtra("plain", false)
         val state = ScheduleUiState(
             loading = false,
             term = Term("2026", "0", "2026-2027学年秋季学期"),
@@ -92,18 +97,21 @@ class SchedulePreviewActivity : ComponentActivity() {
                     val pager = rememberPagerState(initialPage = state.week - 1) { state.maxWeek }
                     val scope = rememberCoroutineScope()
                     val week = pager.currentPage + 1
+                    val clock = rememberMinuteClock(fixedNow)
                     Scaffold(
                         topBar = {
                             TopAppBar(
                                 title = { Text("秋季学期 · 第 $week 周") },
                                 actions = {
-                                    io.github.joyreverie.onebnu.ui.schedule.ZoomBadge(zoom)
-                                    TextButton(onClick = {
-                                        scope.launch { pager.animateScrollToPage(14, animationSpec = tween(280)) }
-                                    }) { Text("跳 15 周") }
-                                    TextButton(onClick = {
-                                        scope.launch { pager.animateScrollToPage(1, animationSpec = tween(280)) }
-                                    }) { Text("回本周") }
+                                    if (!plain) {
+                                        io.github.joyreverie.onebnu.ui.schedule.ZoomBadge(zoom)
+                                        TextButton(onClick = {
+                                            scope.launch { pager.animateScrollToPage(14, animationSpec = tween(280)) }
+                                        }) { Text("跳 15 周") }
+                                        TextButton(onClick = {
+                                            scope.launch { pager.animateScrollToPage(1, animationSpec = tween(280)) }
+                                        }) { Text("回本周") }
+                                    }
                                 },
                             )
                         },
@@ -119,6 +127,7 @@ class SchedulePreviewActivity : ComponentActivity() {
                                 onZoomEnd = {},
                                 onClick = { _, _ -> },
                                 onEventClick = { editing = it },
+                                clock = clock,
                             )
                             }
                         }

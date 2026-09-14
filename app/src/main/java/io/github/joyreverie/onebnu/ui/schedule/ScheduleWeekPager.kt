@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -15,6 +16,7 @@ import io.github.joyreverie.onebnu.data.model.ClassSession
 import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
+import java.time.LocalTime
 
 /**
  * 一周七列的分页部分。
@@ -35,6 +37,7 @@ internal fun RowScope.ScheduleWeekPager(
     subSize: TextUnit,
     onClick: (Course, ClassSession) -> Unit,
     onEventClick: (PersonalEvent) -> Unit = {},
+    clock: State<LocalTime>? = null,
 ) {
     HorizontalPager(
         state = pager,
@@ -51,6 +54,7 @@ internal fun RowScope.ScheduleWeekPager(
             modifier = Modifier.fillMaxSize(),
             onClick = onClick,
             onEventClick = onEventClick,
+            clock = clock,
         )
     }
 }

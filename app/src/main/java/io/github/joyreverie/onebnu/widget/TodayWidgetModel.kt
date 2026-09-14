@@ -6,14 +6,17 @@ import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
 import io.github.joyreverie.onebnu.ui.theme.courseColorIndex
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.temporal.ChronoUnit
 
 /**
  * 今日课表小组件要显示的内容，纯计算、不碰 Android API，便于单元测试。
  *
  * 版式：顶部一条品牌渐变色带放日期、星期、周次与课程数；下面每节课一行（起止时间、课名、教室·教师·节次）。
  * 高度决定能放几行；放不下时优先把已经上完的课挪出视野，让正在上和接下来的课优先可见。
+ * 进行中的那节课下面多一条进度轨道，一只小猫沿着它跑，位置就是这节课已过去的比例（[Row.progress]）。
  */
 object TodayWidgetModel {
 
@@ -31,6 +34,8 @@ object TodayWidgetModel {
         val colorIndex: Int,
         /** 用户自己加的日程，而不是课。 */
         val isEvent: Boolean = false,
+        /** 进行中时已过去的时长比例 0～1，其余状态为 null。 */
+        val progress: Float? = null,
     ) {
         /** 第二行：教室 · 教师 · 节次（日程则是 日程 · 地点）。 */
         val detail: String get() = listOf(if (isEvent) "日程" else "", location, teacher, periods)
@@ -86,6 +91,9 @@ object TodayWidgetModel {
     private const val ROW_DP = 38
     private const val FOOTER_DP = 14
 
+    /** 进行中那节课下面的进度轨道（widget_track.xml 17dp + 2dp 下间距），占掉一部分放行的高度。 */
+    const val TRACK_DP = 19
+
     /**
      * 启动器常在小组件四周留 8～10dp 内边距，而报给应用的尺寸未必扣掉了它（Pixel 启动器实测如此），
      * 按报告值排满会把最后一行压在脚注下面。算行数时一律先扣掉这一截。
@@ -107,19 +115,19 @@ object TodayWidgetModel {
 
     /**
      * 给定高度下能放几行课。[total] 是今天的课程数：全放得下就不占脚注的位置，
-     * 放不下才给脚注留出一行。
+     * 放不下才给脚注留出一行。[extraDp] 是行之外还要占掉的高度（有进行中的课时是它的进度轨道）。
      */
-    fun capacity(heightDp: Int, total: Int, fontScale: Float = 1f): Int {
+    fun capacity(heightDp: Int, total: Int, fontScale: Float = 1f, extraDp: Int = 0): Int {
         val row = rowDp(fontScale)
-        val avail = heightDp - HOST_PADDING_DP - CHROME_DP
+        val avail = heightDp - HOST_PADDING_DP - CHROME_DP - extraDp
         val fitAll = avail / row
         if (total <= fitAll) return total.coerceAtLeast(1)
         return ((avail - FOOTER_DP) / row).coerceAtLeast(1)
     }
 
     /** 放了 [rows] 行之后，脚注那一行还放不放得下。最矮时宁可不要脚注，也不能让它压住课程。 */
-    fun footerFits(heightDp: Int, rows: Int, fontScale: Float = 1f): Boolean =
-        heightDp - HOST_PADDING_DP - CHROME_DP - rows * rowDp(fontScale) >= FOOTER_DP
+    fun footerFits(heightDp: Int, rows: Int, fontScale: Float = 1f, extraDp: Int = 0): Boolean =
+        heightDp - HOST_PADDING_DP - CHROME_DP - extraDp - rows * rowDp(fontScale) >= FOOTER_DP
 
     fun build(i: Input): Model {
         val dateLabel = "${i.today.monthValue}月${i.today.dayOfMonth}日"
@@ -161,11 +169,13 @@ object TodayWidgetModel {
         if (rows.isEmpty()) {
             return Model(dateLabel, weekdayLabel, weekLabel, refreshingLabel, emptyList(), null, "今天没有课 ☕")
         }
-        val (visible, before, after) = window(rows, capacity(i.heightDp, rows.size, i.fontScale))
+        // 进行中的课总在可见窗口里（window 从第一节没结束的课开始取），它的轨道要先把高度占掉
+        val extra = if (rows.any { it.status == Status.ONGOING }) TRACK_DP else 0
+        val (visible, before, after) = window(rows, capacity(i.heightDp, rows.size, i.fontScale, extra))
         val footer = listOfNotNull(
             before.takeIf { it > 0 }?.let { "$it 节已结束" },
             after.takeIf { it > 0 }?.let { "还有 $it 节" },
-        ).joinToString(" · ").ifBlank { null }?.takeIf { footerFits(i.heightDp, visible.size, i.fontScale) }
+        ).joinToString(" · ").ifBlank { null }?.takeIf { footerFits(i.heightDp, visible.size, i.fontScale, extra) }
         val count = refreshingLabel.ifBlank { countLabel(rows) }
         return Model(dateLabel, weekdayLabel, weekLabel, count, visible, footer, null)
     }
@@ -214,6 +224,7 @@ object TodayWidgetModel {
         },
         colorIndex = EVENT_COLOR_INDEX,
         isEvent = true,
+        progress = progressOf(e.start, e.end, now),
     )
 
     /** 放不下时的取舍：从第一节还没结束的课开始显示；后面不够就往前补已结束的。 */
@@ -236,6 +247,7 @@ object TodayWidgetModel {
             periods = s.periodLabel,
             status = statusOf(start, end, now),
             colorIndex = courseColorIndex(course.name, COLOR_COUNT),
+            progress = parseTime(start)?.let { s -> parseTime(end)?.let { e -> progressOf(s, e, now) } },
         )
     }
 
@@ -244,6 +256,23 @@ object TodayWidgetModel {
         rows.flatMap { listOfNotNull(parseTime(it.start), parseTime(it.end)) }
             .filter { it.isAfter(now) }
             .minOrNull()
+
+    /**
+     * 下一次该重绘的时刻：有课正在上就是下一个整分（小猫要往前挪），否则是下一个上下课时刻（[nextChange]）。
+     * 今天不会再变时为 null。跨过午夜的整分（23:59 → 00:00）也返回 null，交给调用方按明天算，免得定时立刻触发。
+     */
+    fun nextTick(rows: List<Row>, now: LocalTime): LocalTime? {
+        if (rows.none { it.status == Status.ONGOING }) return nextChange(rows, now)
+        val next = now.truncatedTo(ChronoUnit.MINUTES).plusMinutes(1)
+        return next.takeIf { it.isAfter(now) }
+    }
+
+    /** [start]～[end] 之间 [now] 走到了几成；不在区间内为 null。 */
+    private fun progressOf(start: LocalTime, end: LocalTime, now: LocalTime): Float? {
+        if (now.isBefore(start) || now.isAfter(end)) return null
+        val total = Duration.between(start, end).seconds.coerceAtLeast(1L)
+        return (Duration.between(start, now).seconds.toFloat() / total).coerceIn(0f, 1f)
+    }
 
     private fun statusOf(start: String, end: String, now: LocalTime): Status {
         val s = parseTime(start) ?: return Status.UPCOMING

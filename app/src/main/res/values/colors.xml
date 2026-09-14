@@ -8,6 +8,8 @@
     <color name="widget_bg">#FFFFFFFF</color>
     <color name="widget_text_primary">#FF14181F</color>
     <color name="widget_text_secondary">#FF767C89</color>
+    <!-- 进行中课程下方进度轨道未走到的部分 -->
+    <color name="widget_track">#FFE6E9F0</color>
     <color name="widget_accent">#FF1B3C6E</color>
 
     <!-- 顶部色带：与首页 Hero 卡同一组渐变（Indigo700 → Indigo500 → Teal600） -->

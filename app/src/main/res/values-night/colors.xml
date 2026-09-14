@@ -6,6 +6,8 @@
     <color name="widget_bg">#FF161A21</color>
     <color name="widget_text_primary">#FFE3E6ED</color>
     <color name="widget_text_secondary">#FF8A909D</color>
+    <!-- 进行中课程下方进度轨道未走到的部分 -->
+    <color name="widget_track">#FF2B313C</color>
     <color name="widget_accent">#FF7FA0DA</color>
 
     <color name="widget_hero_start">#FF16305C</color>

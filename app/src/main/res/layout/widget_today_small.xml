@@ -120,6 +120,15 @@
             android:singleLine="true"
             android:textColor="@color/widget_text_secondary"
             android:textSize="11sp" />
+
+        <!-- 进行中时：进度轨道与奔跑的小猫（见 widget_track.xml） -->
+        <include
+            android:id="@+id/small_track"
+            layout="@layout/widget_track"
+            android:layout_width="match_parent"
+            android:layout_height="17dp"
+            android:layout_marginTop="6dp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <TextView

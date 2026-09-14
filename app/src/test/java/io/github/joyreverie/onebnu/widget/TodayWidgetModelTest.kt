@@ -108,6 +108,40 @@ class TodayWidgetModelTest {
     }
 
     @Test
+    fun `进行中的课带已过时长比例，其余行没有`() {
+        // 大学英语 10:00–11:40，10:25 走了 25/100
+        val rows = TodayWidgetModel.build(input(heightDp = 500, now = LocalTime.of(10, 25))).rows.associateBy { it.name }
+        assertEquals(0.25f, rows.getValue("大学英语").progress!!, 0.001f)
+        assertNull(rows.getValue("高等数学").progress)
+        assertNull(rows.getValue("近代史").progress)
+        // 日程也一样：12:00–13:00 的组会在 12:45 走了四分之三
+        val ev = TodayWidgetModel.build(input(heightDp = 500, now = LocalTime.of(12, 45), events = listOf(lunchMeeting)))
+            .rows.first { it.isEvent }
+        assertEquals(0.75f, ev.progress!!, 0.001f)
+        assertEquals(TodayWidgetModel.Status.ONGOING, ev.status)
+    }
+
+    @Test
+    fun `进行中的课多占一条轨道的高度，能放的行数相应变少`() {
+        // 239dp（Pixel 启动器 2 格）刚好放下 4 行；一节课进行中时轨道占掉 19dp，只剩 3 行加脚注
+        assertEquals(4, TodayWidgetModel.build(input(heightDp = 239, now = LocalTime.of(7, 0))).rows.size)
+        val m = TodayWidgetModel.build(input(heightDp = 239, now = LocalTime.of(10, 25)))
+        assertEquals(listOf("大学英语", "近代史", "体育"), m.rows.map { it.name })
+        assertEquals("1 节已结束", m.footer)
+    }
+
+    @Test
+    fun `进行中时下一次重绘在下一整分，否则在下一个上下课时刻`() {
+        val busy = LocalTime.of(10, 25, 30)
+        val rows = TodayWidgetModel.build(input(heightDp = 500, now = busy)).rows
+        assertEquals(LocalTime.of(10, 26), TodayWidgetModel.nextTick(rows, busy))
+        val idle = LocalTime.of(9, 45)
+        assertEquals(LocalTime.of(10, 0), TodayWidgetModel.nextTick(TodayWidgetModel.build(input(heightDp = 500, now = idle)).rows, idle))
+        val night = LocalTime.of(22, 0)
+        assertNull(TodayWidgetModel.nextTick(TodayWidgetModel.build(input(heightDp = 500, now = night)).rows, night))
+    }
+
+    @Test
     fun `按当前时间标记已结束、进行中、未开始`() {
         val m = TodayWidgetModel.build(input(heightDp = 400, now = LocalTime.of(10, 30)))
         assertEquals(TodayWidgetModel.Status.FINISHED, m.rows[0].status)   // 08:00-09:40

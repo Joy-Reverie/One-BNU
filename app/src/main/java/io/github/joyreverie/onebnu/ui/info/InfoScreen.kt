@@ -57,6 +57,9 @@ import io.github.joyreverie.onebnu.ui.theme.listPadding
 const val CONTACT_EMAIL = "joyreverie27@gmail.com"
 const val REPO_URL = "https://github.com/${BuildConfig.GITHUB_REPO}"
 
+/** 小组件里奔跑的小猫的来源（Apache-2.0 要求保留署名）。 */
+private const val RUNCAT_URL = "https://github.com/runcat-dev/RunCat365"
+
 /**
  * 打开一个外部 Intent；设备上没有邮件或浏览器应用时不能让应用直接崩掉。
  * 打不开就把地址复制到剪贴板并提示一句，用户还是拿得到信息。
@@ -180,40 +183,54 @@ private fun AboutCard() {
     }
 }
 
-/** 源代码入口：GitHub 仓库（问题反馈、贡献代码也在那里）。 */
+/** 源代码入口：GitHub 仓库（问题反馈、贡献代码也在那里）；下面一行是小组件里小猫素材的署名。 */
 @Composable
 private fun OpenSourceCard() {
-    val context = LocalContext.current
     SectionCard("开源") {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable {
-                    openExternally(context, Intent(Intent.ACTION_VIEW, Uri.parse(REPO_URL)), REPO_URL, "仓库地址")
-                }
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Outlined.Code, null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "源代码与问题反馈",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    "github.com/${BuildConfig.GITHUB_REPO} · GPL-3.0",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-            }
-            Icon(
-                Icons.AutoMirrored.Outlined.ArrowForward, null,
-                tint = MaterialTheme.colorScheme.outline,
+        LinkRow(
+            title = "源代码与问题反馈",
+            subtitle = "github.com/${BuildConfig.GITHUB_REPO} · GPL-3.0",
+            url = REPO_URL,
+            label = "仓库地址",
+        )
+        LinkRow(
+            title = "小组件里奔跑的小猫来自 RunCat 365",
+            subtitle = "github.com/runcat-dev/RunCat365 · Apache-2.0",
+            url = RUNCAT_URL,
+            label = "RunCat 365 地址",
+        )
+    }
+}
+
+@Composable
+private fun LinkRow(title: String, subtitle: String, url: String, label: String) {
+    val context = LocalContext.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { openExternally(context, Intent(Intent.ACTION_VIEW, Uri.parse(url)), url, label) }
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Code, null, tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
             )
         }
+        Icon(
+            Icons.AutoMirrored.Outlined.ArrowForward, null,
+            tint = MaterialTheme.colorScheme.outline,
+        )
     }
 }
 
