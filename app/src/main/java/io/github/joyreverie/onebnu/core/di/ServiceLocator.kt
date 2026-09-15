@@ -150,6 +150,9 @@ object ServiceLocator {
     fun signOut(forgetCredentials: Boolean) {
         PortalSso.clear(activeCampus)
         OneVpnSso.reset()
+        // 内嵌页里的会话（门户、教务、OneVPN，以及师大邮箱在网易那边的登录态）一并清掉：
+        // 退出登录后不该有任何一处还登着；下次打开网页入口时会从 OkHttp 重新同步
+        runCatching { android.webkit.CookieManager.getInstance().removeAllCookies(null) }
         current.auth.logout()
         current.api.invalidate()
         current.repo.resetPrefetch()

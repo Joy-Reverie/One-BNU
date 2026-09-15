@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditCalendar
+import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.LocalLibrary
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.MeetingRoom
@@ -105,6 +106,8 @@ private val BEIJING_ENTRIES = listOf(
         Routes.portalWeb("数字京师门户", "https://one.bnu.edu.cn/tp_nup/index.html", true),
         6,
     ),
+    // 原入口在数字京师首页的「邮件」卡片；这里直接要那张卡片用的免密链接进学生邮箱
+    Entry("师大邮箱", Icons.Outlined.Email, Routes.MAIL, 3),
     Entry("教务系统", Icons.Outlined.AccountBalance, Routes.web("教务系统", "http://zyfw.bnu.edu.cn/", true), 7),
     Entry("培养方案", Icons.Outlined.AccountTree, Routes.oneVpnWeb("培养方案", "$COURSE_CENTER/pyfa"), 0),
     Entry("教学手册", Icons.AutoMirrored.Outlined.MenuBook, Routes.oneVpnWeb("教学手册", "$COURSE_CENTER/jxsc"), 1),

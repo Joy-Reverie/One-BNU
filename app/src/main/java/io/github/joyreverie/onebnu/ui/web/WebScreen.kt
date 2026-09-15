@@ -37,6 +37,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.net.BnuHosts
 import io.github.joyreverie.onebnu.core.net.BnuCookieJar
+import io.github.joyreverie.onebnu.core.net.MailSso
 import io.github.joyreverie.onebnu.core.net.OneVpnSso
 import io.github.joyreverie.onebnu.core.net.PortalSso
 import io.github.joyreverie.onebnu.core.store.Campus
@@ -89,7 +90,8 @@ private const val PORTAL_LAYOUT_FIX = """
  * 把应用已经持有的 CAS 会话同步给 WebView，用户不必再登录一次。
  *
  * 安全上做了收紧：不开 JS 接口桥、不允许文件域访问、只在北师大域名内跳转，
- * 站外链接一律交给系统浏览器。OneVPN SSO 走标准 CAS service ticket，不向网页填充密码。
+ * 站外链接一律交给系统浏览器（唯一例外是「师大邮箱」：免密链接落在网易企业邮箱，那几台主机放行）。
+ * OneVPN SSO 走标准 CAS service ticket，不向网页填充密码。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
@@ -103,6 +105,8 @@ fun WebScreen(
     useOneVpnSso: Boolean = false,
     /** 数字京师校园服务入口使用电脑端页面与桌面浏览器 UA。 */
     desktopMode: Boolean = false,
+    /** 师大邮箱：先向门户要一条一次性的网易免密链接再打开；要不到就落到 [MailSso.FALLBACK]。 */
+    mailMode: Boolean = false,
 ) {
     val context = LocalContext.current
     var progress by remember { mutableStateOf(0) }
@@ -121,18 +125,26 @@ fun WebScreen(
     val useAcademicProxy = campus == Campus.BEIJING && academicService && ServiceLocator.isCellularNetwork()
     val syncOneVpn = useOneVpnSso || portalService || useAcademicProxy
     val target by produceState<String?>(
-        if (useSso || useOneVpnSso || portalService || useAcademicProxy) null else url,
+        if (useSso || useOneVpnSso || portalService || useAcademicProxy || mailMode) null else url,
         url,
         useSso,
         useOneVpnSso,
         portalService,
         useAcademicProxy,
+        mailMode,
         campus,
     ) {
         // 冷启动后只剩离线快照时这里还没有 CAS 会话，先补一次静默登录，
         // 否则下面每条分支都会把用户送回统一认证登录页。
         withContext(Dispatchers.IO) { ServiceLocator.ensureSession() }
-        value = if (useOneVpnSso) {
+        value = if (mailMode) {
+            // 免密链接一次一取（门户卡片也是每次点击重新要）；要不到就落到学校域名下的学生邮件系统入口
+            withContext(Dispatchers.IO) {
+                runCatching { MailSso.fetch(http, auth, campus) }
+                    .onFailure { Log.w(TAG, "邮箱免密链接获取失败 ${it::class.java.simpleName}") }
+                    .getOrNull()
+            }?.ssoUrl ?: MailSso.FALLBACK
+        } else if (useOneVpnSso) {
             withContext(Dispatchers.IO) {
                 runCatching { OneVpnSso.establish(http, auth, campus, url) }
             }
@@ -210,6 +222,8 @@ fun WebScreen(
                 val pageUrl = portalWebViewUrl(
                     PortalSso.webViewUrl(campus, requireNotNull(target)),
                 )
+                // 只有真的拿到免密链接才在页内放行网易的主机；落到备用入口时，那边的登录表单照旧交给系统浏览器
+                val allowMailHosts = mailMode && pageUrl != MailSso.FALLBACK
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
@@ -302,8 +316,9 @@ fun WebScreen(
                                         return true
                                     }
                                     val host = u.host.orEmpty()
-                                    // 校外链接交给系统浏览器，避免在内嵌页里输入账号
-                                    if (!BnuHosts.isBnu(host)) {
+                                    // 校外链接交给系统浏览器，避免在内嵌页里输入账号；师大邮箱的免密链接落在
+                                    // 网易企业邮箱，那几台主机放行，邮件正文里的其他站外链接照旧交给浏览器
+                                    if (!BnuHosts.isBnu(host) && !(allowMailHosts && MailSso.isMailHost(host))) {
                                         runCatching {
                                             ctx.startActivity(
                                                 android.content.Intent(android.content.Intent.ACTION_VIEW, u),

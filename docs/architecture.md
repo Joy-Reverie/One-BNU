@@ -111,6 +111,14 @@ host-only Cookie。退出登录先清本地 Cookie，再带着注销前那份 Co
 - 同步 Cookie 时，`CASTGC` 强制为 `cas.bnu.edu.cn` 的 host-only Cookie，并清除旧版可能遗留的
   `.bnu.edu.cn` 跨子域副本，不能发送给 OneVPN 或门户。
 
+「师大邮箱」入口（`core/net/MailSso.kt`）照数字京师首页「邮件」卡片的做法：带门户 accessToken 调
+`gateway/sems-tp-nup/card/email/integration/getEmailInfo`，取回一条一次性的网易企业邮箱免密链接
+（`entry.qiye.163.com/login/ssoLogin?sso_token=…`）在 `WebScreen` 里打开，手机 UA 落在 `mailh.qiye.163.com/m/`；
+只在这一入口放行 `*.qiye.163.com`，其余站外链接仍交给系统浏览器，链接拿不到时落到学校域名下的学生邮件系统入口。
+校外时接口与门户一样走 OneVPN 代理。另外，校外经代理打开门户页面时，门户脚本的 `document.cookie` 被 wengine 接管为
+每站一份的「虚拟 Cookie」（`/wengine-vpn/cookie?method=get|set`），`PortalSso` 换到 token 后同时把它写进这份罐子，
+门户才认得已登录（否则页面会再走一遍 OAuth、停在代理出来的统一认证登录页）。
+
 教务系统等普通 CAS 入口不直接把 CAS 登录页交给 WebView：`WebScreen` 先用当前
 `SessionAuthenticator` 在应用侧完成一次标准 SSO，取得目标站点的会话 Cookie 后再加载最终地址。数字京师与珠海门户
 使用的是官方 OAuth CAS 流程。北京门户可由 `PortalSso` 从 CAS authorize 回调中取一次性 code，再调用门户自己的 token 接口换取

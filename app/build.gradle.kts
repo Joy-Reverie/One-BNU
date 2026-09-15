@@ -58,7 +58,7 @@ android {
         applicationId = "io.github.joyreverie.onebnu"
         minSdk = 26
         targetSdk = 35
-        versionName = "2627s1.03"
+        versionName = "2627s1.04"
         versionCode = semesterVersionCode(versionName!!)
 
         // 「检查更新」查询的 GitHub 仓库；fork 后改这里即可指向自己的 Releases

@@ -47,6 +47,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.net.MailSso
 import io.github.joyreverie.onebnu.core.net.SsoWarmup
 import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.ui.campus.CalendarScreen
@@ -100,6 +101,9 @@ object Routes {
     const val WEB = "web"
     const val PORTAL_WEB = "portal_web"
     const val ONEVPN_WEB = "onevpn_web"
+
+    /** 师大邮箱：不是普通网页地址，页内先向门户要一条一次性免密链接。 */
+    const val MAIL = "mail"
 
     fun web(title: String, url: String, sso: Boolean): String {
         val t = android.net.Uri.encode(title)
@@ -363,6 +367,15 @@ private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus)
             url = android.net.Uri.decode(entry.arguments?.getString("url").orEmpty()),
             useSso = entry.arguments?.getString("sso") == "true",
             desktopMode = true,
+            onBack = { nav.popBackStack() },
+        )
+    }
+    composable(Routes.MAIL) {
+        WebScreen(
+            title = "师大邮箱",
+            url = MailSso.FALLBACK,
+            useSso = false,
+            mailMode = true,
             onBack = { nav.popBackStack() },
         )
     }

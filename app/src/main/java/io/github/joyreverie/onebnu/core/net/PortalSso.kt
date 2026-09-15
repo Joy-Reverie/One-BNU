@@ -4,6 +4,7 @@ import android.util.Log
 import io.github.joyreverie.onebnu.core.store.Campus
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 /** 两校区门户的 OAuth CAS 登录适配；门户不用普通 service ticket，而是消费 OAuth code。 */
@@ -154,7 +155,33 @@ internal object PortalSso {
             accessTokens[campus] = token
             if (proxyPortal) proxyCampuses += campus else proxyCampuses -= campus
         }
+        if (proxyPortal) publishTokenToProxy(http, config, token)
         return true
+    }
+
+    /**
+     * 校外经 OneVPN 代理打开门户时，页面脚本读写的不是浏览器 Cookie，而是 wengine 替每个被代理站点保管的一份
+     * 「虚拟 Cookie」（`/wengine-vpn/cookie?method=get|set&host=…`，页面里的 `document.cookie` 被它的脚本接管）。
+     * WebView 种在代理路径上的 accessToken 门户脚本看不见，于是以为没登录、再走一遍 OAuth，最后停在代理出来的
+     * 统一认证登录页 —— 这就是校外「数字京师」点开是登录表单的原因（2026-09-15 实测）。这里照官方 cas.html
+     * 的做法把 token 写进 wengine 的这份 Cookie 罐：POST，参数全在查询串里、没有请求体。失败只记日志，直连不受影响。
+     */
+    private fun publishTokenToProxy(http: Http, config: Config, token: String) {
+        val url = HttpUrl.Builder()
+            .scheme("https")
+            .host(OneVpnSso.ONEVPN_HOST)
+            .addPathSegments("wengine-vpn/cookie")
+            .addQueryParameter("method", "set")
+            .addQueryParameter("host", config.portalHost)
+            .addQueryParameter("scheme", "https")
+            .addQueryParameter("path", "${config.portalPath}/")
+            .addQueryParameter("ck_data", "$TOKEN_COOKIE=$token")
+            .build()
+            .toString()
+        val referer = OneVpnSso.proxyUrl("https://${config.portalHost}${config.portalPath}/")
+        runCatching { http.post(url, ByteArray(0).toRequestBody(null), referer = referer) }
+            .onSuccess { Log.i(TAG, "${config.portalHost} 代理 Cookie 罐写入 accessToken HTTP ${it.code}") }
+            .onFailure { Log.w(TAG, "${config.portalHost} 代理 Cookie 罐写入失败 ${it::class.java.simpleName}") }
     }
 
     /** 供 WebView 同步，token 只存在进程内；退出登录时由 [clear] 清除。 */

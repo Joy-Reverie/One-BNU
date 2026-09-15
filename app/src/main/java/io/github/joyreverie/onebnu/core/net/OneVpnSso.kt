@@ -22,7 +22,7 @@ import javax.crypto.spec.SecretKeySpec
  */
 internal object OneVpnSso {
     private const val TAG = "OneBNU/OneVPN"
-    private const val ONEVPN_HOST = "onevpn.bnu.edu.cn"
+    internal const val ONEVPN_HOST = "onevpn.bnu.edu.cn"
     private const val HOST_CRYPT_KEY = "wrdvpnisthebest!"
     private const val COURSE_CENTER_HOST = "kczx.bnu.edu.cn"
     private const val ONEVPN_LOGIN_PATH = "/login"
