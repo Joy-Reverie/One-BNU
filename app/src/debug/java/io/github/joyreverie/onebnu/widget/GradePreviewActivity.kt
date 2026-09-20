@@ -47,6 +47,8 @@ class GradePreviewActivity : ComponentActivity() {
             name: String,
             score: Double,
             point: Double,
+            usual: Double? = null,
+            final: Double? = null,
             remark: String = "",
         ) = Grade(
             xn = if (term.startsWith("2026")) "2026" else "2025",
@@ -58,15 +60,19 @@ class GradePreviewActivity : ComponentActivity() {
             scoreText = score.toInt().toString(),
             score = score,
             officialPoint = point,
+            usualScoreText = usual?.let { it.toInt().toString() },
+            usualScore = usual,
+            finalScoreText = final?.let { it.toInt().toString() },
+            finalScore = final,
             courseType = "学位专业课",
             remark = remark,
         )
 
         val grades = listOf(
-            grade("2026-2027 秋季学期", "AIS001", "机器学习", 95.0, 4.5),
-            grade("2026-2027 秋季学期", "AIS002", "统计学习", 82.0, 3.2),
+            grade("2026-2027 秋季学期", "AIS001", "机器学习", 95.0, 4.5, usual = 94.0, final = 96.0),
+            grade("2026-2027 秋季学期", "AIS002", "统计学习", 82.0, 3.2, usual = 86.0, final = 79.0),
             grade("2026-2027 秋季学期", "AIS003", "深度学习", 0.0, 0.0, remark = "缓考"),
-            grade("2025-2026 春季学期", "GRA001", "学术英语", 88.0, 3.8),
+            grade("2025-2026 春季学期", "GRA001", "学术英语", 88.0, 3.8, usual = 90.0, final = 86.0),
             // 首修不及格、下学期重修通过：只计最后一次
             grade("2025-2026 春季学期", "AIS004", "高级算法设计", 85.0, 3.5, remark = "重修"),
             grade("2025-2026 秋季学期", "AIS004", "高级算法设计", 52.0, 0.0),

@@ -1,9 +1,15 @@
 package io.github.joyreverie.onebnu.ui.grade
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,12 +22,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.School
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,52 +37,51 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import io.github.joyreverie.onebnu.data.model.GpaScale
-import io.github.joyreverie.onebnu.data.model.GpaCalculator
-import io.github.joyreverie.onebnu.data.model.GpaSummary
-import io.github.joyreverie.onebnu.data.model.Grade
-import io.github.joyreverie.onebnu.ui.components.CacheBanner
-import io.github.joyreverie.onebnu.ui.components.EmptyBox
-import io.github.joyreverie.onebnu.ui.components.ErrorBox
-import io.github.joyreverie.onebnu.ui.components.LoadingBox
-import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
-import io.github.joyreverie.onebnu.ui.theme.listPadding
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import io.github.joyreverie.onebnu.data.model.GpaCalculator
+import io.github.joyreverie.onebnu.data.model.GpaScale
+import io.github.joyreverie.onebnu.data.model.GpaSummary
+import io.github.joyreverie.onebnu.data.model.Grade
 import io.github.joyreverie.onebnu.ui.components.BnuCard
+import io.github.joyreverie.onebnu.ui.components.CacheBanner
+import io.github.joyreverie.onebnu.ui.components.EmptyBox
+import io.github.joyreverie.onebnu.ui.components.ErrorBox
+import io.github.joyreverie.onebnu.ui.components.LoadingBox
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
+import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.Shape
-import io.github.joyreverie.onebnu.ui.theme.GlowBlob
+import io.github.joyreverie.onebnu.ui.theme.glow
+import io.github.joyreverie.onebnu.ui.theme.listPadding
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,11 +91,24 @@ fun GradeScreen(vm: GradeViewModel = viewModel()) {
     var scaleMenu by remember { mutableStateOf(false) }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("成绩与绩点") },
+                title = {
+                    Column {
+                        Text("成绩", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "平时 · 期末 · 绩点",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 actions = {
-                    IconButton(onClick = { vm.load(forceRefresh = true) }) { Icon(Icons.Filled.Refresh, "刷新") }
+                    IconButton(onClick = { vm.load(forceRefresh = true) }) {
+                        Icon(Icons.Filled.Refresh, "刷新成绩")
+                    }
                     Box {
                         IconButton(onClick = { scaleMenu = true }) {
                             Icon(Icons.Filled.Tune, "绩点算法")
@@ -129,7 +149,7 @@ fun GradeScreen(vm: GradeViewModel = viewModel()) {
                 when {
                     s.loading -> LoadingBox("正在查询成绩…")
                     s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
-                    s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.load(forceRefresh = true) })
+                    s.emptyReason != null -> EmptyGradeState(s.emptyReason!!) { vm.load(forceRefresh = true) }
                     else -> GradeContent(s, onSetIncludedCourses = vm::setIncludedCourses)
                 }
             }
@@ -138,83 +158,131 @@ fun GradeScreen(vm: GradeViewModel = viewModel()) {
 }
 
 @Composable
+private fun EmptyGradeState(reason: String, onRetry: () -> Unit) {
+    EmptyBox(reason, onRetry = onRetry)
+}
+
+@Composable
 internal fun GradeContent(
     s: GradeUiState,
     onSetIncludedCourses: (Set<String>) -> Unit = {},
 ) {
-    var showCoursePicker by remember { mutableStateOf(false) }
+    var showCoursePicker by rememberSaveable { mutableStateOf(false) }
+    var selectedTerm by rememberSaveable { mutableIntStateOf(0) }
+    val screen = LocalScreenInfo.current
+    val allTerms = listOf("全部") + s.byTerm.map { it.first }
+    val filteredGrades = remember(s.grades, selectedTerm, allTerms) {
+        if (selectedTerm == 0) s.grades else s.grades.filter { it.termLabel == allTerms.getOrNull(selectedTerm) }
+    }
+    val summary = remember(s.grades, s.scale, s.manuallyExcludedCourseKeys, selectedTerm) {
+        if (selectedTerm == 0) s.overall
+        else s.byTerm.firstOrNull { it.first == allTerms.getOrNull(selectedTerm) }?.second
+    }
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = LocalScreenInfo.current.listPadding(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = LocalScreenInfo.current.listPadding(top = 10.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(if (screen.isCompact) 12.dp else 16.dp),
     ) {
-        item { s.overall?.let { OverallCard(it, s.scale) } }
-
-        item { CalculationScopeCard(s, onClick = { showCoursePicker = true }) }
+        item { GradeIntro(s.grades.size, s.scale) }
+        item {
+            summary?.let {
+                GradeSummaryCard(
+                    summary = it,
+                    scale = s.scale,
+                    compact = screen.isCompact,
+                )
+            }
+        }
+        item {
+            TermFilter(
+                terms = allTerms,
+                selected = selectedTerm,
+                onSelected = { selectedTerm = it },
+            )
+        }
+        item {
+            CalculationScopeCard(
+                s = s,
+                onClick = { showCoursePicker = true },
+            )
+        }
 
         if (s.officialPointsMissing) {
             item {
                 NoteCard(
-                    "教务系统没有返回官方绩点，当前显示的是按「${s.scale.label}」本地换算的结果，" +
-                        "与学校官方口径可能不一致，仅供参考。",
+                    icon = Icons.Outlined.Info,
+                    text = "教务系统没有返回官方绩点，当前显示的是按「${s.scale.label}」本地换算的结果。",
                 )
             }
         }
 
-        s.overall?.takeIf { it.deferredCount > 0 }?.let { summary ->
-            item {
-                NoteCard(
-                    "检测到 ${summary.deferredCount} 门缓考课程，已自动排除；即使教务暂记为 0 分，" +
-                        "也不会拉低绩点或加权均分。",
-                )
+        summary?.let { current ->
+            if (current.deferredCount > 0) {
+                item {
+                    NoteCard(
+                        icon = Icons.Outlined.Info,
+                        text = "缓考 ${current.deferredCount} 门：即使暂记为 0 分，也不会计入绩点和加权均分。",
+                    )
+                }
             }
-        }
-
-        s.overall?.takeIf { it.manuallyExcludedCount > 0 }?.let { summary ->
-            item {
-                NoteCard(
-                    "你已在「计算范围」中排除 ${summary.manuallyExcludedCount} 门课程；" +
-                        "该选择只保存在本机，随时可以重新勾选。",
-                )
+            if (current.supersededCount > 0) {
+                item {
+                    NoteCard(
+                        icon = Icons.Outlined.Info,
+                        text = "重修或补考记录只保留最后一次成绩参与统计。",
+                    )
+                }
             }
-        }
-
-        s.overall?.takeIf { it.supersededCount > 0 }?.let { summary ->
-            item {
-                NoteCard("有 ${summary.supersededCount} 门课程存在重修或补考记录，只计入最后一次成绩。")
+            if (current.manuallyExcludedCount > 0) {
+                item {
+                    NoteCard(
+                        icon = Icons.Outlined.Info,
+                        text = "已从本机计算范围排除 ${current.manuallyExcludedCount} 门课程，可随时重新勾选。",
+                    )
+                }
             }
-        }
-
-        s.overall?.let { summary ->
-            val unavailableCount = summary.excludedCount - summary.deferredCount -
-                summary.manuallyExcludedCount - summary.supersededCount
+            val unavailableCount = current.excludedCount - current.deferredCount -
+                current.manuallyExcludedCount - current.supersededCount
             if (unavailableCount > 0) {
                 item {
                     NoteCard(
-                        "另有 $unavailableCount 门课程未计入绩点" +
-                            "（通过/免修等无分数记录，或当前口径下教务未给出绩点），" +
-                            "但其学分已计入已获学分。",
+                        icon = Icons.Outlined.Info,
+                        text = "另有 $unavailableCount 门通过制、免修或无可用绩点的课程未计入绩点。",
                     )
                 }
             }
         }
 
-        if (s.byTerm.size > 1) {
-            item {
-                Text("各学期", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp))
-            }
-            items(s.byTerm, key = { it.first }) { (label, summary) ->
-                TermCard(label, summary)
-            }
-        }
-
         item {
-            Text("全部课程", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+            SectionHeader(
+                title = if (selectedTerm == 0) "全部课程" else allTerms.getOrNull(selectedTerm).orEmpty(),
+                count = filteredGrades.size,
+            )
         }
-        // 键带下标：没有课程号的同名课会算出同一个 calculationKey，重复键会让 LazyColumn 直接崩溃
-        itemsIndexed(s.grades, key = { index, g -> "${g.calculationKey}#$index" }) { _, g ->
-            GradeRow(g, s.scale, manuallyExcluded = g.calculationKey in s.manuallyExcludedCourseKeys)
+        if (filteredGrades.isEmpty()) {
+            item { Text("该学期暂无成绩", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        } else if (screen.isExpanded) {
+            itemsIndexed(
+                filteredGrades.chunked(2),
+                key = { index, grades -> grades.joinToString("|") { it.calculationKey } + "#$index" },
+            ) { _, grades ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    grades.forEach { grade ->
+                        GradeRow(
+                            grade,
+                            s.scale,
+                            manuallyExcluded = grade.calculationKey in s.manuallyExcludedCourseKeys,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (grades.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        } else {
+            itemsIndexed(filteredGrades, key = { index, g -> "${g.calculationKey}#$index" }) { _, g ->
+                GradeRow(g, s.scale, manuallyExcluded = g.calculationKey in s.manuallyExcludedCourseKeys)
+            }
         }
     }
 
@@ -227,6 +295,58 @@ internal fun GradeContent(
     }
 }
 
+@Composable
+private fun GradeIntro(count: Int, scale: GpaScale) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            modifier = Modifier.size(42.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = RoundedCornerShape(14.dp),
+        ) {
+            Icon(
+                Icons.Outlined.School,
+                contentDescription = null,
+                modifier = Modifier.padding(10.dp),
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("学习表现", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (count == 0) "暂无成绩记录" else "$count 门课程 · ${scale.label}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TermFilter(terms: List<String>, selected: Int, onSelected: (Int) -> Unit) {
+    androidx.compose.foundation.lazy.LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(vertical = 1.dp),
+    ) {
+        items(terms.size, key = { it }) { index ->
+            FilterChip(
+                selected = selected == index,
+                onClick = { onSelected(index) },
+                label = {
+                    Text(
+                        terms[index].replace("学年", ""),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+            )
+        }
+    }
+}
+
 /** 明确、可发现的手动入口；比只放在顶栏溢出菜单里更适合这类会影响结果的设置。 */
 @Composable
 private fun CalculationScopeCard(s: GradeUiState, onClick: () -> Unit) {
@@ -235,18 +355,13 @@ private fun CalculationScopeCard(s: GradeUiState, onClick: () -> Unit) {
     val deferred = s.grades.count { it.isDeferredExam }
 
     BnuCard(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
         Row(
-            Modifier.padding(16.dp).fillMaxWidth(),
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(
-                color = MaterialTheme.colorScheme.primaryContainer,
-                shape = CircleShape,
-            ) {
+            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = CircleShape) {
                 Icon(
                     Icons.Outlined.Checklist,
                     null,
@@ -257,17 +372,16 @@ private fun CalculationScopeCard(s: GradeUiState, onClick: () -> Unit) {
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text("计算范围", style = MaterialTheme.typography.titleSmall)
-                val detail = buildString {
-                    append("已选 $included/${eligible.size} 门")
-                    if (deferred > 0) append(" · 缓考 $deferred 门自动排除")
-                }
                 Text(
-                    detail,
+                    buildString {
+                        append("已选 $included/${eligible.size} 门")
+                        if (deferred > 0) append(" · 缓考 $deferred 门自动排除")
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TextButton(onClick = onClick) { Text("选择") }
+            TextButton(onClick = onClick) { Text("调整") }
         }
     }
 }
@@ -293,7 +407,7 @@ private fun CourseSelectionDialog(
         text = {
             Column {
                 Text(
-                    "仅影响本机显示的平均绩点和加权均分。缓考（含暂记 0 分）及当前口径下无可用绩点的记录始终不参与计算。",
+                    "仅影响本机显示的平均绩点和加权均分。缓考及当前口径下无可用绩点的记录始终不参与计算。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -303,19 +417,12 @@ private fun CourseSelectionDialog(
                         val selectable = GpaCalculator.isEligible(grade, s.scale)
                         val checked = selectable && grade.calculationKey in selectedKeys
                         val rowModifier = if (selectable) {
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedKeys = if (checked) selectedKeys - grade.calculationKey
-                                    else selectedKeys + grade.calculationKey
-                                }
-                        } else {
-                            Modifier.fillMaxWidth()
-                        }
-                        Row(
-                            rowModifier.padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                            Modifier.fillMaxWidth().clickable {
+                                selectedKeys = if (checked) selectedKeys - grade.calculationKey
+                                else selectedKeys + grade.calculationKey
+                            }
+                        } else Modifier.fillMaxWidth()
+                        Row(rowModifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = checked,
                                 enabled = selectable,
@@ -349,7 +456,7 @@ private fun CourseSelectionDialog(
         },
         dismissButton = {
             Row {
-                TextButton(onClick = { selectedKeys = eligibleKeys }) { Text("全选可计算项") }
+                TextButton(onClick = { selectedKeys = eligibleKeys }) { Text("全选") }
                 TextButton(onClick = onDismiss) { Text("取消") }
             }
         },
@@ -357,7 +464,7 @@ private fun CourseSelectionDialog(
 }
 
 private fun selectionDetail(grade: Grade, scale: GpaScale): String = when {
-    grade.isDeferredExam -> "缓考：暂记 0 分也不参与绩点计算"
+    grade.isDeferredExam -> "缓考：不参与绩点计算"
     !GpaCalculator.isEligible(grade, scale) -> "当前口径下没有可用绩点"
     else -> buildString {
         append("${grade.termLabel} · ${grade.credits} 学分")
@@ -366,10 +473,12 @@ private fun selectionDetail(grade: Grade, scale: GpaScale): String = when {
 }
 
 @Composable
-private fun OverallCard(summary: GpaSummary, scale: GpaScale) {
+private fun GradeSummaryCard(summary: GpaSummary, scale: GpaScale, compact: Boolean) {
     val accents = LocalAccents.current
-    // 绩点满值随口径变化：五分制 5.0，四分制 4.0
-    val maxGpa = if (scale == GpaScale.STANDARD_4 || scale == GpaScale.LINEAR_4) 4.0 else 5.0
+    val maxGpa = when (scale) {
+        GpaScale.LINEAR_5 -> 5.0
+        GpaScale.OFFICIAL, GpaScale.STANDARD_4, GpaScale.LINEAR_4 -> 4.0
+    }
     val ratio = ((summary.gpa ?: 0.0) / maxGpa).coerceIn(0.0, 1.0).toFloat()
     val sweep by animateFloatAsState(ratio, tween(700), label = "gpaSweep")
 
@@ -377,50 +486,53 @@ private fun OverallCard(summary: GpaSummary, scale: GpaScale) {
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Shape.cardLarge))
-            .background(accents.heroGradient),
+            .background(accents.heroGradient)
+            .glow(Color.White, alpha = 0.16f, cx = 0.95f, cy = -0.15f, radius = 0.65f),
     ) {
-        GlowBlob(
-            Color.White,
-            Modifier.align(Alignment.TopEnd).size(260.dp).offset(x = 80.dp, y = (-100).dp),
-            alpha = 0.18f,
-        )
-        Column(Modifier.padding(22.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                GpaDial(
-                    sweep = sweep,
-                    value = summary.gpa,
-                    max = maxGpa,
-                    modifier = Modifier.size(104.dp),
-                )
-                Spacer(Modifier.width(20.dp))
-                Column {
-                    Text(
-                        scale.label,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.75f),
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "平均绩点",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        summary.weightedAverage?.let { "加权均分 " + "%.2f".format(Locale.ROOT, it) } ?: "暂无均分",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.8f),
-                    )
-                }
+        if (compact) {
+            Column(Modifier.padding(20.dp)) {
+                SummaryHeader(summary, scale, sweep, maxGpa)
+                Spacer(Modifier.height(18.dp))
+                SummaryStats(summary)
             }
-
-            Spacer(Modifier.height(20.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HeroStat("已获学分", "%.1f".format(Locale.ROOT, summary.earnedCredits), Modifier.weight(1f))
-                HeroStat("计点学分", "%.1f".format(Locale.ROOT, summary.gradedCredits), Modifier.weight(1f))
-                HeroStat("课程数", summary.courseCount.toString(), Modifier.weight(1f))
+        } else {
+            Row(
+                Modifier.padding(24.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SummaryHeader(summary, scale, sweep, maxGpa)
+                Spacer(Modifier.width(24.dp))
+                SummaryStats(summary, Modifier.weight(1f))
             }
         }
+    }
+}
+
+@Composable
+private fun SummaryHeader(summary: GpaSummary, scale: GpaScale, sweep: Float, maxGpa: Double) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        GpaDial(sweep, summary.gpa, maxGpa, Modifier.size(100.dp))
+        Spacer(Modifier.width(16.dp))
+        Column {
+            Text(scale.label, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.75f))
+            Spacer(Modifier.height(6.dp))
+            Text("平均绩点", style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                summary.weightedAverage?.let { "加权均分 ${"%.2f".format(Locale.ROOT, it)}" } ?: "暂无加权均分",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.82f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SummaryStats(summary: GpaSummary, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        HeroStat("已获学分", "%.1f".format(Locale.ROOT, summary.earnedCredits), Modifier.weight(1f))
+        HeroStat("计点学分", "%.1f".format(Locale.ROOT, summary.gradedCredits), Modifier.weight(1f))
+        HeroStat("课程数", summary.courseCount.toString(), Modifier.weight(1f))
     }
 }
 
@@ -440,118 +552,38 @@ private fun GpaDial(sweep: Float, value: Double?, max: Double, modifier: Modifie
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
             drawArc(
-                color = Color.White,
-                startAngle = 135f, sweepAngle = 270f * sweep, useCenter = false,
+                color = Color.White, startAngle = 135f, sweepAngle = 270f * sweep, useCenter = false,
                 topLeft = topLeft, size = arcSize,
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                value?.let { "%.2f".format(Locale.ROOT, it) } ?: "—",
-                style = MaterialTheme.typography.headlineSmall,
-                color = Color.White,
-            )
-            Text(
-                "/ " + "%.1f".format(Locale.ROOT, max),
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.7f),
-            )
+            Text(value?.let { "%.2f".format(Locale.ROOT, it) } ?: "—", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+            Text("/ ${"%.1f".format(Locale.ROOT, max)}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
         }
     }
 }
 
 @Composable
 private fun HeroStat(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        color = Color.White.copy(alpha = 0.16f),
-        shape = RoundedCornerShape(Shape.chip),
-    ) {
-        Column(
-            Modifier.padding(vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+    Surface(modifier = modifier, color = Color.White.copy(alpha = 0.16f), shape = RoundedCornerShape(Shape.chip)) {
+        Column(Modifier.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(value, style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.75f))
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String, count: Int) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.width(8.dp))
+        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(50)) {
             Text(
-                label,
+                count.toString(),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.75f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun TermCard(label: String, summary: GpaSummary) {
-    Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Row(
-            Modifier.padding(16.dp).fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column {
-                Text(label, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "${summary.courseCount} 门 · ${"%.1f".format(Locale.ROOT, summary.earnedCredits)} 学分",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text(
-                summary.gpa?.let { "%.2f".format(Locale.ROOT, it) } ?: "—",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-    }
-}
-
-@Composable
-private fun GradeRow(g: Grade, scale: GpaScale, manuallyExcluded: Boolean) {
-    val point = scale.pointOf(g)
-    Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(
-                    g.courseName,
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    g.scoreText.ifBlank { "—" },
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = scoreColor(g),
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                buildString {
-                    append(g.termLabel)
-                    append(" · ")
-                    append("${g.credits} 学分")
-                    if (g.courseType.isNotBlank()) append(" · ${g.courseType}")
-                    when {
-                        g.isDeferredExam -> append(" · 缓考，不计入绩点")
-                        manuallyExcluded && GpaCalculator.isEligible(g, scale) -> append(" · 已从计算范围排除")
-                        point != null -> append(" · 绩点 ${"%.2f".format(Locale.ROOT, point)}")
-                    }
-                    if (g.remark.isNotBlank() && !(g.isDeferredExam && g.remark.trim() == "缓考")) {
-                        append(" · ${g.remark}")
-                    }
-                },
-                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -559,7 +591,154 @@ private fun GradeRow(g: Grade, scale: GpaScale, manuallyExcluded: Boolean) {
 }
 
 @Composable
-private fun scoreColor(g: Grade): androidx.compose.ui.graphics.Color {
+private fun GradeRow(
+    g: Grade,
+    scale: GpaScale,
+    manuallyExcluded: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val point = scale.pointOf(g)
+    val hasBreakdown = !g.usualScoreText.isNullOrBlank() || !g.finalScoreText.isNullOrBlank()
+    Card(
+        modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        g.courseName,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        listOf(g.termLabel, "${g.credits} 学分").joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                ScoreBadge(text = g.scoreText.ifBlank { "—" }, color = scoreColor(g))
+            }
+
+            if (hasBreakdown) {
+                Spacer(Modifier.height(14.dp))
+                ScoreBreakdown(g)
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                GradeTag(
+                    text = when {
+                        g.isDeferredExam -> "缓考 · 不计绩点"
+                        manuallyExcluded && GpaCalculator.isEligible(g, scale) -> "已排除"
+                        else -> point?.let { "绩点 ${"%.2f".format(Locale.ROOT, it)}" } ?: "不计点"
+                    },
+                    color = when {
+                        g.isDeferredExam -> MaterialTheme.colorScheme.surfaceVariant
+                        manuallyExcluded && GpaCalculator.isEligible(g, scale) -> MaterialTheme.colorScheme.tertiaryContainer
+                        else -> MaterialTheme.colorScheme.primaryContainer
+                    },
+                )
+                Spacer(Modifier.width(8.dp))
+                if (g.examType.isNotBlank()) {
+                    Text(g.examType, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                }
+                if (g.courseType.isNotBlank()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(g.courseType, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                }
+            }
+            if (g.remark.isNotBlank() && !(g.isDeferredExam && g.remark.trim() == "缓考")) {
+                Spacer(Modifier.height(6.dp))
+                Text(g.remark, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScoreBadge(text: String, color: Color) {
+    Surface(color = color.copy(alpha = 0.13f), shape = RoundedCornerShape(12.dp)) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = color,
+        )
+    }
+}
+
+@Composable
+private fun ScoreBreakdown(g: Grade) {
+    Column {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ScorePart("平时成绩", g.usualScoreText ?: "—", Modifier.weight(1f))
+            ScorePart("期末成绩", g.finalScoreText ?: "—", Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(8.dp))
+        ScoreProgress(g.score)
+    }
+}
+
+@Composable
+private fun ScorePart(label: String, value: String, modifier: Modifier) {
+    Surface(
+        modifier = modifier,
+        color = LocalAccents.current.raised,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(3.dp))
+            Text(value, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+@Composable
+private fun ScoreProgress(total: Double?) {
+    Column {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("成绩概览", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            Text(
+                total?.let { "总评 ${"%.1f".format(Locale.ROOT, it)}" } ?: "暂无可用分数",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+        Spacer(Modifier.height(5.dp))
+        Surface(
+            Modifier.fillMaxWidth().height(7.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(50),
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                if (total != null) {
+                    Box(
+                        Modifier.fillMaxWidth((total / 100.0).coerceIn(0.0, 1.0).toFloat())
+                            .height(7.dp)
+                            .background(scoreProgressColor(total), RoundedCornerShape(50)),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun scoreProgressColor(score: Double): Color = when {
+    score >= 85 -> Color(0xFF3A9C78)
+    score >= 60 -> Color(0xFF3A63B8)
+    else -> Color(0xFFC65353)
+}
+
+@Composable
+private fun scoreColor(g: Grade): Color {
     val s = g.score ?: io.github.joyreverie.onebnu.data.model.GradeScale.letterToScore(g.scoreText)
     return when {
         g.isDeferredExam -> MaterialTheme.colorScheme.outline
@@ -571,24 +750,35 @@ private fun scoreColor(g: Grade): androidx.compose.ui.graphics.Color {
 }
 
 @Composable
-private fun NoteCard(text: String) {
+private fun GradeTag(text: String, color: Color) {
+    Surface(color = color, shape = RoundedCornerShape(8.dp)) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = contentColorForTag(color),
+        )
+    }
+}
+
+@Composable
+private fun contentColorForTag(container: Color): Color = when {
+    container == MaterialTheme.colorScheme.primaryContainer -> MaterialTheme.colorScheme.onPrimaryContainer
+    container == MaterialTheme.colorScheme.tertiaryContainer -> MaterialTheme.colorScheme.onTertiaryContainer
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@Composable
+private fun NoteCard(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
     Surface(
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f),
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(Modifier.padding(14.dp)) {
-            Icon(
-                Icons.Outlined.Info, null,
-                Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-            )
+        Row(Modifier.padding(13.dp), verticalAlignment = Alignment.Top) {
+            Icon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onTertiaryContainer)
             Spacer(Modifier.width(10.dp))
-            Text(
-                text,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-            )
+            Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
         }
     }
 }

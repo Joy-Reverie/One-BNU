@@ -189,6 +189,49 @@ class ParsersTest {
         assertTrue(grade.isDeferredExam)
         assertTrue(!grade.countable)
     }
+
+    @Test
+    fun `成绩表里的平时和期末成绩会分别保留`() {
+        val html = """
+            <table><thead><tr>
+              <th>学年</th><th>学期</th><th>课程号</th><th>课程名</th><th>学分</th>
+              <th>平时成绩</th><th>期末成绩</th><th>总评成绩</th><th>学分绩点</th>
+            </tr></thead><tbody><tr>
+              <td>2026</td><td>0</td><td>TEST002</td><td>数据结构</td><td>3</td>
+              <td>92</td><td>88</td><td>90</td><td>4</td>
+            </tr></tbody></table>
+        """.trimIndent()
+
+        val grade = Parsers.parseGrades(html).single()
+
+        assertEquals("92", grade.usualScoreText)
+        assertEquals(92.0, grade.usualScore!!, 0.001)
+        assertEquals("88", grade.finalScoreText)
+        assertEquals(88.0, grade.finalScore!!, 0.001)
+        assertEquals(90.0, grade.score!!, 0.001)
+    }
+
+    @Test
+    fun `有效成绩的合并学年学期列不会重复显示`() {
+        val html = """
+            <table><tr>
+              <td>学年学期</td><td>课程/环节</td><td>学分</td><td>实得学分</td>
+              <td>类别</td><td>课程性质</td><td>考核方式</td><td>综合成绩</td><td>课程绩点</td><td>备注</td>
+            </tr><tr>
+              <td>2025-2026秋季学期</td><td>[TEST003]数据库原理</td><td>3</td><td>3</td>
+              <td>主修</td><td>必修</td><td>考试</td><td>86</td><td>3.6</td><td></td>
+            </tr></table>
+        """.trimIndent()
+
+        val grade = Parsers.parseGrades(html).single()
+
+        assertEquals("2025", grade.xn)
+        assertEquals("0", grade.xq)
+        assertEquals("2025-2026 秋季学期", grade.termLabel)
+        assertEquals("TEST003", grade.courseCode)
+        assertEquals("数据库原理", grade.courseName)
+    }
+
     // ---------------- 学籍（XML，非 HTML 表格）----------------
 
     @Test

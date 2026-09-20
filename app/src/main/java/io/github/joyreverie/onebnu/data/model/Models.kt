@@ -100,6 +100,14 @@ data class Grade(
     val score: Double?,
     /** 教务给出的绩点；教务未给出时为 null，由本地按所选算法推算。 */
     val officialPoint: Double?,
+    /** 平时成绩原文；部分成绩单不会提供该列。 */
+    val usualScoreText: String? = null,
+    /** 能解析成百分制时的平时成绩。 */
+    val usualScore: Double? = null,
+    /** 期末成绩原文；部分成绩单不会提供该列。 */
+    val finalScoreText: String? = null,
+    /** 能解析成百分制时的期末成绩。 */
+    val finalScore: Double? = null,
     /** 课程性质／类别，如「学位必修课」。 */
     val courseType: String = "",
     /** 考核方式，如「考试」「考查」。 */

@@ -172,12 +172,15 @@ object Parsers {
         val table = pickDataTable(doc, listOf("课程", "成绩")) ?: return emptyList()
         val header = headerIndex(table)
 
-        val iXn = header.findAny("学年")
-        val iXq = header.findAny("学期")
+        val iXn = header.findExact("学年")
+        val iXq = header.findExact("学期")
+        val iTerm = header.findExact("学年学期")
         val iCode = header.findAny("课程号", "课程代码", "课程编号")
         val iName = header.findAny("课程名", "课程")
         val iCredit = header.findAny("学分")
         val iScore = header.findAny("总评成绩", "成绩", "最终成绩")
+        val iUsualScore = header.findAny("平时成绩", "平时")
+        val iFinalScore = header.findAny("期末成绩", "期末", "考试成绩")
         val iPoint = header.findAny("学分绩点", "绩点")
         val iType = header.findAny("课程性质", "课程属性", "课程类别", "类别")
         val iExam = header.findAny("考核方式", "考试性质")
@@ -199,8 +202,13 @@ object Parsers {
             if (name.isBlank() || name == "合计") continue
 
             val scoreText = cells.getOrNull(iScore).orEmpty()
-            val xn = cells.getOrNull(iXn).orEmpty()
-            val xq = cells.getOrNull(iXq).orEmpty()
+            val usualScoreText = cells.getOrNull(iUsualScore).orEmpty().ifBlank { null }
+            val finalScoreText = cells.getOrNull(iFinalScore).orEmpty().ifBlank { null }
+            val (xn, xq) = normalizeTerm(
+                rawXn = cells.getOrNull(iXn).orEmpty(),
+                rawXq = cells.getOrNull(iXq).orEmpty(),
+                combined = cells.getOrNull(iTerm).orEmpty(),
+            )
 
             out += Grade(
                 xn = xn,
@@ -212,6 +220,10 @@ object Parsers {
                 scoreText = scoreText,
                 score = scoreText.trim().toDoubleOrNull(),
                 officialPoint = cells.getOrNull(iPoint)?.toDoubleOrNull(),
+                usualScoreText = usualScoreText,
+                usualScore = usualScoreText?.trim()?.toDoubleOrNull(),
+                finalScoreText = finalScoreText,
+                finalScore = finalScoreText?.trim()?.toDoubleOrNull(),
                 courseType = cells.getOrNull(iType).orEmpty(),
                 examType = cells.getOrNull(iExam).orEmpty(),
                 remark = listOf(cells.getOrNull(iRemark).orEmpty(), cells.getOrNull(iScoreStatus).orEmpty())
@@ -221,6 +233,22 @@ object Parsers {
             )
         }
         return out
+    }
+
+    /** 北京有效成绩把学年与学期合成一列，例如 `2025-2026秋季学期`。 */
+    private fun normalizeTerm(rawXn: String, rawXq: String, combined: String): Pair<String, String> {
+        val source = combined.ifBlank { "$rawXn $rawXq" }.replace(Regex("\\s+"), "")
+        val year = rawXn.trim().takeIf { it.matches(Regex("\\d{4}")) }
+            ?: Regex("""\d{4}""").find(source)?.value.orEmpty()
+        val rawSeason = rawXq.trim()
+        val season = when {
+            rawSeason in setOf("0", "1", "2") -> rawSeason
+            source.contains("秋季") || source.contains("第一学期") -> "0"
+            source.contains("春季") || source.contains("第二学期") -> "1"
+            source.contains("夏季") || source.contains("第三学期") -> "2"
+            else -> rawSeason
+        }
+        return year to season
     }
 
     /**
@@ -531,6 +559,8 @@ object Parsers {
             .minByOrNull { it.select("table").size }
 
     private class Header(private val names: List<String>) {
+        fun findExact(candidate: String): Int = names.indexOf(candidate)
+
         /** 依次尝试候选词，返回第一个命中的列下标；都不中返回 -1。 */
         fun findAny(vararg candidates: String): Int {
             for (c in candidates) {
