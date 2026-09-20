@@ -1,55 +1,25 @@
 package io.github.joyreverie.onebnu.data.model
 
 /**
- * GPA 换算。
- *
- * 教务系统本身给出的绩点（「有效成绩」视图里的学分绩点）是官方口径，应用优先展示它。
- * 这里的换算表用于两种情况：教务未给出绩点时的本地推算，以及用户想按别的口径对比时的换算。
- * 不同口径差异很大，因此界面上必须显示当前用的是哪一种，不能混为一谈。
+ * 北师大本科成绩单使用的课程绩点规则。
  */
 enum class GpaScale(val label: String, val description: String) {
 
-    /** 教务系统返回的官方绩点，直接加权，不做任何本地换算。 */
-    OFFICIAL("教务绩点", "直接使用教务系统给出的绩点，未给出的记录不参与计算"),
-
-    /** 常见的「(分数-50)/10」线性制，60 分=1.0，100 分=5.0。 */
-    LINEAR_5("五分制 (分数-50)/10", "60 分记 1.0，100 分记 5.0，低于 60 分记 0"),
-
-    /** 北美常见 4.0 分段制。 */
-    STANDARD_4("四分制 分段", "90+ 记 4.0，80+ 记 3.0，70+ 记 2.0，60+ 记 1.0"),
-
-    /** 4.0 线性制：(分数-60)/10 + 1，上限 4.0，常用于出国成绩换算。 */
-    LINEAR_4("四分制 (分数-60)/10+1", "60 分记 1.0，90 分及以上记 4.0");
+    OFFICIAL("北师大绩点规则", "百分制按学校公式换算；五级制按优秀、良好、中等、及格、不及格换算");
 
     fun pointOf(grade: Grade): Double? {
-        // 教务会把缓考临时显示成 0 分、甚至给出 0 绩点；它不是最终成绩，必须先排除。
+        // 教务会把缓考临时显示成 0 分；它不是最终成绩，必须先排除。
         if (grade.isDeferredExam) return null
-        if (this == OFFICIAL) return grade.officialPoint
         val s = grade.score ?: GradeScale.letterToScore(grade.scoreText) ?: return null
-        return when (this) {
-            OFFICIAL -> null
-            LINEAR_5 -> if (s < 60) 0.0 else ((s - 50) / 10).coerceIn(0.0, 5.0)
-            STANDARD_4 -> when {
-                s >= 90 -> 4.0
-                s >= 80 -> 3.0
-                s >= 70 -> 2.0
-                s >= 60 -> 1.0
-                else -> 0.0
-            }
-            LINEAR_4 -> if (s < 60) 0.0 else (((s - 60) / 10) + 1).coerceIn(0.0, 4.0)
-        }
+        if (s < 60) return 0.0
+        val point = 4.0 - 3.0 * (100.0 - s.coerceAtMost(100.0)).let { it * it } / 1600.0
+        return kotlin.math.round(point * 10.0) / 10.0
     }
 }
 
 object GradeScale {
 
-    /**
-     * 等第成绩映射到百分制中值，用于参与加权计算。
-     *
-     * 五级等第（优秀 / 良好 / 中等 / 及格 / 不及格）是百分制的另一种写法，取各段中值参与加权；
-     * 通过制（合格 / 不合格 / 通过 / 免修…）没有分数含义，一律返回 null —— 把「合格」折成 65 分
-     * 会让所有通过制课程在五分制、四分制下把绩点和加权均分一起拉低。
-     */
+    /** 等第成绩映射到学校规则对应的百分制中值；通过制没有分数含义，返回 null。 */
     fun letterToScore(text: String): Double? {
         val t = text.trim()
         t.toDoubleOrNull()?.let { return it }

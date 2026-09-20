@@ -32,7 +32,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -62,7 +61,6 @@ import io.github.joyreverie.onebnu.core.store.Settings
 import io.github.joyreverie.onebnu.core.store.ColorTheme
 import io.github.joyreverie.onebnu.core.store.ThemeMode
 import io.github.joyreverie.onebnu.core.update.UpdateChecker
-import io.github.joyreverie.onebnu.data.model.GpaScale
 import io.github.joyreverie.onebnu.data.model.PeriodMapper
 import io.github.joyreverie.onebnu.ui.components.SectionCard
 import io.github.joyreverie.onebnu.ui.components.TimePickerDialog
@@ -72,7 +70,7 @@ import io.github.joyreverie.onebnu.widget.TodayWidgetProvider
 import java.time.LocalTime
 
 /**
- * 设置：外观、绩点口径、课表、作息时间、网络诊断、检查更新。
+ * 设置：外观、课表、作息时间、网络诊断、检查更新。
  * 「关于与支持」不在这里 —— 它是「我的」页的一级入口，与设置并列。
  *
  * [currentVersion] 默认取构建版本号；debug 包的预览入口可以传一个旧版本号来演练更新流程。
@@ -84,9 +82,7 @@ fun SettingsScreen(
     onDiagnostics: () -> Unit = {},
     currentVersion: String = BuildConfig.VERSION_NAME,
 ) {
-    val settings = ServiceLocator.settings
     val appearance = ServiceLocator.appearance
-    var scale by remember { mutableStateOf(settings.gpaScale) }
     val checker = remember(currentVersion) { UpdateChecker(currentVersion) }
     val themeMode by appearance.themeMode.collectAsState()
     val colorTheme by appearance.colorThemeFlow.collectAsState()
@@ -140,33 +136,6 @@ fun SettingsScreen(
                                 ) {}
                                 Spacer(Modifier.height(4.dp))
                                 Text(theme.label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                SectionCard("绩点口径") {
-                    GpaScale.entries.forEach { s ->
-                        Row(
-                            Modifier.fillMaxWidth().clickable {
-                                scale = s
-                                settings.gpaScale = s
-                            },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(selected = scale == s, onClick = {
-                                scale = s
-                                settings.gpaScale = s
-                            })
-                            Column(Modifier.padding(vertical = 4.dp)) {
-                                Text(s.label, style = MaterialTheme.typography.bodyMedium)
-                                Text(
-                                    s.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline,
-                                )
                             }
                         }
                     }

@@ -27,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.School
@@ -88,8 +87,6 @@ import java.util.Locale
 @Composable
 fun GradeScreen(vm: GradeViewModel = viewModel()) {
     val s by vm.state.collectAsState()
-    var scaleMenu by remember { mutableStateOf(false) }
-
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -108,31 +105,6 @@ fun GradeScreen(vm: GradeViewModel = viewModel()) {
                 actions = {
                     IconButton(onClick = { vm.load(forceRefresh = true) }) {
                         Icon(Icons.Filled.Refresh, "刷新成绩")
-                    }
-                    Box {
-                        IconButton(onClick = { scaleMenu = true }) {
-                            Icon(Icons.Filled.Tune, "绩点算法")
-                        }
-                        DropdownMenu(expanded = scaleMenu, onDismissRequest = { scaleMenu = false }) {
-                            GpaScale.entries.forEach { scale ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Column {
-                                            Text(
-                                                scale.label,
-                                                fontWeight = if (scale == s.scale) FontWeight.Bold else FontWeight.Normal,
-                                            )
-                                            Text(
-                                                scale.description,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.outline,
-                                            )
-                                        }
-                                    },
-                                    onClick = { scaleMenu = false; vm.setScale(scale) },
-                                )
-                            }
-                        }
                     }
                 },
             )
@@ -199,15 +171,6 @@ internal fun GradeContent(
                 s = s,
                 onClick = { showCoursePicker = true },
             )
-        }
-
-        if (s.officialPointsMissing) {
-            item {
-                NoteCard(
-                    icon = Icons.Outlined.Info,
-                    text = "教务系统没有返回官方绩点，当前显示的是按「${s.scale.label}」本地换算的结果。",
-                )
-            }
         }
 
         summary?.let { current ->
@@ -510,10 +473,7 @@ private fun selectionDetail(grade: Grade, scale: GpaScale): String = when {
 @Composable
 private fun GradeSummaryCard(summary: GpaSummary, scale: GpaScale, compact: Boolean) {
     val accents = LocalAccents.current
-    val maxGpa = when (scale) {
-        GpaScale.LINEAR_5 -> 5.0
-        GpaScale.OFFICIAL, GpaScale.STANDARD_4, GpaScale.LINEAR_4 -> 4.0
-    }
+    val maxGpa = 4.0
     val ratio = ((summary.gpa ?: 0.0) / maxGpa).coerceIn(0.0, 1.0).toFloat()
     val sweep by animateFloatAsState(ratio, tween(700), label = "gpaSweep")
 

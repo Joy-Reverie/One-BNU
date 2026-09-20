@@ -28,8 +28,6 @@ data class GradeUiState(
     val byTerm: List<Pair<String, GpaSummary>> = emptyList(),
     /** 用户在「计算范围」中取消勾选的课程键，仅存本机。 */
     val manuallyExcludedCourseKeys: Set<String> = emptySet(),
-    /** 教务没给绩点、只能本地换算时提示用户口径差异。 */
-    val officialPointsMissing: Boolean = false,
 ) {
     /** 当前显示的是本地快照（含「查到的就是空」）。 */
     val fromCache: Boolean get() = freshness?.cached == true
@@ -41,7 +39,7 @@ class GradeViewModel : ViewModel() {
     private val settings = ServiceLocator.settings
     private var backgroundJob: Job? = null
 
-    private val _state = MutableStateFlow(GradeUiState(scale = settings.gpaScale))
+    private val _state = MutableStateFlow(GradeUiState())
     val state: StateFlow<GradeUiState> = _state.asStateFlow()
 
     init { load() }
@@ -86,12 +84,6 @@ class GradeViewModel : ViewModel() {
         }
     }
 
-    fun setScale(scale: GpaScale) {
-        settings.gpaScale = scale
-        _state.value = _state.value.copy(scale = scale)
-        applyGrades(_state.value.grades)
-    }
-
     /**
      * 保存当前口径下的手动计算范围。新成绩默认纳入，自动排除项（尤其是缓考）不能被重新勾选。
      * 不删掉其他口径当前不可计算的键，用户切回原口径时选择仍在。
@@ -110,10 +102,7 @@ class GradeViewModel : ViewModel() {
     }
 
     private fun applyGrades(grades: List<Grade>) {
-        var scale = _state.value.scale
-        val noOfficial = grades.isNotEmpty() && grades.none { it.officialPoint != null }
-        // 教务没返回绩点时，「教务绩点」口径算不出东西，自动切到线性五分制并提示
-        if (scale == GpaScale.OFFICIAL && noOfficial) scale = GpaScale.LINEAR_5
+        val scale = GpaScale.OFFICIAL
 
         val manuallyExcluded = settings.gpaExcludedCourseKeys
         _state.value = _state.value.copy(
@@ -124,7 +113,6 @@ class GradeViewModel : ViewModel() {
             overall = GpaCalculator.summarize(grades, scale, manuallyExcluded),
             byTerm = GpaCalculator.byTerm(grades, scale, manuallyExcluded),
             manuallyExcludedCourseKeys = manuallyExcluded,
-            officialPointsMissing = noOfficial,
             error = null,
             emptyReason = null,
         )

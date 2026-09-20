@@ -1,7 +1,6 @@
 package io.github.joyreverie.onebnu.core.store
 
 import android.content.Context
-import io.github.joyreverie.onebnu.data.model.GpaScale
 import io.github.joyreverie.onebnu.data.model.PeriodMapper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,11 +29,6 @@ class Settings(
 
     val termStartConfigured: Boolean
         get() = prefs.contains(KEY_TERM_START)
-
-    var gpaScale: GpaScale
-        get() = runCatching { GpaScale.valueOf(prefs.getString(KEY_GPA_SCALE, null) ?: "") }
-            .getOrDefault(GpaScale.OFFICIAL)
-        set(value) { prefs.edit().putString(KEY_GPA_SCALE, value.name).apply() }
 
     /**
      * 「成绩 → 计算范围」里用户主动排除的课程键。键是哈希值，且设置按校区隔离；
@@ -180,7 +174,6 @@ class Settings(
             if (campus == Campus.BEIJING) "onebnu_settings" else "onebnu_settings_${campus.storageKey}"
 
         private const val KEY_TERM_START = "term_start"
-        private const val KEY_GPA_SCALE = "gpa_scale"
         private const val KEY_GPA_EXCLUDED_COURSES = "gpa_excluded_course_keys"
         private const val KEY_LOCK = "require_unlock"
         private const val KEY_SCHEDULE_ZOOM = "schedule_zoom"

@@ -44,7 +44,7 @@ class GpaCalculatorTest {
         assertFalse(deferred.countable)
         assertNull(GpaScale.OFFICIAL.pointOf(deferred))
         assertFalse(GpaCalculator.isPassed(deferred))
-        assertEquals(4.0, summary.gpa!!, 0.001)
+        assertEquals(3.8, summary.gpa!!, 0.001)
         assertEquals(90.0, summary.weightedAverage!!, 0.001)
         assertEquals(3.0, summary.gradedCredits, 0.001)
         assertEquals(1, summary.deferredCount)
@@ -64,7 +64,7 @@ class GpaCalculatorTest {
             manuallyExcludedCourseKeys = setOf(low.calculationKey, deferred.calculationKey),
         )
 
-        assertEquals(4.0, summary.gpa!!, 0.001)
+        assertEquals(3.8, summary.gpa!!, 0.001)
         assertEquals(2.0, summary.gradedCredits, 0.001)
         assertEquals(1, summary.manuallyExcludedCount)
         assertEquals(1, summary.deferredCount)
@@ -81,12 +81,11 @@ class GpaCalculatorTest {
         )
 
         assertNull("「合格」没有分数含义", GradeScale.letterToScore("合格"))
-        assertNull(GpaScale.LINEAR_5.pointOf(pass))
-        assertNull(GpaScale.STANDARD_4.pointOf(pass))
+        assertNull(GpaScale.OFFICIAL.pointOf(pass))
         assertTrue("通过制仍然算取得学分", GpaCalculator.isPassed(pass))
 
-        val five = GpaCalculator.summarize(listOf(excellent, pass), GpaScale.LINEAR_5)
-        assertEquals(4.5, five.gpa!!, 0.001)
+        val five = GpaCalculator.summarize(listOf(excellent, pass), GpaScale.OFFICIAL)
+        assertEquals(4.0, five.gpa!!, 0.001)
         assertEquals(95.0, five.weightedAverage!!, 0.001)
         assertEquals(3.0, five.gradedCredits, 0.001)
         assertEquals(4.0, five.earnedCredits, 0.001)
@@ -100,7 +99,7 @@ class GpaCalculatorTest {
             scoreText = "不合格", score = null, officialPoint = null, remark = "",
         )
         assertNull(GradeScale.letterToScore("不合格"))
-        assertNull(GpaScale.LINEAR_5.pointOf(fail))
+        assertNull(GpaScale.OFFICIAL.pointOf(fail))
         assertFalse(GpaCalculator.isPassed(fail))
     }
 
@@ -109,6 +108,18 @@ class GpaCalculatorTest {
         assertEquals(95.0, GradeScale.letterToScore("优秀")!!, 0.001)
         assertEquals(65.0, GradeScale.letterToScore("及格")!!, 0.001)
         assertEquals(45.0, GradeScale.letterToScore("不及格")!!, 0.001)
+    }
+
+    @Test
+    fun `北师大绩点规则使用百分制公式并保留一位小数`() {
+        assertEquals(4.0, GpaScale.OFFICIAL.pointOf(grade("满分", 100.0))!!, 0.001)
+        assertEquals(3.8, GpaScale.OFFICIAL.pointOf(grade("九十", 90.0))!!, 0.001)
+        assertEquals(1.0, GpaScale.OFFICIAL.pointOf(grade("六十", 60.0))!!, 0.001)
+        assertEquals(0.0, GpaScale.OFFICIAL.pointOf(grade("不及格", 59.0))!!, 0.001)
+        assertEquals(4.0, GpaScale.OFFICIAL.pointOf(grade("优秀", 95.0))!!, 0.001)
+        assertEquals(3.6, GpaScale.OFFICIAL.pointOf(grade("良好", 85.0))!!, 0.001)
+        assertEquals(2.8, GpaScale.OFFICIAL.pointOf(grade("中等", 75.0))!!, 0.001)
+        assertEquals(1.7, GpaScale.OFFICIAL.pointOf(grade("及格", 65.0))!!, 0.001)
     }
 
 
@@ -144,23 +155,23 @@ class GpaCalculatorTest {
         val other = attempt("AIS002", "概率论", 90.0, "2025", "0", credits = 2.0)
 
         assertEquals(setOf(0), GpaCalculator.supersededIndices(listOf(first, retake, other)))
-        val s = GpaCalculator.summarize(listOf(first, retake, other), GpaScale.LINEAR_5)
+        val s = GpaCalculator.summarize(listOf(first, retake, other), GpaScale.OFFICIAL)
         assertEquals(1, s.supersededCount)
         assertEquals(1, s.excludedCount)
         assertEquals(5.0, s.earnedCredits, 0.001)
         assertEquals(5.0, s.gradedCredits, 0.001)
-        // 3.5 × 3 + 4.0 × 2 = 18.5，/ 5 = 3.7
-        assertEquals(3.7, s.gpa!!, 0.001)
+        // 3.6 × 3 + 3.8 × 2 = 18.4，/ 5 = 3.68
+        assertEquals(3.68, s.gpa!!, 0.001)
     }
 
     @Test
     fun `首修及格后标了重修再修：学分只算一次，成绩按后一次`() {
         val first = attempt("AIS003", "数据结构", 62.0, "2024", "1", credits = 3.0)
         val retake = attempt("AIS003", "数据结构", 88.0, "2025", "0", credits = 3.0, remark = "重修")
-        val s = GpaCalculator.summarize(listOf(retake, first), GpaScale.LINEAR_5)
+        val s = GpaCalculator.summarize(listOf(retake, first), GpaScale.OFFICIAL)
         assertEquals(1, s.supersededCount)
         assertEquals(3.0, s.earnedCredits, 0.001)
-        assertEquals(3.8, s.gpa!!, 0.001)
+        assertEquals(3.7, s.gpa!!, 0.001)
     }
 
     @Test
@@ -168,7 +179,7 @@ class GpaCalculatorTest {
         val a = attempt("GRA001", "形势与政策", 90.0, "2024", "0", credits = 0.5)
         val b = attempt("GRA001", "形势与政策", 92.0, "2024", "1", credits = 0.5)
         val c = attempt("GRA001", "形势与政策", 95.0, "2025", "0", credits = 0.5)
-        val s = GpaCalculator.summarize(listOf(a, b, c), GpaScale.LINEAR_5)
+        val s = GpaCalculator.summarize(listOf(a, b, c), GpaScale.OFFICIAL)
         assertEquals(0, s.supersededCount)
         assertEquals(1.5, s.earnedCredits, 0.001)
         assertEquals(3, s.courseCount - s.excludedCount)
@@ -179,7 +190,7 @@ class GpaCalculatorTest {
         val autumn = attempt("A", "甲", 80.0, "2025", "0")
         val spring = attempt("B", "乙", 80.0, "2025", "1")
         val older = attempt("C", "丙", 80.0, "2024", "1")
-        val labels = GpaCalculator.byTerm(listOf(autumn, older, spring), GpaScale.LINEAR_5).map { it.first }
+        val labels = GpaCalculator.byTerm(listOf(autumn, older, spring), GpaScale.OFFICIAL).map { it.first }
         assertEquals(listOf("2025-2026 春季学期", "2025-2026 秋季学期", "2024-2025 春季学期"), labels)
     }
 }

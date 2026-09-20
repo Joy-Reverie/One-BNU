@@ -278,7 +278,7 @@ class AcademicRepository(
 
     /**
      * 原始成绩是成绩页的主数据源：只有它包含平时 / 期末分项。
-     * 有效成绩只作为补充，给原始记录补上教务官方绩点；原始接口异常时才回退到有效成绩。
+     * 有效成绩只在原始接口失败或确实为空时作为兼容回退，避免连续请求触发教务限流。
      */
     suspend fun grades(forceRefresh: Boolean = false): Outcome<List<Grade>> {
         val raw = cachedHtml(
@@ -288,49 +288,21 @@ class AcademicRepository(
             shouldCache = { it.isNotEmpty() },
             forceRefresh = forceRefresh,
         )
-        val valid = cachedHtml(
-            key = OfflineCache.GRADES_VALID,
-            request = { api.gradesHtml(validOnly = true) },
-            parse = Parsers::parseGrades,
-            shouldCache = { it.isNotEmpty() },
-            forceRefresh = forceRefresh,
-        )
-        val result = when {
-            raw is Outcome.Ok && raw.data.isNotEmpty() -> {
-                val supplement = (valid as? Outcome.Ok)?.data.orEmpty()
-                Outcome.Ok(mergeGradeSources(raw.data, supplement), raw.freshness ?: (valid as? Outcome.Ok)?.freshness)
-            }
-            valid is Outcome.Ok && valid.data.isNotEmpty() -> valid
-            raw is Outcome.Ok -> raw
-            valid !is Outcome.Error -> valid
-            else -> raw
+        val result = if (raw is Outcome.Ok && raw.data.isNotEmpty()) raw else {
+            val valid = cachedHtml(
+                key = OfflineCache.GRADES_VALID,
+                request = { api.gradesHtml(validOnly = true) },
+                parse = Parsers::parseGrades,
+                shouldCache = { it.isNotEmpty() },
+                forceRefresh = forceRefresh,
+            )
+            if (valid is Outcome.Ok && valid.data.isNotEmpty()) valid else raw
         }
         return result.let { o ->
         if (o is Outcome.Ok && o.data.isEmpty()) {
             Outcome.Empty("教务系统中还没有成绩记录", o.freshness)
         } else o
         }
-    }
-
-    private fun mergeGradeSources(raw: List<Grade>, valid: List<Grade>): List<Grade> = raw.map { item ->
-        val supplement = valid.firstOrNull { sameGrade(it, item) } ?: return@map item
-        item.copy(
-            officialPoint = supplement.officialPoint ?: item.officialPoint,
-            courseType = item.courseType.ifBlank { supplement.courseType },
-            examType = item.examType.ifBlank { supplement.examType },
-            remark = listOf(item.remark, supplement.remark)
-                .filter { it.isNotBlank() }
-                .distinct()
-                .joinToString(" · "),
-        )
-    }
-
-    private fun sameGrade(a: Grade, b: Grade): Boolean {
-        val codeA = a.courseCode.replace(Regex("\\s+"), "").uppercase()
-        val codeB = b.courseCode.replace(Regex("\\s+"), "").uppercase()
-        val sameCourse = if (codeA.isNotBlank() && codeB.isNotBlank()) codeA == codeB
-        else a.courseName.replace(Regex("\\s+"), "") == b.courseName.replace(Regex("\\s+"), "")
-        return sameCourse && a.xn == b.xn && a.xq == b.xq
     }
 
     /** 培养方案中的课程模块；没有发布时返回空映射而不是错误。 */
