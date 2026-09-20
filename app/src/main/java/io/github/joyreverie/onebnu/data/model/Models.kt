@@ -138,6 +138,31 @@ data class Grade(
     /** 是否具备可用于本地绩点换算的成绩；缓考即使显示为 0 也一律不算。 */
     val countable: Boolean
         get() = !isDeferredExam && (score != null || GradeScale.letterToScore(scoreText) != null)
+
+    /** 由平时、期末和总评反推出的两部分权重。 */
+    val scoreComposition: ScoreComposition?
+        get() = ScoreComposition.infer(usualScore, finalScore, score)
+}
+
+data class ScoreComposition(
+    val usualWeightPercent: Double,
+    val finalWeightPercent: Double,
+) {
+    companion object {
+        /** 总评 = 平时 × 平时权重 + 期末 × 期末权重，三者均为百分制。 */
+        fun infer(usual: Double?, final: Double?, total: Double?): ScoreComposition? {
+            if (usual == null || final == null || total == null) return null
+            if (!usual.isFinite() || !final.isFinite() || !total.isFinite()) return null
+            if (kotlin.math.abs(usual - final) < 0.0001) return null
+            val usualWeight = (total - final) / (usual - final)
+            val finalWeight = 1.0 - usualWeight
+            if (usualWeight !in -0.001..1.001 || finalWeight !in -0.001..1.001) return null
+            return ScoreComposition(
+                usualWeightPercent = (usualWeight * 100).coerceIn(0.0, 100.0),
+                finalWeightPercent = (finalWeight * 100).coerceIn(0.0, 100.0),
+            )
+        }
+    }
 }
 
 private fun String.sha256(): String = java.security.MessageDigest.getInstance("SHA-256")

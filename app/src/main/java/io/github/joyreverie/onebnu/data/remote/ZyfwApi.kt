@@ -181,8 +181,19 @@ class ZyfwApi(
     @Throws(IOException::class)
     private fun token(): String {
         cachedToken?.let { return it }
-        val t = http.get("$activeBase/frame/menus/js/SetTokenkey.jsp", home).body
-            .replace(Regex("\\s"), "")
+        // 原始成绩报表要求先以成绩页菜单名 POST 一次令牌接口；GET 在部分账号上返回空令牌，
+        // 结果页仍能打开但分项成绩报表会静默返回「没有检索到记录」。
+        val posted = runCatching {
+            http.postForm(
+                "$activeBase/frame/menus/js/SetTokenkey.jsp",
+                mapOf("menucode" to "xscj.stuckcj.my.jsp"),
+                referer = "$activeBase/student/xscj.stuckcj.jsp?menucode=JW130706",
+            ).body
+        }.getOrNull().orEmpty()
+        val t = posted.replace(Regex("\\s"), "").ifBlank {
+            http.get("$activeBase/frame/menus/js/SetTokenkey.jsp", home).body
+                .replace(Regex("\\s"), "")
+        }
         cachedToken = t
         return t
     }
@@ -314,7 +325,7 @@ class ZyfwApi(
     fun gradesHtml(validOnly: Boolean, xn: String = "", xq: String = ""): String {
         ensureSession()
         val page = if (validOnly) "xscj.chkdgxscjyxxjd_data.jsp" else "xscj.stuckcj_data.jsp"
-        val form = mapOf(
+        val form = mutableMapOf(
             "sjxz" to if (xn.isBlank()) "sjxz1" else "sjxz3",
             "ysyx" to if (validOnly) "yxcj" else "yscj",
             "zfx" to "0",
@@ -323,6 +334,9 @@ class ZyfwApi(
             "xn1" to (xn.toIntOrNull()?.plus(1)?.toString() ?: ""),
             "xq" to xq,
         )
+        if (!validOnly) {
+            form["userCode"] = (userContext?.userCode ?: userContext?.loginId).orEmpty()
+        }
         return guard(
             http.postForm("$activeBase/student/$page", form, referer = "$activeBase/student/xscj.stuckcj.jsp").body,
         )

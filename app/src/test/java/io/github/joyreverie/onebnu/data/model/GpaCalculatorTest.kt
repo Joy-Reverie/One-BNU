@@ -8,6 +8,13 @@ import org.junit.Test
 
 class GpaCalculatorTest {
 
+    @Test
+    fun `从平时期末总评反推成绩权重`() {
+        val composition = ScoreComposition.infer(60.0, 30.0, 42.0)
+        assertEquals(40.0, composition!!.usualWeightPercent, 0.001)
+        assertEquals(60.0, composition.finalWeightPercent, 0.001)
+    }
+
     private fun grade(
         name: String,
         score: Double,

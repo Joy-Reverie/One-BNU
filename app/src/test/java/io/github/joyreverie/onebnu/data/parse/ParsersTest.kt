@@ -232,6 +232,47 @@ class ParsersTest {
         assertEquals("数据库原理", grade.courseName)
     }
 
+    @Test
+    fun `旧版原始成绩表按固定列解析平时期末和总评`() {
+        val html = """
+            <table><tbody><tr>
+              <td>2025-2026春季学期</td><td>[TEST004]数据结构</td><td>3</td><td>必修</td>
+              <td>考试</td><td>考试</td><td>初修</td><td>60</td><td>30</td><td>42</td><td>主修</td>
+            </tr></tbody></table>
+        """.trimIndent()
+
+        val grade = Parsers.parseRawGrades(html).single()
+
+        assertEquals("60", grade.usualScoreText)
+        assertEquals("30", grade.finalScoreText)
+        assertEquals("42", grade.scoreText)
+        val composition = requireNotNull(grade.scoreComposition)
+        assertEquals(40.0, composition.usualWeightPercent, 0.001)
+        assertEquals(60.0, composition.finalWeightPercent, 0.001)
+    }
+
+    @Test
+    fun `原始成绩带表头时读取平时期末综合成绩列`() {
+        val html = """
+            <table><tr>
+              <td>学年学期</td><td>课程/环节</td><td>学分</td><td>类别</td><td>课程性质</td>
+              <td>考核方式</td><td>修读性质</td><td>平时成绩</td><td>期末成绩</td><td>综合成绩</td><td>辅修标记</td><td>备注</td>
+            </tr><tr>
+              <td>2025-2026学年春季学期</td><td>[TEST005]线性代数</td><td>3</td><td>专业课</td><td>必修</td>
+              <td>考试</td><td>初修</td><td>60</td><td>30</td><td>42</td><td>主修</td><td></td>
+            </tr></table>
+        """.trimIndent()
+
+        val grade = Parsers.parseRawGrades(html).single()
+
+        assertEquals("TEST005", grade.courseCode)
+        assertEquals("考试", grade.examType)
+        assertEquals("60", grade.usualScoreText)
+        assertEquals("30", grade.finalScoreText)
+        assertEquals("42", grade.scoreText)
+        assertEquals(40.0, requireNotNull(grade.scoreComposition).usualWeightPercent, 0.001)
+    }
+
     // ---------------- 学籍（XML，非 HTML 表格）----------------
 
     @Test

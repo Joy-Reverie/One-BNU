@@ -170,6 +170,28 @@ object Parsers {
     fun parseGrades(html: String): List<Grade> {
         val doc = Jsoup.parse(html)
         val table = pickDataTable(doc, listOf("课程", "成绩")) ?: return emptyList()
+        return parseGradeTable(table)
+    }
+
+    /**
+     * 解析旧教务「原始成绩」报表。旧版客户端直接取这个接口，分项列为平时、期末、总评；
+     * 不同年份的报表有表头和无表头两种布局，因此先按表头解析，再回退到旧固定列位。
+     */
+    fun parseRawGrades(html: String): List<Grade> {
+        val doc = Jsoup.parse(html)
+        val componentTable = doc.select("table")
+            .filter { table ->
+                val text = table.text()
+                (text.contains("平时") || text.contains("平时分")) &&
+                    (text.contains("期末") || text.contains("期末分")) &&
+                    (text.contains("总评") || text.contains("综合成绩"))
+            }
+            .maxByOrNull { it.select("tr").size }
+        if (componentTable != null) return parseGradeTable(componentTable)
+        return parseLegacyRawGrades(doc)
+    }
+
+    private fun parseGradeTable(table: Element): List<Grade> {
         val header = headerIndex(table)
 
         val iXn = header.findExact("学年")
@@ -178,9 +200,9 @@ object Parsers {
         val iCode = header.findAny("课程号", "课程代码", "课程编号")
         val iName = header.findAny("课程名", "课程")
         val iCredit = header.findAny("学分")
-        val iScore = header.findAny("总评成绩", "成绩", "最终成绩")
-        val iUsualScore = header.findAny("平时成绩", "平时")
-        val iFinalScore = header.findAny("期末成绩", "期末", "考试成绩")
+        val iScore = header.findAny("总评成绩", "综合成绩", "成绩", "最终成绩")
+        val iUsualScore = header.findAny("平时成绩", "平时分", "平时")
+        val iFinalScore = header.findAny("期末考试成绩", "期末考查成绩", "期末成绩", "期末", "考试成绩", "考查成绩")
         val iPoint = header.findAny("学分绩点", "绩点")
         val iType = header.findAny("课程性质", "课程属性", "课程类别", "类别")
         val iExam = header.findAny("考核方式", "考试性质")
@@ -230,6 +252,52 @@ object Parsers {
                     .filter { it.isNotBlank() }
                     .distinct()
                     .joinToString(" · "),
+            )
+        }
+        return out
+    }
+
+    /** 旧客户端使用的固定列：学期、课程、学分、性质、…、修读性质、平时、期末、总评、主修标志。 */
+    private fun parseLegacyRawGrades(doc: Document): List<Grade> {
+        val body = doc.selectFirst("tbody") ?: return emptyList()
+        val out = ArrayList<Grade>()
+        var semester = ""
+        for (row in body.select("tr")) {
+            val cells = row.select("td").map { it.cleanText() }
+            if (cells.size < 10) continue
+            cells.getOrNull(0).orEmpty().ifBlank { semester }.also { semester = it }
+            val rawName = cells.getOrNull(1).orEmpty()
+            if (rawName.isBlank()) continue
+            val match = Regex("""^\\[([^]]+)]\\s*(.*)$""").find(rawName)
+            val courseCode = match?.groupValues?.get(1).orEmpty()
+            val courseName = (match?.groupValues?.get(2) ?: rawName).trim()
+            if (courseName.isBlank() || courseName == "合计") continue
+
+            val usualText = cells.getOrNull(7).orEmpty()
+            val finalText = cells.getOrNull(8).orEmpty()
+            val totalText = cells.getOrNull(9).orEmpty()
+            val examType = cells.firstOrNull { it.contains("考试") || it.contains("考查") }.orEmpty()
+            val remark = cells.filter { cell ->
+                cell.contains("缓考") || cell.contains("重修") || cell.contains("补考") || cell == "缺考"
+            }.distinct().joinToString(" · ")
+            val (xn, xq) = normalizeTerm("", "", semester)
+            out += Grade(
+                xn = xn,
+                xq = xq,
+                termLabel = buildTermLabel(xn, xq),
+                courseCode = courseCode,
+                courseName = courseName,
+                credits = cells.getOrNull(2)?.toDoubleOrNull() ?: 0.0,
+                scoreText = totalText,
+                score = totalText.toDoubleOrNull(),
+                officialPoint = null,
+                usualScoreText = usualText.ifBlank { null },
+                usualScore = usualText.toDoubleOrNull(),
+                finalScoreText = finalText.ifBlank { null },
+                finalScore = finalText.toDoubleOrNull(),
+                courseType = cells.getOrNull(3).orEmpty(),
+                examType = examType,
+                remark = remark,
             )
         }
         return out

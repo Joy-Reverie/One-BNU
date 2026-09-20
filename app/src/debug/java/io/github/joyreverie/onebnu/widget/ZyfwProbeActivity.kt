@@ -77,6 +77,14 @@ class ZyfwProbeActivity : ComponentActivity() {
             if (!ServiceLocator.ensureSession()) {
                 append("没有可用的 CAS 会话，且静默重登失败"); return
             }
+            val gradeMode = intent.getStringExtra("mode")
+            if (gradeMode == "grades" || gradeMode == "valid") {
+                val validOnly = gradeMode == "valid"
+                val body = ServiceLocator.api.gradesHtml(validOnly = validOnly)
+                File(outDir, if (validOnly) "grades_valid.html" else "grades_raw.html").writeText(body)
+                append("${if (validOnly) "valid" else "raw"} grades ${body.length} chars via configured ZyfwApi")
+                return
+            }
             val base = if (campus == Campus.BEIJING) ZyfwApi.BASE else ZhuhaiCasClient.JWXT_BASE
             val api = ZyfwApi(http, auth, base)
             api.ensureSession()

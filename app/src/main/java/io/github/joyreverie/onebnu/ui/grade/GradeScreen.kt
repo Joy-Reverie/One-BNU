@@ -9,7 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,12 +18,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Checklist
@@ -37,7 +38,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -170,7 +170,7 @@ internal fun GradeContent(
     var showCoursePicker by rememberSaveable { mutableStateOf(false) }
     var selectedTerm by rememberSaveable { mutableIntStateOf(0) }
     val screen = LocalScreenInfo.current
-    val allTerms = listOf("全部") + s.byTerm.map { it.first }
+    val allTerms = listOf("全部课程") + s.byTerm.map { it.first }
     val filteredGrades = remember(s.grades, selectedTerm, allTerms) {
         if (selectedTerm == 0) s.grades else s.grades.filter { it.termLabel == allTerms.getOrNull(selectedTerm) }
     }
@@ -195,13 +195,6 @@ internal fun GradeContent(
             }
         }
         item {
-            TermFilter(
-                terms = allTerms,
-                selected = selectedTerm,
-                onSelected = { selectedTerm = it },
-            )
-        }
-        item {
             CalculationScopeCard(
                 s = s,
                 onClick = { showCoursePicker = true },
@@ -222,7 +215,7 @@ internal fun GradeContent(
                 item {
                     NoteCard(
                         icon = Icons.Outlined.Info,
-                        text = "缓考 ${current.deferredCount} 门：即使暂记为 0 分，也不会计入绩点和加权均分。",
+                        text = "缓考${current.deferredCount}门：不计入绩点或加权分",
                     )
                 }
             }
@@ -255,9 +248,11 @@ internal fun GradeContent(
         }
 
         item {
-            SectionHeader(
-                title = if (selectedTerm == 0) "全部课程" else allTerms.getOrNull(selectedTerm).orEmpty(),
-                count = filteredGrades.size,
+            TermDropdown(
+                terms = allTerms,
+                selected = selectedTerm,
+                courseCount = filteredGrades.size,
+                onSelected = { selectedTerm = it },
             )
         }
         if (filteredGrades.isEmpty()) {
@@ -326,23 +321,63 @@ private fun GradeIntro(count: Int, scale: GpaScale) {
 }
 
 @Composable
-private fun TermFilter(terms: List<String>, selected: Int, onSelected: (Int) -> Unit) {
-    androidx.compose.foundation.lazy.LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(vertical = 1.dp),
-    ) {
-        items(terms.size, key = { it }) { index ->
-            FilterChip(
-                selected = selected == index,
-                onClick = { onSelected(index) },
-                label = {
+private fun TermDropdown(
+    terms: List<String>,
+    selected: Int,
+    courseCount: Int,
+    onSelected: (Int) -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val current = terms.getOrElse(selected) { terms.firstOrNull().orEmpty() }
+
+    Box(Modifier.fillMaxWidth()) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().clickable { expanded = true },
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("查看学期成绩", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    Spacer(Modifier.height(3.dp))
+                    Text(current, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        terms[index].replace("学年", ""),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        "$courseCount 门课程",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                },
-            )
+                }
+                Icon(Icons.Filled.ExpandMore, contentDescription = "选择学期", tint = MaterialTheme.colorScheme.primary)
+            }
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.widthIn(min = 280.dp, max = 520.dp),
+        ) {
+            terms.forEachIndexed { index, term ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            term,
+                            fontWeight = if (index == selected) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    trailingIcon = if (index == selected) {
+                        { Text("✓", color = MaterialTheme.colorScheme.primary) }
+                    } else null,
+                    onClick = {
+                        expanded = false
+                        onSelected(index)
+                    },
+                )
+            }
         }
     }
 }
@@ -575,22 +610,6 @@ private fun HeroStat(label: String, value: String, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun SectionHeader(title: String, count: Int) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.width(8.dp))
-        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(50)) {
-            Text(
-                count.toString(),
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
 private fun GradeRow(
     g: Grade,
     scale: GpaScale,
@@ -599,8 +618,9 @@ private fun GradeRow(
 ) {
     val point = scale.pointOf(g)
     val hasBreakdown = !g.usualScoreText.isNullOrBlank() || !g.finalScoreText.isNullOrBlank()
+    var expanded by rememberSaveable(g.calculationKey) { mutableStateOf(false) }
     Card(
-        modifier.fillMaxWidth(),
+        modifier.fillMaxWidth().clickable { expanded = !expanded },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -625,7 +645,9 @@ private fun GradeRow(
                 ScoreBadge(text = g.scoreText.ifBlank { "—" }, color = scoreColor(g))
             }
 
-            if (hasBreakdown) {
+            if (expanded) {
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
                 Spacer(Modifier.height(14.dp))
                 ScoreBreakdown(g)
             }
@@ -657,6 +679,24 @@ private fun GradeRow(
                 Spacer(Modifier.height(6.dp))
                 Text(g.remark, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    when {
+                        expanded -> "收起成绩构成"
+                        hasBreakdown -> "点击查看成绩构成"
+                        else -> "点击查看成绩详情"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "收起成绩构成" else "展开成绩构成",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
     }
 }
@@ -676,18 +716,35 @@ private fun ScoreBadge(text: String, color: Color) {
 
 @Composable
 private fun ScoreBreakdown(g: Grade) {
+    val finalLabel = when {
+        g.examType.contains("考试") -> "期末考试成绩"
+        g.examType.contains("考查") -> "期末考查成绩"
+        else -> "期末成绩"
+    }
+    val hasComponentScores = g.usualScore != null || g.finalScore != null ||
+        !g.usualScoreText.isNullOrBlank() || !g.finalScoreText.isNullOrBlank()
     Column {
+        Text("成绩构成", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ScorePart("平时成绩", g.usualScoreText ?: "—", Modifier.weight(1f))
-            ScorePart("期末成绩", g.finalScoreText ?: "—", Modifier.weight(1f))
+            ScorePart("平时成绩", g.usualScoreText ?: "—", g.scoreComposition?.usualWeightPercent, Modifier.weight(1f))
+            ScorePart(finalLabel, g.finalScoreText ?: "—", g.scoreComposition?.finalWeightPercent, Modifier.weight(1f))
         }
-        Spacer(Modifier.height(8.dp))
-        ScoreProgress(g.score)
+        Spacer(Modifier.height(10.dp))
+        ScoreTotal(g.scoreText.ifBlank { "—" })
+        if (!hasComponentScores) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "教务系统未返回平时/期末分项，本卡仅展示总评成绩。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
 @Composable
-private fun ScorePart(label: String, value: String, modifier: Modifier) {
+private fun ScorePart(label: String, value: String, weightPercent: Double?, modifier: Modifier) {
     Surface(
         modifier = modifier,
         color = LocalAccents.current.raised,
@@ -697,45 +754,58 @@ private fun ScorePart(label: String, value: String, modifier: Modifier) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(3.dp))
             Text(value, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                weightPercentage(weightPercent),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            Spacer(Modifier.height(5.dp))
+            ScoreBar(weightPercent)
         }
     }
 }
 
 @Composable
-private fun ScoreProgress(total: Double?) {
-    Column {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("成绩概览", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-            Text(
-                total?.let { "总评 ${"%.1f".format(Locale.ROOT, it)}" } ?: "暂无可用分数",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
-        }
-        Spacer(Modifier.height(5.dp))
-        Surface(
-            Modifier.fillMaxWidth().height(7.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(50),
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                if (total != null) {
-                    Box(
-                        Modifier.fillMaxWidth((total / 100.0).coerceIn(0.0, 1.0).toFloat())
-                            .height(7.dp)
-                            .background(scoreProgressColor(total), RoundedCornerShape(50)),
-                    )
+private fun ScoreTotal(value: String) {
+    Surface(
+        Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("总分", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Spacer(Modifier.height(3.dp))
+                    Text(value, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
         }
     }
 }
 
-private fun scoreProgressColor(score: Double): Color = when {
-    score >= 85 -> Color(0xFF3A9C78)
-    score >= 60 -> Color(0xFF3A63B8)
-    else -> Color(0xFFC65353)
+@Composable
+private fun ScoreBar(weight: Double?, color: Color = MaterialTheme.colorScheme.primary) {
+    Surface(
+        Modifier.fillMaxWidth().height(6.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+        shape = RoundedCornerShape(50),
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            if (weight != null) {
+                Box(
+                    Modifier.fillMaxWidth((weight / 100.0).coerceIn(0.0, 1.0).toFloat())
+                        .height(6.dp)
+                        .background(color, RoundedCornerShape(50)),
+                )
+            }
+        }
+    }
 }
+
+private fun weightPercentage(weight: Double?): String =
+    weight?.let { "占比 ${"%.0f%%".format(Locale.ROOT, it)}" } ?: "占比未知"
 
 @Composable
 private fun scoreColor(g: Grade): Color {
