@@ -167,6 +167,20 @@ object Parsers {
     // 成绩
     // ------------------------------------------------------------------
 
+    /**
+     * 成绩表的「课程」列常写成「[10230102]数学分析」，课程号要拆出来单独存，
+     * 不能留在课程名里 —— 名字要显示给人看，一行放不下几个字的地方（成绩总表）更是浪费。
+     * 括号里只认纯代码（字母数字，至少三位），「（双语）高等数学」这种前缀要原样保留。
+     */
+    private val COURSE_CODE_PREFIX =
+        Regex("""^[\[(（【]\s*([A-Za-z0-9][A-Za-z0-9._-]{2,})\s*[])）】]\s*""")
+
+    /** 拆出「课程号 to 课程名」；没有代码前缀就返回空代码与原名。 */
+    private fun splitCourseCode(raw: String): Pair<String, String> {
+        val m = COURSE_CODE_PREFIX.find(raw) ?: return "" to raw.trim()
+        return m.groupValues[1] to raw.removeRange(m.range).trim()
+    }
+
     fun parseGrades(html: String): List<Grade> {
         val doc = Jsoup.parse(html)
         val table = pickDataTable(doc, listOf("课程", "成绩")) ?: return emptyList()
@@ -218,9 +232,8 @@ object Parsers {
             val rawName = cells.getOrNull(iName).orEmpty()
             if (rawName.isBlank()) continue
 
-            val m = Regex("""^\[([^\]]+)]\s*(.*)$""").find(rawName)
-            val code = cells.getOrNull(iCode).orEmpty().ifBlank { m?.groupValues?.get(1).orEmpty() }
-            val name = (m?.groupValues?.get(2) ?: rawName).trim()
+            val (prefixCode, name) = splitCourseCode(rawName)
+            val code = cells.getOrNull(iCode).orEmpty().ifBlank { prefixCode }
             if (name.isBlank() || name == "合计") continue
 
             val scoreText = cells.getOrNull(iScore).orEmpty()
@@ -268,9 +281,7 @@ object Parsers {
             cells.getOrNull(0).orEmpty().ifBlank { semester }.also { semester = it }
             val rawName = cells.getOrNull(1).orEmpty()
             if (rawName.isBlank()) continue
-            val match = Regex("""^\\[([^]]+)]\\s*(.*)$""").find(rawName)
-            val courseCode = match?.groupValues?.get(1).orEmpty()
-            val courseName = (match?.groupValues?.get(2) ?: rawName).trim()
+            val (courseCode, courseName) = splitCourseCode(rawName)
             if (courseName.isBlank() || courseName == "合计") continue
 
             val usualText = cells.getOrNull(7).orEmpty()

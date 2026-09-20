@@ -243,12 +243,37 @@ class ParsersTest {
 
         val grade = Parsers.parseRawGrades(html).single()
 
+        assertEquals("TEST004", grade.courseCode)
+        assertEquals("数据结构", grade.courseName)
         assertEquals("60", grade.usualScoreText)
         assertEquals("30", grade.finalScoreText)
         assertEquals("42", grade.scoreText)
         val composition = requireNotNull(grade.scoreComposition)
         assertEquals(40.0, composition.usualWeightPercent, 0.001)
         assertEquals(60.0, composition.finalWeightPercent, 0.001)
+    }
+
+    @Test
+    fun `课程名里的代码前缀拆成课程号，非代码的括号前缀保留`() {
+        val html = """
+            <table><tbody>
+            <tr>
+              <td>2025-2026春季学期</td><td>（10230102）数学分析</td><td>3</td><td>必修</td>
+              <td>考试</td><td>考试</td><td>初修</td><td>80</td><td>90</td><td>86</td><td>主修</td>
+            </tr>
+            <tr>
+              <td>2025-2026春季学期</td><td>（双语）高等数学</td><td>3</td><td>必修</td>
+              <td>考试</td><td>考试</td><td>初修</td><td>80</td><td>90</td><td>86</td><td>主修</td>
+            </tr>
+            </tbody></table>
+        """.trimIndent()
+
+        val grades = Parsers.parseRawGrades(html)
+
+        assertEquals("10230102", grades[0].courseCode)
+        assertEquals("数学分析", grades[0].courseName)
+        assertEquals("", grades[1].courseCode)
+        assertEquals("（双语）高等数学", grades[1].courseName)
     }
 
     @Test
