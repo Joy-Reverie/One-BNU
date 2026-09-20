@@ -91,6 +91,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.ui.components.OnResumed
+import io.github.joyreverie.onebnu.ui.components.SemesterPicker
+import io.github.joyreverie.onebnu.ui.components.SemesterPickerOption
 import io.github.joyreverie.onebnu.data.model.ClassSession
 import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PeriodMapper
@@ -121,7 +123,6 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
     val s by vm.state.collectAsState()
     OnResumed { vm.onResumed() }
     var selected by remember { mutableStateOf<Pair<Course, ClassSession>?>(null) }
-    var termMenu by remember { mutableStateOf(false) }
     var weekMenu by remember { mutableStateOf(false) }
     // 双指缩放：改的是行高（字号跟一半），松手时记住
     val settings = ServiceLocator.settings
@@ -160,36 +161,31 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
     LaunchedEffect(clock) {
         snapshotFlow { clock.value }.collect { if (LocalDate.now() != vm.state.value.today) vm.onResumed() }
     }
+    val termOptions = remember(s.terms, s.term?.code) {
+        s.terms.map { term ->
+            SemesterPickerOption(
+                key = term.code,
+                title = term.name,
+                subtitle = if (term.code == s.term?.code) "当前课表" else null,
+            )
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Box {
-                        TextButton(onClick = { termMenu = true }) {
-                            Text(
-                                s.term?.name ?: "课表",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Icon(Icons.Filled.ExpandMore, null, Modifier.size(18.dp))
-                        }
-                        DropdownMenu(expanded = termMenu, onDismissRequest = { termMenu = false }) {
-                            s.terms.forEach { t ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            t.name,
-                                            fontWeight = if (t.code == s.term?.code) FontWeight.Bold
-                                            else FontWeight.Normal,
-                                        )
-                                    },
-                                    onClick = { termMenu = false; vm.selectTerm(t) },
-                                )
-                            }
-                        }
-                    }
+                    SemesterPicker(
+                        title = "当前学期",
+                        value = s.term?.name ?: "课表",
+                        options = termOptions,
+                        selectedKey = s.term?.code,
+                        modifier = Modifier.widthIn(max = 260.dp),
+                        compact = true,
+                        onSelect = { option ->
+                            s.terms.firstOrNull { it.code == option.key }?.let(vm::selectTerm)
+                        },
+                    )
                 },
                 actions = {
                     AnimatedVisibility(visible = zoomHint, enter = fadeIn(), exit = fadeOut()) {

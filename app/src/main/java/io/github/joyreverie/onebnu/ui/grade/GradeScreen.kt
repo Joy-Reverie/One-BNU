@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -34,8 +33,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -76,6 +73,8 @@ import io.github.joyreverie.onebnu.ui.components.CacheBanner
 import io.github.joyreverie.onebnu.ui.components.EmptyBox
 import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.LoadingBox
+import io.github.joyreverie.onebnu.ui.components.SemesterPicker
+import io.github.joyreverie.onebnu.ui.components.SemesterPickerOption
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.Shape
@@ -142,13 +141,20 @@ internal fun GradeContent(
     var showCoursePicker by rememberSaveable { mutableStateOf(false) }
     var selectedTerm by rememberSaveable { mutableIntStateOf(0) }
     val screen = LocalScreenInfo.current
-    val allTerms = listOf("全部课程") + s.byTerm.map { it.first }
-    val filteredGrades = remember(s.grades, selectedTerm, allTerms) {
-        if (selectedTerm == 0) s.grades else s.grades.filter { it.termLabel == allTerms.getOrNull(selectedTerm) }
+    val termOptions = remember(s.grades, s.byTerm) {
+        listOf(SemesterPickerOption("all", "全部课程", "${s.grades.size} 门课程")) +
+            s.byTerm.map { (term, summary) ->
+                SemesterPickerOption(term, term, "${summary.courseCount} 门课程")
+            }
+    }
+    val filteredGrades = remember(s.grades, selectedTerm, termOptions) {
+        if (selectedTerm == 0) s.grades else s.grades.filter {
+            it.termLabel == termOptions.getOrNull(selectedTerm)?.key
+        }
     }
     val summary = remember(s.grades, s.scale, s.manuallyExcludedCourseKeys, selectedTerm) {
         if (selectedTerm == 0) s.overall
-        else s.byTerm.firstOrNull { it.first == allTerms.getOrNull(selectedTerm) }?.second
+        else s.byTerm.firstOrNull { it.first == termOptions.getOrNull(selectedTerm)?.key }?.second
     }
 
     LazyColumn(
@@ -211,11 +217,15 @@ internal fun GradeContent(
         }
 
         item {
-            TermDropdown(
-                terms = allTerms,
-                selected = selectedTerm,
-                courseCount = filteredGrades.size,
-                onSelected = { selectedTerm = it },
+            SemesterPicker(
+                title = "查看学期成绩",
+                value = termOptions.getOrNull(selectedTerm)?.title.orEmpty(),
+                supportingText = "${filteredGrades.size} 门课程",
+                options = termOptions,
+                selectedKey = termOptions.getOrNull(selectedTerm)?.key,
+                onSelect = { option ->
+                    selectedTerm = termOptions.indexOfFirst { it.key == option.key }.coerceAtLeast(0)
+                },
             )
         }
         if (filteredGrades.isEmpty()) {
@@ -279,68 +289,6 @@ private fun GradeIntro(count: Int, scale: GpaScale) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-    }
-}
-
-@Composable
-private fun TermDropdown(
-    terms: List<String>,
-    selected: Int,
-    courseCount: Int,
-    onSelected: (Int) -> Unit,
-) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    val current = terms.getOrElse(selected) { terms.firstOrNull().orEmpty() }
-
-    Box(Modifier.fillMaxWidth()) {
-        Surface(
-            modifier = Modifier.fillMaxWidth().clickable { expanded = true },
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("查看学期成绩", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                    Spacer(Modifier.height(3.dp))
-                    Text(current, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        "$courseCount 门课程",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Icon(Icons.Filled.ExpandMore, contentDescription = "选择学期", tint = MaterialTheme.colorScheme.primary)
-            }
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.widthIn(min = 280.dp, max = 520.dp),
-        ) {
-            terms.forEachIndexed { index, term ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            term,
-                            fontWeight = if (index == selected) FontWeight.Bold else FontWeight.Normal,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    trailingIcon = if (index == selected) {
-                        { Text("✓", color = MaterialTheme.colorScheme.primary) }
-                    } else null,
-                    onClick = {
-                        expanded = false
-                        onSelected(index)
-                    },
-                )
-            }
         }
     }
 }
