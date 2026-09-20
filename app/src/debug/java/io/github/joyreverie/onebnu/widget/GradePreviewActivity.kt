@@ -33,7 +33,8 @@ import io.github.joyreverie.onebnu.ui.theme.ProvideScreenInfo
 
 /**
  * 开发用：不登录直接检查成绩卡、缓考排除提示与手动计算范围弹窗。
- * 加 `--ez cached true`（可再加 `--ez refreshing true`）可以看缓存优先时的那一行提示。
+ * 加 `--ez cached true`（可再加 `--ez refreshing true`）可以看缓存优先时的那一行提示；
+ * 加 `--ez overview false` 直接进「明细」卡片视图。
  */
 class GradePreviewActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
@@ -87,8 +88,10 @@ class GradePreviewActivity : ComponentActivity() {
             OneBnuTheme {
                 ProvideScreenInfo(calculateWindowSizeClass(this)) {
                     var manuallyExcluded by remember { mutableStateOf(setOf(grades[1].calculationKey)) }
+                    var overview by remember { mutableStateOf(intent.getBooleanExtra("overview", true)) }
                     val scale = GpaScale.OFFICIAL
                     val state = GradeUiState(
+                        overviewMode = overview,
                         loading = false,
                         refreshing = refreshing,
                         freshness = if (cached) {
@@ -110,12 +113,16 @@ class GradePreviewActivity : ComponentActivity() {
                                 refreshing = state.refreshing,
                             )
                         }
-                        GradeContent(state, onSetIncludedCourses = { included ->
-                            val eligible = grades.filter { GpaCalculator.isEligible(it, scale) }
-                                .map { it.calculationKey }
-                                .toSet()
-                            manuallyExcluded = eligible - included
-                        })
+                        GradeContent(
+                            state,
+                            onSetIncludedCourses = { included ->
+                                val eligible = grades.filter { GpaCalculator.isEligible(it, scale) }
+                                    .map { it.calculationKey }
+                                    .toSet()
+                                manuallyExcluded = eligible - included
+                            },
+                            onSetOverviewMode = { overview = it },
+                        )
                         }
                     }
                 }

@@ -28,6 +28,8 @@ data class GradeUiState(
     val byTerm: List<Pair<String, GpaSummary>> = emptyList(),
     /** 用户在「计算范围」中取消勾选的课程键，仅存本机。 */
     val manuallyExcludedCourseKeys: Set<String> = emptySet(),
+    /** 课程列表显示成「总览」表格（true）还是「明细」卡片（false）。 */
+    val overviewMode: Boolean = true,
 ) {
     /** 当前显示的是本地快照（含「查到的就是空」）。 */
     val fromCache: Boolean get() = freshness?.cached == true
@@ -39,10 +41,16 @@ class GradeViewModel : ViewModel() {
     private val settings = ServiceLocator.settings
     private var backgroundJob: Job? = null
 
-    private val _state = MutableStateFlow(GradeUiState())
+    private val _state = MutableStateFlow(GradeUiState(overviewMode = settings.gradeOverviewMode))
     val state: StateFlow<GradeUiState> = _state.asStateFlow()
 
     init { load() }
+
+    /** 总览 / 明细的选择存本机，下次进成绩页还是这个视图。 */
+    fun setOverviewMode(overview: Boolean) {
+        settings.gradeOverviewMode = overview
+        _state.value = _state.value.copy(overviewMode = overview)
+    }
 
     fun load(forceRefresh: Boolean = false) {
         backgroundJob?.cancel()

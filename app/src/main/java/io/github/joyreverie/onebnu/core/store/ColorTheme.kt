@@ -64,7 +64,10 @@ enum class ColorTheme(
             heroSoftEnd = softEnd,
             wordmarkOne = if (dark) mix(primary, WHITE, 0.22f) else mix(primary, WHITE, 0.28f),
             wordmarkBnu = if (dark) mix(secondary, WHITE, 0.12f) else mix(primary, BLACK, 0.35f),
-            raised = if (dark) mix(primary, 0xFF161A21.toInt(), 0.20f) else mix(primary, WHITE, 0.965f),
+            // 两边都是「底色 + 一点主色」：浅色几乎是白，深色比卡片面（#161A21）亮一档。
+            // 深色这边原来只兑了两成底色，等于八成主色 —— 深色模式的主色本身是浅蓝，
+            // 铺出来是一整块亮蓝，压在上面的浅色字几乎看不见。
+            raised = if (dark) mix(primary, 0xFF1D222B.toInt(), 0.90f) else mix(primary, WHITE, 0.965f),
             hairline = if (dark) 0x1FFFFFFF else 0x14000000,
             success = if (dark) mix(secondary, 0xFF72D5A5.toInt(), 0.48f) else mix(secondary, 0xFF247B50.toInt(), 0.42f),
             warning = tertiary,

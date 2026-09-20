@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.TableRows
+import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -73,6 +75,8 @@ import io.github.joyreverie.onebnu.ui.components.CacheBanner
 import io.github.joyreverie.onebnu.ui.components.EmptyBox
 import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.LoadingBox
+import io.github.joyreverie.onebnu.ui.components.SegmentOption
+import io.github.joyreverie.onebnu.ui.components.SegmentedSwitch
 import io.github.joyreverie.onebnu.ui.components.SemesterPicker
 import io.github.joyreverie.onebnu.ui.components.SemesterPickerOption
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
@@ -121,7 +125,11 @@ fun GradeScreen(vm: GradeViewModel = viewModel()) {
                     s.loading -> LoadingBox("正在查询成绩…")
                     s.error != null -> ErrorBox(s.error!!) { vm.load(forceRefresh = true) }
                     s.emptyReason != null -> EmptyGradeState(s.emptyReason!!) { vm.load(forceRefresh = true) }
-                    else -> GradeContent(s, onSetIncludedCourses = vm::setIncludedCourses)
+                    else -> GradeContent(
+                        s,
+                        onSetIncludedCourses = vm::setIncludedCourses,
+                        onSetOverviewMode = vm::setOverviewMode,
+                    )
                 }
             }
         }
@@ -137,6 +145,7 @@ private fun EmptyGradeState(reason: String, onRetry: () -> Unit) {
 internal fun GradeContent(
     s: GradeUiState,
     onSetIncludedCourses: (Set<String>) -> Unit = {},
+    onSetOverviewMode: (Boolean) -> Unit = {},
 ) {
     var showCoursePicker by rememberSaveable { mutableStateOf(false) }
     var selectedTerm by rememberSaveable { mutableIntStateOf(0) }
@@ -228,8 +237,27 @@ internal fun GradeContent(
                 },
             )
         }
+        item {
+            SegmentedSwitch(
+                options = listOf(
+                    SegmentOption("总览", Icons.Outlined.TableRows),
+                    SegmentOption("明细", Icons.Outlined.ViewAgenda),
+                ),
+                selectedIndex = if (s.overviewMode) 0 else 1,
+                onSelect = { onSetOverviewMode(it == 0) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         if (filteredGrades.isEmpty()) {
             item { Text("该学期暂无成绩", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        } else if (s.overviewMode) {
+            item {
+                GradeOverviewTable(
+                    grades = filteredGrades,
+                    scale = s.scale,
+                    manuallyExcludedCourseKeys = s.manuallyExcludedCourseKeys,
+                )
+            }
         } else if (screen.isExpanded) {
             itemsIndexed(
                 filteredGrades.chunked(2),
@@ -716,7 +744,7 @@ private fun weightPercentage(weight: Double?): String =
     weight?.let { "占比 ${"%.0f%%".format(Locale.ROOT, it)}" } ?: "占比未知"
 
 @Composable
-private fun scoreColor(g: Grade): Color {
+internal fun scoreColor(g: Grade): Color {
     val s = g.score ?: io.github.joyreverie.onebnu.data.model.GradeScale.letterToScore(g.scoreText)
     return when {
         g.isDeferredExam -> MaterialTheme.colorScheme.outline

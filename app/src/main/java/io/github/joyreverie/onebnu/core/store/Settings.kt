@@ -38,6 +38,14 @@ class Settings(
         get() = prefs.getStringSet(KEY_GPA_EXCLUDED_COURSES, emptySet()).orEmpty().toSet()
         set(value) { prefs.edit().putStringSet(KEY_GPA_EXCLUDED_COURSES, value.toSet()).apply() }
 
+    /**
+     * 成绩页看的是「总览」表格还是「明细」卡片。默认总览 —— 一屏能扫完一整个学期，
+     * 要看成绩构成再切到明细。跨启动记住用户上次选的那个。
+     */
+    var gradeOverviewMode: Boolean
+        get() = prefs.getBoolean(KEY_GRADE_OVERVIEW, true)
+        set(value) { prefs.edit().putBoolean(KEY_GRADE_OVERVIEW, value).apply() }
+
     private val _periodTimes = MutableStateFlow(storedPeriodTimes())
 
     /**
@@ -175,6 +183,7 @@ class Settings(
 
         private const val KEY_TERM_START = "term_start"
         private const val KEY_GPA_EXCLUDED_COURSES = "gpa_excluded_course_keys"
+        private const val KEY_GRADE_OVERVIEW = "grade_overview_mode"
         private const val KEY_LOCK = "require_unlock"
         private const val KEY_SCHEDULE_ZOOM = "schedule_zoom"
         private const val KEY_SHOW_OTHER_WEEKS = "schedule_show_other_weeks"
