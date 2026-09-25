@@ -214,10 +214,11 @@ internal fun HomeContent(
     val screen = LocalScreenInfo.current
     val pad = screen.listPadding(top = 0.dp, bottom = 24.dp)
     var editor by remember { mutableStateOf<EditorTarget?>(null) }
-    // 默认展示的在前、折叠的在后，各自保持首页顺序
-    val (pinnedServices, foldedServices) = remember(campus, pinnedEntries) {
+    // 默认展示的在前、折叠的在后，各自保持首页顺序；收起时放几个跟着屏幕走，转屏、分屏后重新分
+    val limit = screen.pinnedServiceLimit
+    val (pinnedServices, foldedServices) = remember(campus, pinnedEntries, limit) {
         val entries = serviceEntries(campus)
-        val pinned = effectivePinned(entries.map { it.key }, pinnedEntries).toSet()
+        val pinned = effectivePinned(entries.map { it.key }, pinnedEntries, limit).toSet()
         entries.partition { it.key in pinned }
     }
     // 点开一个服务再返回时保持展开；重新打开应用回到收起
@@ -559,8 +560,8 @@ private fun EmptyToday(hint: String) {
 }
 
 /**
- * 首页「校园服务」卡片。默认只摆 [pinned]（最多 12 个，手机上正好三行四列），其余的 [folded] 收在底部的
- * V 形箭头后面：点开接着往下排成同一张宫格，再点收起。没有折叠的入口就不画箭头。
+ * 首页「校园服务」卡片。默认只摆 [pinned]（整行整行地放，最多 [pinnedServiceLimit] 个：手机竖屏三行、平板和横屏两行），
+ * 其余的 [folded] 收在底部的 V 形箭头后面：点开接着往下排成同一张宫格，再点收起。没有折叠的入口就不画箭头。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

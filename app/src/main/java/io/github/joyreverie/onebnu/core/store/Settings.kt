@@ -115,7 +115,7 @@ class Settings(
 
     /**
      * 首页「校园服务」默认展示的入口（入口的稳定键），其余的折叠在宫格下方的箭头后面。
-     * null 表示用户没改过：按首页顺序取前 12 个，见 `effectivePinned`。
+     * null 表示用户没改过：按首页顺序排满收起时的那几行（手机竖屏三行、平板和横屏两行），见 `effectivePinned`。
      * 以流的形式暴露：设置里一勾选，首页立即跟着变。
      */
     val pinnedServiceEntriesFlow: StateFlow<Set<String>?> get() = _pinnedServiceEntries

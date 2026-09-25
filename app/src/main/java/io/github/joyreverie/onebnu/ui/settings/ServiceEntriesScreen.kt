@@ -40,23 +40,24 @@ import androidx.compose.ui.unit.dp
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.ui.components.SectionCard
 import io.github.joyreverie.onebnu.ui.home.FoldHandle
-import io.github.joyreverie.onebnu.ui.home.MAX_PINNED_SERVICES
 import io.github.joyreverie.onebnu.ui.home.ServiceIcon
 import io.github.joyreverie.onebnu.ui.home.ServiceSlots
 import io.github.joyreverie.onebnu.ui.home.effectivePinned
+import io.github.joyreverie.onebnu.ui.home.pinnedServiceLimit
 import io.github.joyreverie.onebnu.ui.home.serviceEntries
 import io.github.joyreverie.onebnu.ui.home.withPinned
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.listPadding
 
 /**
- * 设置 → 校园服务：挑首页「校园服务」默认展示哪些入口，最多 [MAX_PINNED_SERVICES] 个；
- * 没挑的折叠在首页宫格下方的箭头后面，点开还在。
+ * 设置 → 校园服务：挑首页「校园服务」默认展示哪些入口，最多 [pinnedServiceLimit] 个，和首页收起时一样整行整行地算
+ * （手机竖屏三行、平板和横屏两行）；没挑的折叠在首页宫格下方的箭头后面，点开还在。
  *
- * 上面是首页收起时的预览：挑中的入口按首页顺序摆进 12 个格子，空着的画成虚线格，还有折叠的入口就在底下画箭头。
- * 存的是挑中的入口，见 `Settings.pinnedServiceEntriesFlow`；首页通过流立即跟着变。入口按校区各一套，这里只列当前校区的。
+ * 上面是首页收起时的预览：列数、格子数都和这块屏幕上的首页一样，挑中的入口按首页顺序摆进去，空着的画成虚线格，
+ * 还有折叠的入口就在底下画箭头。存的是挑中的入口，见 `Settings.pinnedServiceEntriesFlow`；首页通过流立即跟着变。
+ * 入口按校区各一套，这里只列当前校区的。
  *
- * 开关时页面布局一点不动：预览始终是 12 个格子，箭头和「恢复默认」的位置一直留着，列表也按首页顺序不重排。
+ * 开关时页面布局一点不动：格子数只跟屏幕走、不跟开关走，箭头和「恢复默认」的位置一直留着，列表也按首页顺序不重排。
  * 不然预览少一行、按钮冒出来，下面的开关跟着上下挪，连着点几个就容易点错行。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,13 +68,14 @@ fun ServiceEntriesScreen(onBack: () -> Unit) {
     val stored by settings.pinnedServiceEntriesFlow.collectAsState()
     val entries = serviceEntries(ServiceLocator.activeCampus)
     val keys = remember(entries) { entries.map { it.key } }
-    val pinnedKeys = remember(keys, stored) { effectivePinned(keys, stored) }
-    val pinned = remember(entries, pinnedKeys) { entries.filter { it.key in pinnedKeys } }
-    val full = pinnedKeys.size >= MAX_PINNED_SERVICES
     val screen = LocalScreenInfo.current
+    val limit = screen.pinnedServiceLimit
+    val pinnedKeys = remember(keys, stored, limit) { effectivePinned(keys, stored, limit) }
+    val pinned = remember(entries, pinnedKeys) { entries.filter { it.key in pinnedKeys } }
+    val full = pinnedKeys.size >= limit
     // 同一条提示反复点只刷新时长，不排一串
-    val fullToast = remember(context) {
-        Toast.makeText(context, "默认最多展示 $MAX_PINNED_SERVICES 个入口", Toast.LENGTH_SHORT)
+    val fullToast = remember(context, limit) {
+        Toast.makeText(context, "默认最多展示 $limit 个入口", Toast.LENGTH_SHORT)
     }
 
     Scaffold(
@@ -94,13 +96,13 @@ fun ServiceEntriesScreen(onBack: () -> Unit) {
             item {
                 val folds = pinned.size < entries.size
                 SectionCard("首页预览") {
-                    ServiceSlots(screen.serviceColumns, pinned, slots = MAX_PINNED_SERVICES)
+                    ServiceSlots(screen.serviceColumns, pinned, slots = limit)
                     FoldHandle(expanded = false, onClick = null, modifier = Modifier.alpha(if (folds) 1f else 0f))
                 }
             }
 
             item {
-                val canReset = pinnedKeys != effectivePinned(keys, null)
+                val canReset = pinnedKeys != effectivePinned(keys, null, limit)
                 val resetAlpha by animateFloatAsState(if (canReset) 1f else 0f, label = "reset")
                 SectionCard(
                     "默认展示",
@@ -132,7 +134,7 @@ fun ServiceEntriesScreen(onBack: () -> Unit) {
                                     value = on,
                                     role = Role.Switch,
                                     onValueChange = { want ->
-                                        val next = withPinned(keys, stored, e.key, want)
+                                        val next = withPinned(keys, stored, e.key, want, limit)
                                         if (next == null) fullToast.show() else settings.setPinnedServiceEntries(next)
                                     },
                                 )

@@ -71,6 +71,13 @@ class ScreenInfo(
             else -> 4
         }
 
+    /**
+     * 首页服务宫格收起时展示几行：手机竖屏一行只放三四个，给三行；
+     * 平板和横屏一行放六到八个，两行就不比手机的三行少，也少占些竖向的地方。
+     */
+    val serviceRows: Int
+        get() = if (isCompact) 3 else 2
+
     /** 侧边导航占掉一部分宽度后，下游看到的可用宽度。 */
     fun shrunkBy(dp: Int): ScreenInfo =
         ScreenInfo(widthClass, (widthDp - dp).coerceAtLeast(1), heightDp)
