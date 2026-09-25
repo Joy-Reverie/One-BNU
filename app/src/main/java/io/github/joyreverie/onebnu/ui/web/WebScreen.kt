@@ -160,7 +160,7 @@ fun WebScreen(
         // 否则下面每条分支都会把用户送回统一认证登录页。云盘不走统一认证，用不着这一步。
         if (!panMode) withContext(Dispatchers.IO) { ServiceLocator.ensureSession() }
         value = if (panMode) {
-            openPan(context, http, campus)
+            openPan(context, http)
         } else if (mailMode) {
             // 免密链接一次一取（门户卡片也是每次点击重新要）；要不到就落到学校域名下的学生邮件系统入口
             withContext(Dispatchers.IO) {
@@ -575,7 +575,7 @@ fun WebScreen(
  * CookieManager 在主线程读写，登录请求放到 IO 线程；拿不到会话照样打开网盘，由它自己的登录页兜底。
  * 没有「记住密码」时手上没有密码，同样落到网盘的登录页。
  */
-private suspend fun openPan(context: Context, http: Http, campus: Campus): String {
+private suspend fun openPan(context: Context, http: Http): String {
     val cookies = CookieManager.getInstance()
     val existing = cookies.getCookie(PanSso.COOKIE_URL)
     // 登录与之后的页面用同一个 UA，服务端看到的始终是同一个客户端
@@ -586,7 +586,6 @@ private suspend fun openPan(context: Context, http: Http, campus: Campus): Strin
         runCatching {
             PanSso.prepare(
                 http,
-                campus,
                 username = if (saved) store.username else "",
                 password = if (saved) store.password else "",
                 webViewCookie = existing,

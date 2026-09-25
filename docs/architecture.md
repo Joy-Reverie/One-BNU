@@ -127,6 +127,9 @@ host-only Cookie。退出登录先清本地 Cookie，再带着注销前那份 Co
 都从 `document.cookie` 读这四个值，并把会话拼进每个接口的查询串，所以写进 WebView 的一律是 host-only、`Path=/`、**不带 HttpOnly**
 的 Cookie。WebView 里已有的会话仍有效就接着用；4xx 或 `state` 不为 200 算拒绝，这份凭据（只记 SHA-256 摘要）本进程内不再重试，
 拿不到会话就照常打开 `/H5`，由网盘自己的登录页兜底。换账号时这几枚 Cookie 立即作废（`PanSso.expiredCookies`）。
+北京、珠海两个校区都有这个入口，各用本校区保存的账号登录。两个校区进的是同一个网盘，内嵌页的 Cookie 又是共用的，
+所以切换校区时同样作废这几枚 Cookie（`ServiceLocator.selectCampus`），免得接着用另一个校区那个账号的会话；
+被拒的凭据按摘要各记各的，来回切换校区也不会重试。
 下载是页面 `window.open(/v2/dl_router/databox/<编码后的路径>?…)`，会话同样在查询串里；文件列表里页面会先用 XHR 探一次这个地址，
 只有请求在网络层失败（按页面逻辑，是跨域读不到）才 `window.open`。内嵌页不开多窗口（`supportMultipleWindows` 保持默认的 false），
 `window.open` 就在同一个 WebView 里跳转，附件响应交给 `DownloadListener`，再转系统 `DownloadManager`（`ui/web/WebFiles.kt`）。
@@ -154,6 +157,7 @@ token、Cookie、空白页、跨设备引导四类情况各有一次性重载，
 
 珠海当前使用独立的 `cas.bnuzh.edu.cn`，而课程中心的北京入口和旧 OneVPN 登录中转明确指向 `cas.bnu.edu.cn`。
 在学校没有明确提供跨域委托前，应用不会把珠海凭据或 CAS 票据送往北京认证域；珠海门户则使用珠海自己的 `/nup/` OAuth 回调。
+师大云盘不是认证域：它只认自己的登录接口，珠海账号同样登得上，所以珠海的云盘入口用珠海保存的账号走同一套登录。
 
 ## 离线快照
 

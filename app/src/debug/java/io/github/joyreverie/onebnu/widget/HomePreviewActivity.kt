@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
+import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.data.model.ClassSession
 import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
@@ -32,6 +33,7 @@ import java.time.LocalTime
  * --es mode empty 看没课没日程的空态，--es mode one 看只有一节课时卡片的最小高度。
  * 「校园服务」默认跟设置里的挑选走；--es pinned exam,pan 临时指定默认展示的入口（逗号分隔的入口键），
  * --es pinned none 看全部折叠、只剩箭头的样子；--ez expanded true 一打开就是展开的。
+ * --es campus zhuhai 看珠海校区的入口；设置里的挑选按校区分开存，预览的不是当前校区时按没改过处理。
  */
 class HomePreviewActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
@@ -56,6 +58,7 @@ class HomePreviewActivity : ComponentActivity() {
             if (raw == "none") emptySet() else raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         }
         val expandServices = intent.getBooleanExtra("expanded", false)
+        val campus = if (intent.getStringExtra("campus") == "zhuhai") Campus.ZHUHAI else Campus.BEIJING
         val initialEvents = if (empty || single) emptyList() else listOf(
             PersonalEvent("e1", "导师组会", today, LocalTime.of(12, 0), LocalTime.of(13, 0), "生地楼 306", "带上周报"),
             PersonalEvent("e2", "体检", today, LocalTime.of(17, 30), LocalTime.of(18, 30), "校医院"),
@@ -82,7 +85,8 @@ class HomePreviewActivity : ComponentActivity() {
                             onNavigate = {},
                             onSaveEvent = { e -> events = events.filter { it.id != e.id } + e },
                             onDeleteEvent = { e -> events = events.filter { it.id != e.id } },
-                            pinnedEntries = pinnedOverride ?: storedPinned,
+                            campus = campus,
+                            pinnedEntries = pinnedOverride ?: storedPinned.takeIf { campus == ServiceLocator.activeCampus },
                             expandServices = expandServices,
                         )
                     }

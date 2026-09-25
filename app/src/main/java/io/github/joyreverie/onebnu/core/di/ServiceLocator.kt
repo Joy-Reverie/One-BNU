@@ -142,6 +142,9 @@ object ServiceLocator {
 
     fun selectCampus(campus: Campus) {
         if (!runtimes.containsKey(campus)) return
+        // 两个校区进的是同一个云盘，内嵌页的 Cookie 又是共用的：不作废的话，
+        // 切过去以后接着用的是另一个校区那个账号的会话，看到的也是那个账号的文件
+        if (campus != activeCampus) expirePanSession()
         _activeCampus.value = campus
         campusStore.selected = campus
         TodayWidgetProvider.updateAll(app)
@@ -176,12 +179,17 @@ object ServiceLocator {
         PortalSso.clear(activeCampus)
         // 云盘的会话在内嵌页里一直有效：换了账号还接着用，新账号就会看到上一个账号的文件
         PanSso.reset()
+        expirePanSession()
+        WidgetState(app, activeCampus).clear()
+    }
+
+    /** 让内嵌页里的云盘会话立即失效，其他站点的登录态不动。 */
+    private fun expirePanSession() {
         runCatching {
             val cookies = android.webkit.CookieManager.getInstance()
             PanSso.expiredCookies().forEach { cookies.setCookie(PanSso.COOKIE_URL, it) }
             cookies.flush()
         }
-        WidgetState(app, activeCampus).clear()
     }
 
     /** 允许已有本地快照在没有 CAS Cookie 时进入主界面。 */

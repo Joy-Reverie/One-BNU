@@ -151,6 +151,8 @@ private val ZHUHAI_ENTRIES = listOf(
     // 珠海门户的 accessToken Cookie 作用域是 /nup；根路径会被 aTrust 网关接管，
     // 因此入口必须落在 /nup/，WebView 仍复用当前珠海 CAS 会话免二次输入。
     ServiceEntry("portal", "珠海门户", Icons.Outlined.Public, Routes.web("珠海门户", "https://one.bnuzh.edu.cn/nup/", true), 4),
+    // 云盘只认自己的登录接口、不经北京统一认证，珠海账号同样登得上：与北京同一个入口，用珠海保存的账号替它登录
+    ServiceEntry("pan", "师大云盘", Icons.Outlined.Cloud, Routes.PAN, 6),
     ServiceEntry("academic", "珠海教务", Icons.Outlined.AccountBalance, Routes.web("珠海教务系统", "https://jwxt.bnuzh.edu.cn/caslogin", true), 5),
     // 课程中心（培养方案 / 教学手册 / 教学大纲）是两校区共用的一套系统，
     // 但它认的是北京 CAS：珠海走普通网页入口，由课程中心自己决定要不要登录，

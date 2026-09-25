@@ -2,7 +2,6 @@ package io.github.joyreverie.onebnu.core.net
 
 import android.util.Log
 import io.github.joyreverie.onebnu.core.crypto.RsaCrypto
-import io.github.joyreverie.onebnu.core.store.Campus
 import okhttp3.Cookie
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
@@ -23,7 +22,9 @@ import java.util.Base64
  *
  * 内嵌页里已经有一份有效会话（上次写进去的，或用户在页面里自己登录的）就接着用，不重复登录。
  * 登录只试一次，服务端明确拒绝的那份凭据不再拿去试 —— 反复用错的密码去撞，只会招来网盘的
- * 验证码或锁定。拿不到会话就照常打开 [H5]，由网盘自己的登录页兜底。珠海校区是另一套账号，不提供。
+ * 验证码或锁定。拿不到会话就照常打开 [H5]，由网盘自己的登录页兜底。
+ *
+ * 北京、珠海两个校区的账号都能登录云盘，调用方传当前校区保存的那份。
  */
 internal object PanSso {
 
@@ -58,8 +59,11 @@ internal object PanSso {
 
     private val lock = Any()
 
-    /** 服务端明确拒绝过的那份凭据（只记摘要）。同一份本进程内不再拿去试；改了密码、换了账号自然会再试。 */
-    @Volatile private var rejected: String? = null
+    /**
+     * 服务端明确拒绝过的凭据（只记摘要）。同一份本进程内不再拿去试；改了密码、换了账号自然会再试。
+     * 两个校区的账号分开记，来回切换校区也不会把被拒的那份再拿去撞一次。
+     */
+    @Volatile private var rejected: Set<String> = emptySet()
 
     /**
      * 准备好一份可交给内嵌页的会话，返回要写进 WebView 的 Cookie（对 [COOKIE_URL] 逐条 `setCookie`）；
@@ -71,13 +75,11 @@ internal object PanSso {
      */
     fun prepare(
         http: Http,
-        campus: Campus,
         username: String,
         password: String,
         webViewCookie: String?,
         userAgent: String? = null,
     ): List<String>? = synchronized(lock) {
-        if (campus != Campus.BEIJING) return@synchronized null
         val headers = buildMap {
             // 与页面发 XHR 时一样要 JSON；登录失败的原因也在 JSON 里
             put("Accept", "application/json, text/plain, */*")
@@ -88,8 +90,8 @@ internal object PanSso {
         }
         if (username.isBlank() || password.isBlank()) return@synchronized null
         val credential = fingerprint(username, password)
-        if (rejected == credential) return@synchronized null
-        val fresh = login(http, username, password, headers, onRejected = { rejected = credential })
+        if (credential in rejected) return@synchronized null
+        val fresh = login(http, username, password, headers, onRejected = { rejected = rejected + credential })
             ?: return@synchronized null
         // 登录时服务端可能还下发了别的 Cookie（负载均衡的粘滞标记等），一并交给内嵌页
         cookiesFor(fresh) + passthrough(http.cookies.loadForRequest(COOKIE_URL.toHttpUrl()))
@@ -97,7 +99,7 @@ internal object PanSso {
 
     /** 退出登录、换账号时调用：之前被拒绝的凭据可以再试一次。 */
     fun reset() {
-        rejected = null
+        rejected = emptySet()
     }
 
     /**
