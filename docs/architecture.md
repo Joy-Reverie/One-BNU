@@ -119,6 +119,20 @@ host-only Cookie。退出登录先清本地 Cookie，再带着注销前那份 Co
 每站一份的「虚拟 Cookie」（`/wengine-vpn/cookie?method=get|set`），`PortalSso` 换到 token 后同时把它写进这份罐子，
 门户才认得已登录（否则页面会再走一遍 OAuth、停在代理出来的统一认证登录页）。
 
+「师大云盘」入口（`core/net/PanSso.kt`）：`pan.bnu.edu.cn` 是联想 Filez 企业网盘，没有接统一认证
+（`/v2/authlogin/get?name=marne_sso_configs` 返回空表），账号密码与数字京师相同。应用照它手机版页面 `/H5` 自己的登录流程走一遍：
+`GET /v2/system/get_publickey` 取 PEM 公钥 → 密码做 RSA PKCS#1 v1.5 加密（与页面里的 JSEncrypt 一致）→
+`POST /v2/user/login`（`user_slug`、`password`、`auto_login=false`、`bind_type=false`、`timesid=0`）。会话由服务端下发成
+`X-LENOVO-SESS-ID` 与 `S` 两枚 Cookie，再调 `/v2/user/info/get` 核实并取回 `uid`、`account_id`。页面的路由守卫与请求拦截器
+都从 `document.cookie` 读这四个值，并把会话拼进每个接口的查询串，所以写进 WebView 的一律是 host-only、`Path=/`、**不带 HttpOnly**
+的 Cookie。WebView 里已有的会话仍有效就接着用；4xx 或 `state` 不为 200 算拒绝，这份凭据（只记 SHA-256 摘要）本进程内不再重试，
+拿不到会话就照常打开 `/H5`，由网盘自己的登录页兜底。换账号时这几枚 Cookie 立即作废（`PanSso.expiredCookies`）。
+下载是页面 `window.open(/v2/dl_router/databox/<编码后的路径>?…)`，会话同样在查询串里；文件列表里页面会先用 XHR 探一次这个地址，
+只有请求在网络层失败（按页面逻辑，是跨域读不到）才 `window.open`。内嵌页不开多窗口（`supportMultipleWindows` 保持默认的 false），
+`window.open` 就在同一个 WebView 里跳转，附件响应交给 `DownloadListener`，再转系统 `DownloadManager`（`ui/web/WebFiles.kt`）。
+探测请求可能拖过点按手势的有效期，所以云盘入口放开 `javaScriptCanOpenWindowsAutomatically`，免得这一下被弹窗拦截吞掉。
+上传是页面的 `<input type=file multiple>`，由 `onShowFileChooser` 拉起系统文件选择器。文件进出只在云盘入口开启。
+
 教务系统等普通 CAS 入口不直接把 CAS 登录页交给 WebView：`WebScreen` 先用当前
 `SessionAuthenticator` 在应用侧完成一次标准 SSO，取得目标站点的会话 Cookie 后再加载最终地址。数字京师与珠海门户
 使用的是官方 OAuth CAS 流程。北京门户可由 `PortalSso` 从 CAS authorize 回调中取一次性 code，再调用门户自己的 token 接口换取
@@ -241,6 +255,17 @@ token、Cookie、空白页、跨设备引导四类情况各有一次性重载，
 成绩页的 GPA（`data/model/GradeScale.kt`）对多次修读只计最后一次：同一课程号（无课程号时按课程名 + 学分）下存在更晚的
 记录、且本条不及格或更晚那条标了「重修 / 补考」，本条不计绩点、学分也不重复算；全部及格的同号课程（如每学期都修的
 「形势与政策」）各自计入。各学期卡片按学年、学期数值排序，不按标签字串。
+
+## 首页校园服务
+
+入口按校区各一份（`ui/home/HomeScreen.kt` 的 `serviceEntries`），每个入口有稳定键 `key`，改名、换图标、调顺序都不动它。
+首页默认最多展示 12 个（`MAX_PINNED_SERVICES`，手机上正好三行四列），其余的接在后面、收在宫格下方的箭头里；
+展开是同一张宫格往下长，半满那一行的空位原地淡入，不另起一段。宫格在列表底部，展开时顺手把卡片滚进视野。
+
+设置里挑的是「默认展示」哪些入口，存在本机、按校区分开的 `Settings.pinnedServiceEntriesFlow`：`null` 表示没改过，按首页顺序取前 12 个；
+改过就只认这个校区有的键、按首页顺序排，超了上限只取前面的；写回时存当前实际生效的那份，顺手清掉已经没有的旧键
+（`ui/home/ServicePinning.kt`，`ServicePinningTest` 覆盖）。设置页开关时布局不动：预览始终是 12 个格子（空位画成虚线格），
+箭头和「恢复默认」的位置一直留着，列表也不重排，免得连着点几下点错行。
 
 ## 校内联系方式
 

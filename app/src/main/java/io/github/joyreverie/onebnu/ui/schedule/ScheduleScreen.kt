@@ -71,13 +71,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -102,6 +96,7 @@ import io.github.joyreverie.onebnu.ui.components.EmptyBox
 import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.InfoRow
 import io.github.joyreverie.onebnu.ui.components.LoadingBox
+import io.github.joyreverie.onebnu.ui.components.dashedOutline
 import io.github.joyreverie.onebnu.ui.event.EventEditorSheet
 import io.github.joyreverie.onebnu.ui.theme.LocalDarkTheme
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
@@ -1040,19 +1035,6 @@ private fun CourseCell(
             }
         }
     }
-}
-
-/** 非本周课的虚线描边：画在内容之上、沿着圆角内缩半个线宽，颜色淡到不抢眼。 */
-private fun Modifier.dashedOutline(color: Color, radius: Dp, width: Dp = 1.dp): Modifier = drawWithContent {
-    drawContent()
-    val w = width.toPx()
-    drawRoundRect(
-        color = color,
-        topLeft = Offset(w / 2f, w / 2f),
-        size = Size(size.width - w, size.height - w),
-        cornerRadius = CornerRadius(radius.toPx()),
-        style = Stroke(width = w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))),
-    )
 }
 
 private val CELL_RADIUS = 10.dp

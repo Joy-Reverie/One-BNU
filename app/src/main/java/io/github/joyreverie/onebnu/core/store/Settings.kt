@@ -110,6 +110,26 @@ class Settings(
     /** 以流的形式暴露：设置里一切换，课表页立即跟着变。 */
     val showOtherWeeksFlow: StateFlow<Boolean> get() = _showOtherWeeks
 
+    private val _pinnedServiceEntries =
+        MutableStateFlow(prefs.getStringSet(KEY_PINNED_SERVICE_ENTRIES, null)?.toSet())
+
+    /**
+     * 首页「校园服务」默认展示的入口（入口的稳定键），其余的折叠在宫格下方的箭头后面。
+     * null 表示用户没改过：按首页顺序取前 12 个，见 `effectivePinned`。
+     * 以流的形式暴露：设置里一勾选，首页立即跟着变。
+     */
+    val pinnedServiceEntriesFlow: StateFlow<Set<String>?> get() = _pinnedServiceEntries
+
+    fun setPinnedServiceEntries(keys: Set<String>) {
+        prefs.edit().putStringSet(KEY_PINNED_SERVICE_ENTRIES, keys).apply()
+        _pinnedServiceEntries.value = keys
+    }
+
+    fun resetServiceEntries() {
+        prefs.edit().remove(KEY_PINNED_SERVICE_ENTRIES).apply()
+        _pinnedServiceEntries.value = null
+    }
+
     /** 上课提醒开关。与「日程提醒」平级，各自独立。 */
     var remindClasses: Boolean
         get() = prefs.getBoolean(KEY_REMIND_CLASSES, false)
@@ -187,6 +207,7 @@ class Settings(
         private const val KEY_LOCK = "require_unlock"
         private const val KEY_SCHEDULE_ZOOM = "schedule_zoom"
         private const val KEY_SHOW_OTHER_WEEKS = "schedule_show_other_weeks"
+        private const val KEY_PINNED_SERVICE_ENTRIES = "home_pinned_service_entries"
         private const val KEY_REMIND_CLASSES = "remind_classes"
         private const val KEY_REMIND_EVENTS = "remind_events"
         private const val KEY_REMIND_LEAD = "reminder_lead_minutes"

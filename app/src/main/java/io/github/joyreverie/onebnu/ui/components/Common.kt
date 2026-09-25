@@ -40,9 +40,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -156,6 +162,19 @@ fun Modifier.shadowSoft(shape: RoundedCornerShape, elevation: Dp = 2.dp): Modifi
             ambientColor = Color(0x1A1B3C6E),
             spotColor = Color(0x141B3C6E),
         )
+}
+
+/** 虚线描边：画在内容之上、沿着圆角内缩半个线宽。课表里的非本周课、设置里首页预览的空位都用它。 */
+fun Modifier.dashedOutline(color: Color, radius: Dp, width: Dp = 1.dp): Modifier = drawWithContent {
+    drawContent()
+    val w = width.toPx()
+    drawRoundRect(
+        color = color,
+        topLeft = Offset(w / 2f, w / 2f),
+        size = Size(size.width - w, size.height - w),
+        cornerRadius = CornerRadius(radius.toPx()),
+        style = Stroke(width = w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))),
+    )
 }
 
 /** 骨架屏方块：比转圈更能表达「内容马上就来」，也不会让页面高度跳动。 */

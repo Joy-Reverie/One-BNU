@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,8 @@ import java.time.LocalTime
 /**
  * 开发用：不登录直接看首页「今日课程」时间轴里课程与日程混排、「+ 日程」与编辑弹层。
  * --es mode empty 看没课没日程的空态，--es mode one 看只有一节课时卡片的最小高度。
+ * 「校园服务」默认跟设置里的挑选走；--es pinned exam,pan 临时指定默认展示的入口（逗号分隔的入口键），
+ * --es pinned none 看全部折叠、只剩箭头的样子；--ez expanded true 一打开就是展开的。
  */
 class HomePreviewActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
@@ -49,6 +52,10 @@ class HomePreviewActivity : ComponentActivity() {
             course("中国近现代史纲要", "王芳", 5, 6, "京师学堂 京师厅"),
             course("程序设计基础", "刘洋", 7, 8, "教九楼 305 机房"),
         )
+        val pinnedOverride = intent.getStringExtra("pinned")?.let { raw ->
+            if (raw == "none") emptySet() else raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        }
+        val expandServices = intent.getBooleanExtra("expanded", false)
         val initialEvents = if (empty || single) emptyList() else listOf(
             PersonalEvent("e1", "导师组会", today, LocalTime.of(12, 0), LocalTime.of(13, 0), "生地楼 306", "带上周报"),
             PersonalEvent("e2", "体检", today, LocalTime.of(17, 30), LocalTime.of(18, 30), "校医院"),
@@ -58,6 +65,7 @@ class HomePreviewActivity : ComponentActivity() {
             OneBnuTheme {
                 ProvideScreenInfo(calculateWindowSizeClass(this)) {
                     var events by remember { mutableStateOf(initialEvents) }
+                    val storedPinned by ServiceLocator.settings.pinnedServiceEntriesFlow.collectAsState()
                     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                         HomeContent(
                             s = HomeUiState(
@@ -74,6 +82,8 @@ class HomePreviewActivity : ComponentActivity() {
                             onNavigate = {},
                             onSaveEvent = { e -> events = events.filter { it.id != e.id } + e },
                             onDeleteEvent = { e -> events = events.filter { it.id != e.id } },
+                            pinnedEntries = pinnedOverride ?: storedPinned,
+                            expandServices = expandServices,
                         )
                     }
                 }

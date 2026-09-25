@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.BrightnessAuto
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
@@ -70,7 +71,7 @@ import io.github.joyreverie.onebnu.widget.TodayWidgetProvider
 import java.time.LocalTime
 
 /**
- * 设置：外观、课表、作息时间、网络诊断、检查更新。
+ * 设置：外观、首页校园服务入口、课表、作息时间、网络诊断、检查更新。
  * 「关于与支持」不在这里 —— 它是「我的」页的一级入口，与设置并列。
  *
  * [currentVersion] 默认取构建版本号；debug 包的预览入口可以传一个旧版本号来演练更新流程。
@@ -80,6 +81,7 @@ import java.time.LocalTime
 fun SettingsScreen(
     onBack: () -> Unit,
     onDiagnostics: () -> Unit = {},
+    onServiceEntries: () -> Unit = {},
     currentVersion: String = BuildConfig.VERSION_NAME,
 ) {
     val appearance = ServiceLocator.appearance
@@ -142,37 +144,49 @@ fun SettingsScreen(
                 }
             }
 
+            item { HomeEntriesCard(onServiceEntries) }
+
             item { ScheduleCard() }
 
             item { PeriodTimesCard() }
 
             item {
                 SectionCard("网络") {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable(onClick = onDiagnostics)
-                            .padding(vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Outlined.NetworkCheck, null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("网络诊断", style = MaterialTheme.typography.bodyMedium)
-                        }
-                        Icon(
-                            Icons.AutoMirrored.Outlined.ArrowForward, null,
-                            tint = MaterialTheme.colorScheme.outline,
-                        )
-                    }
+                    NavRow(Icons.Outlined.NetworkCheck, "网络诊断", onClick = onDiagnostics)
                 }
             }
 
             item { UpdateCard(currentVersion, checker) }
         }
+    }
+}
+
+/** 首页：「校园服务」入口管理的入口。 */
+@Composable
+private fun HomeEntriesCard(onServiceEntries: () -> Unit) {
+    SectionCard("首页") {
+        NavRow(Icons.Outlined.Apps, "校园服务", onClick = onServiceEntries)
+    }
+}
+
+/** 点进下一级页面的一行：图标、标题、右侧箭头。 */
+@Composable
+private fun NavRow(icon: ImageVector, title: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(12.dp))
+        Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Icon(
+            Icons.AutoMirrored.Outlined.ArrowForward, null,
+            tint = MaterialTheme.colorScheme.outline,
+        )
     }
 }
 

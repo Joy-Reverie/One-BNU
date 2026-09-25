@@ -1,13 +1,19 @@
 package io.github.joyreverie.onebnu.ui.web
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.ConsoleMessage
+import android.webkit.ValueCallback
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import org.json.JSONObject
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,8 +43,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.net.BnuHosts
 import io.github.joyreverie.onebnu.core.net.BnuCookieJar
+import io.github.joyreverie.onebnu.core.net.Http
 import io.github.joyreverie.onebnu.core.net.MailSso
 import io.github.joyreverie.onebnu.core.net.OneVpnSso
+import io.github.joyreverie.onebnu.core.net.PanSso
 import io.github.joyreverie.onebnu.core.net.PortalSso
 import io.github.joyreverie.onebnu.core.store.Campus
 import kotlinx.coroutines.Dispatchers
@@ -92,6 +100,7 @@ private const val PORTAL_LAYOUT_FIX = """
  * 安全上做了收紧：不开 JS 接口桥、不允许文件域访问、只在北师大域名内跳转，
  * 站外链接一律交给系统浏览器（唯一例外是「师大邮箱」：免密链接落在网易企业邮箱，那几台主机放行）。
  * OneVPN SSO 走标准 CAS service ticket，不向网页填充密码。
+ * 只有「师大云盘」开了文件进出：下载交给系统下载，上传经系统文件选择器，见 [panMode]。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
@@ -107,11 +116,23 @@ fun WebScreen(
     desktopMode: Boolean = false,
     /** 师大邮箱：先向门户要一条一次性的网易免密链接再打开；要不到就落到 [MailSso.FALLBACK]。 */
     mailMode: Boolean = false,
+    /**
+     * 师大云盘：先用已保存的账号替网盘登录、把会话写进 WebView，再打开 [PanSso.H5]；
+     * 页内可以下载、上传文件。登录不成就照常打开网盘，由它自己的登录页兜底。
+     */
+    panMode: Boolean = false,
 ) {
     val context = LocalContext.current
     var progress by remember { mutableStateOf(0) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
+    // 页面里 <input type=file> 等着的回调。选择器关掉时一定要回它一次（取消就回 null），
+    // 不然页面一直等着，再点「上传」也不会弹出选择器
+    var fileCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        fileCallback?.onReceiveValue(chosenFiles(result.resultCode, result.data))
+        fileCallback = null
+    }
 
     // 先由同一份 OkHttp CAS 会话完成标准 SSO，再把目标站点的会话 Cookie 交给 WebView。
     // 这样不依赖 WebView 是否接受手工写入的 CASTGC；会话失效时仍回到官方登录页。
@@ -125,19 +146,22 @@ fun WebScreen(
     val useAcademicProxy = campus == Campus.BEIJING && academicService && ServiceLocator.isCellularNetwork()
     val syncOneVpn = useOneVpnSso || portalService || useAcademicProxy
     val target by produceState<String?>(
-        if (useSso || useOneVpnSso || portalService || useAcademicProxy || mailMode) null else url,
+        if (useSso || useOneVpnSso || portalService || useAcademicProxy || mailMode || panMode) null else url,
         url,
         useSso,
         useOneVpnSso,
         portalService,
         useAcademicProxy,
         mailMode,
+        panMode,
         campus,
     ) {
         // 冷启动后只剩离线快照时这里还没有 CAS 会话，先补一次静默登录，
-        // 否则下面每条分支都会把用户送回统一认证登录页。
-        withContext(Dispatchers.IO) { ServiceLocator.ensureSession() }
-        value = if (mailMode) {
+        // 否则下面每条分支都会把用户送回统一认证登录页。云盘不走统一认证，用不着这一步。
+        if (!panMode) withContext(Dispatchers.IO) { ServiceLocator.ensureSession() }
+        value = if (panMode) {
+            openPan(context, http, campus)
+        } else if (mailMode) {
             // 免密链接一次一取（门户卡片也是每次点击重新要）；要不到就落到学校域名下的学生邮件系统入口
             withContext(Dispatchers.IO) {
                 runCatching { MailSso.fetch(http, auth, campus) }
@@ -239,7 +263,9 @@ fun WebScreen(
                             // 收紧：不放开本地文件与内容提供者访问
                             settings.allowFileAccess = false
                             settings.allowContentAccess = false
-                            settings.javaScriptCanOpenWindowsAutomatically = false
+                            // 云盘文件列表的「下载」先发一次探测请求，失败了才 window.open；网慢时点按的手势可能已经过期，
+                            // 弹窗拦截会把这一下吞掉。内嵌页不开多窗口，window.open 只是在本页跳转，附件再交给下载
+                            settings.javaScriptCanOpenWindowsAutomatically = panMode
                             // 教务系统只有 HTTP，门户是 HTTPS，允许混合内容会削弱 HTTPS 页面，故禁用
                             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                             if (portalService || isPortalPage(pageUrl)) {
@@ -247,6 +273,13 @@ fun WebScreen(
                             }
 
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+
+                            if (panMode) {
+                                // 云盘的「下载」是一次 window.open 跳转（地址里带着会话），响应是附件时落到这里
+                                setDownloadListener { downloadUrl, userAgent, disposition, mimeType, _ ->
+                                    enqueueDownload(ctx, downloadUrl, userAgent, disposition, mimeType)
+                                }
+                            }
 
                             webViewClient = object : WebViewClient() {
                                 /** 已重定向一次就不再接管，CAS 会话失效时让官方页面正常显示登录表单。 */
@@ -487,6 +520,25 @@ fun WebScreen(
                                     }
                                     return true
                                 }
+
+                                override fun onShowFileChooser(
+                                    view: WebView?,
+                                    callback: ValueCallback<Array<Uri>>?,
+                                    params: FileChooserParams?,
+                                ): Boolean {
+                                    // 只有云盘开上传；别的页面照旧不弹选择器
+                                    if (!panMode || callback == null) return false
+                                    // 上一次的还没回（极少见）：先作废，页面那边才不会一直等着
+                                    fileCallback?.onReceiveValue(null)
+                                    fileCallback = callback
+                                    val launched = runCatching { pickFiles.launch(fileChooserIntent(params)) }.isSuccess
+                                    if (!launched) {
+                                        fileCallback = null
+                                        callback.onReceiveValue(null)
+                                        Toast.makeText(ctx, "没有可用的文件选择器", Toast.LENGTH_SHORT).show()
+                                    }
+                                    return true
+                                }
                             }
                             Log.i(
                                 TAG,
@@ -516,6 +568,35 @@ fun WebScreen(
             }
         }
     }
+}
+
+/**
+ * 师大云盘：替网盘登录一次（内嵌页里已有有效会话就接着用），把会话写进 WebView，返回要打开的地址。
+ * CookieManager 在主线程读写，登录请求放到 IO 线程；拿不到会话照样打开网盘，由它自己的登录页兜底。
+ * 没有「记住密码」时手上没有密码，同样落到网盘的登录页。
+ */
+private suspend fun openPan(context: Context, http: Http, campus: Campus): String {
+    val cookies = CookieManager.getInstance()
+    val existing = cookies.getCookie(PanSso.COOKIE_URL)
+    // 登录与之后的页面用同一个 UA，服务端看到的始终是同一个客户端
+    val userAgent = runCatching { android.webkit.WebSettings.getDefaultUserAgent(context) }.getOrNull()
+    val store = ServiceLocator.secure
+    val saved = store.hasCredentials
+    val issued = withContext(Dispatchers.IO) {
+        runCatching {
+            PanSso.prepare(
+                http,
+                campus,
+                username = if (saved) store.username else "",
+                password = if (saved) store.password else "",
+                webViewCookie = existing,
+                userAgent = userAgent,
+            )
+        }.onFailure { Log.w(TAG, "云盘免登录失败 ${it::class.java.simpleName}") }.getOrNull()
+    }
+    issued?.forEach { cookies.setCookie(PanSso.COOKIE_URL, it) }
+    cookies.flush()
+    return PanSso.H5
 }
 
 private fun isPortalPage(url: String?): Boolean {

@@ -28,6 +28,8 @@
 - **上课提醒 / 日程提醒**：两类各自开关、共用一个提前时间，开始前 N 分钟提醒（临时加的近期日程立刻提醒），可选通知提醒（响一声）或闹钟提醒（按闹钟音量持续响铃、锁屏全屏弹出，勿扰模式下只震动）
 - **内嵌浏览器**：北京、珠海图书馆及各自门户、教务系统与课程中心；站内页面可直接打开，也可转系统浏览器
 - **师大邮箱**：北京校区的校园服务里一键进学生邮箱 —— 向数字京师要一条一次性免密链接（与门户首页「邮件」卡片同一接口），直接打开网易企业邮箱的手机版；只在这一入口放行网易的邮箱主机，邮件里的其他站外链接仍交给系统浏览器
+- **师大云盘**：北京校区的校园服务里直接进 pan.bnu.edu.cn。网盘账号密码与数字京师相同，勾选了「记住密码」时应用照网盘手机版页面自己的流程替你登录一次、把会话交给内嵌页，打开就是文件列表；内嵌页里的会话还有效就接着用，登录不成就落回网盘自己的登录页。文件下载交给系统下载（通知栏看进度，下完点开），上传用系统文件选择器
+- **首页入口管理**：首页「校园服务」默认最多展示 12 个入口（手机上正好三行四列），其余的折叠在宫格下方的箭头后面，点一下展开、再点收起。「设置 → 首页 → 校园服务」挑哪些默认展示，上方实时预览收起时的首页宫格，空位画成虚线格；没改过就按首页顺序取前 12 个，可一键恢复默认
 - **检查更新**：设置页内查询 GitHub Releases，下载并安装新版本；联网启动时自动检查一次并询问，可关闭
 - **作息时间**：默认学校统一作息，可在设置里逐节调整上下课时刻；课表刻度、日程定位、提醒与小组件都按它算
 - **深浅色与色系**：跟随系统或固定为浅色 / 深色；七套色系（靛蓝、青碧、松绿、珊瑚、琥珀、蔷薇、石墨）覆盖按钮、文字与桌面小组件。外观是应用级偏好，切换校区不会被重置
@@ -81,6 +83,7 @@ shasum -a 256 -c One-BNU-<版本>.apk.sha256
 - 北京校区打开课程中心时，内嵌页通过现有 CAS 会话取得课程中心会话，绝不把密码填入网页；`CASTGC` 在 WebView 中强制为 CAS 主机专属 Cookie，不会同步给 OneVPN 或其他子域。珠海使用独立认证域，未确认跨域委托前保留官方登录页。
 - 校园服务里的北京数字京师固定打开学校官方电脑端门户首页，并使用桌面浏览器 UA；若服务端经过 OneVPN 代理，仍复用同一套门户会话，并把 accessToken 一并写进 OneVPN 替门户保管的那份 Cookie（门户脚本在代理下读的是它，不是浏览器 Cookie）。门户 accessToken 仍只存在进程内；退出登录时内嵌页的全部 Cookie 一起清掉。
 - 校园网下，数字京师入口由 WebView 访问学校官方 OAuth 回调页，由门户自身写入专属 accessToken 后再回到电脑端首页；校外或流量下门户会把访问者送去 OneVPN，此时由应用侧先建好 OneVPN 会话、经代理换取 accessToken，WebView 直接打开代理路径下的门户首页。
+- 师大云盘没有接统一认证：只在打开这一入口时，用已保存的账号密码向 `pan.bnu.edu.cn` 自己的登录接口登录一次（密码按网盘页面同样的方式，用它下发的 RSA 公钥加密后提交），拿到的会话只写进内嵌页里这个主机的 Cookie，不进日志；服务端拒绝过的那份凭据本次运行不再重试，免得触发网盘的验证码或锁定。换账号时内嵌页里的云盘会话随即作废，退出登录时与其他站点的 Cookie 一起清掉。下载只接学校主机上的 HTTPS 地址，交给系统下载管理器（Android 10 起存进公共的「下载」目录，不需要存储权限）；上传经系统文件选择器，只读用户选中的文件。
 - 登录网络异常时，应用会在有限时间内结束认证请求并提示检查校园网、代理或 VPN，不会无限停留在登录中；门户页面若因 WebView Cookie 或脚本加载瞬态为空，会自动重试一次。
 - 权限：`INTERNET`、`ACCESS_NETWORK_STATE`；`POST_NOTIFICATIONS`、`USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM`、
   `RECEIVE_BOOT_COMPLETED`、`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 仅在开启提醒时用到；
@@ -129,7 +132,7 @@ debug 包内置了几个不登录就能打开的页面，用 adb 直接拉起：
 
 ```bash
 P=io.github.joyreverie.onebnu
-adb shell am start -n $P/.widget.HomePreviewActivity                       # 首页时间轴（--es mode empty 看空态）
+adb shell am start -n $P/.widget.HomePreviewActivity                       # 首页时间轴（--es mode empty 看空态；--es pinned exam,pan 指定默认展示的服务入口，none 全部折叠，--ez expanded true 展开）
 adb shell am start -n $P/.widget.SchedulePreviewActivity                   # 课表网格与日程编辑（--es now 09:00 钉住「现在」指针，--ez others true 显示非本周课程）
 adb shell am start -n $P/.widget.WidgetPreviewActivity --es mode sample    # 小组件各尺寸（mode: sample|empty|loggedout|error）
 adb shell am start -n $P/.widget.ContactsPreviewActivity                   # 校内联系方式
@@ -140,6 +143,7 @@ adb shell am start -n $P/.widget.OneVpnPreviewActivity                     # One
 adb shell am start -n $P/.widget.ProfileCardsPreviewActivity               # 「我的」页的提醒与小组件卡
 adb shell am start -n $P/.widget.ProfileCardsPreviewActivity --ez alarm true --ei delay 8  # 延迟起铃，可先锁屏看闹钟全屏页
 adb shell am start -n $P/.widget.SettingsPreviewActivity --es version 1.0.0  # 设置页；伪装旧版本以演练更新流程
+adb shell am start -n $P/.widget.SettingsPreviewActivity --es page services  # 首页「校园服务」入口管理
 adb shell am start -n $P/.widget.AutoUpdatePreviewActivity --es version 1.0.0  # 启动时自动检查更新的弹窗
 ```
 
@@ -148,7 +152,7 @@ adb shell am start -n $P/.widget.AutoUpdatePreviewActivity --es version 1.0.0  #
 ```
 app/src/main/java/io/github/joyreverie/onebnu/
 ├── core/
-│   ├── crypto/    统一认证使用的非标准三重 DES
+│   ├── crypto/    统一认证使用的非标准三重 DES、RSA 公钥加密
 │   ├── net/       CAS 登录、HTTP 封装（GBK 判定、重定向协议升级）、Cookie、网络诊断
 │   ├── notify/    上课提醒的定时与通知
 │   ├── store/     凭据、设置、课表缓存、个人日程、设备标识
@@ -184,6 +188,7 @@ docs/              技术说明、截图、校内联系方式的原始整理稿
 - 图书馆检索为内嵌官网，未做原生解析。
 - 北京课程中心需要学校账号权限；内容以学校实时页面和个人权限为准。旧教务代理只针对北京 `zyfw.bnu.edu.cn`，不改变珠海校区的独立认证与教务地址。
 - 小组件后台刷新依赖「记住密码」；换新设备需要短信验证时后台不会自动完成。
+- 师大云盘免登录只在北京校区、勾选了「记住密码」时生效；网盘要求验证码（比如多次输错之后）或改了登录方式时，落回它自己的登录页手动登录。
 - 小米、华为等 ROM 需在应用信息里允许自启动、将省电策略设为「无限制」并允许忽略电池优化，上课提醒才可靠；
   闹钟提醒用系统的闹钟通道登记（状态栏会出现闹钟图标），受这类限制的影响比通知提醒小。
 - 测试账号为 2026 级新生，成绩与考试的行解析按真实表头加构造数据验证，等有真实数据后需复核。

@@ -7,6 +7,7 @@ import io.github.joyreverie.onebnu.core.net.CasClient
 import io.github.joyreverie.onebnu.core.net.Http
 import io.github.joyreverie.onebnu.core.net.NetworkDiagnostics
 import io.github.joyreverie.onebnu.core.net.OneVpnSso
+import io.github.joyreverie.onebnu.core.net.PanSso
 import io.github.joyreverie.onebnu.core.net.SessionAuthenticator
 import io.github.joyreverie.onebnu.core.net.PortalSso
 import io.github.joyreverie.onebnu.core.net.SsoCoordinator
@@ -150,7 +151,8 @@ object ServiceLocator {
     fun signOut(forgetCredentials: Boolean) {
         PortalSso.clear(activeCampus)
         OneVpnSso.reset()
-        // 内嵌页里的会话（门户、教务、OneVPN，以及师大邮箱在网易那边的登录态）一并清掉：
+        PanSso.reset()
+        // 内嵌页里的会话（门户、教务、OneVPN、师大云盘，以及师大邮箱在网易那边的登录态）一并清掉：
         // 退出登录后不该有任何一处还登着；下次打开网页入口时会从 OkHttp 重新同步
         runCatching { android.webkit.CookieManager.getInstance().removeAllCookies(null) }
         current.auth.logout()
@@ -172,6 +174,13 @@ object ServiceLocator {
         current.api.invalidate()
         current.repo.resetPrefetch()
         PortalSso.clear(activeCampus)
+        // 云盘的会话在内嵌页里一直有效：换了账号还接着用，新账号就会看到上一个账号的文件
+        PanSso.reset()
+        runCatching {
+            val cookies = android.webkit.CookieManager.getInstance()
+            PanSso.expiredCookies().forEach { cookies.setCookie(PanSso.COOKIE_URL, it) }
+            cookies.flush()
+        }
         WidgetState(app, activeCampus).clear()
     }
 

@@ -48,6 +48,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.core.net.MailSso
+import io.github.joyreverie.onebnu.core.net.PanSso
 import io.github.joyreverie.onebnu.core.net.SsoWarmup
 import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.ui.campus.CalendarScreen
@@ -65,6 +66,7 @@ import io.github.joyreverie.onebnu.ui.profile.CultivationPlanScreen
 import io.github.joyreverie.onebnu.ui.profile.ProfileScreen
 import io.github.joyreverie.onebnu.ui.profile.StudentInfoScreen
 import io.github.joyreverie.onebnu.ui.schedule.ScheduleScreen
+import io.github.joyreverie.onebnu.ui.settings.ServiceEntriesScreen
 import io.github.joyreverie.onebnu.ui.settings.SettingsScreen
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.OneBnuTheme
@@ -104,6 +106,12 @@ object Routes {
 
     /** 师大邮箱：不是普通网页地址，页内先向门户要一条一次性免密链接。 */
     const val MAIL = "mail"
+
+    /** 师大云盘：页内先用已保存的账号替网盘登录，再打开网盘手机版。 */
+    const val PAN = "pan"
+
+    /** 设置 → 校园服务：勾选首页显示哪些入口。 */
+    const val SERVICE_ENTRIES = "service_entries"
 
     fun web(title: String, url: String, sso: Boolean): String {
         val t = android.net.Uri.encode(title)
@@ -340,8 +348,10 @@ private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus)
         SettingsScreen(
             onBack = { nav.popBackStack() },
             onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) },
+            onServiceEntries = { nav.navigate(Routes.SERVICE_ENTRIES) },
         )
     }
+    composable(Routes.SERVICE_ENTRIES) { ServiceEntriesScreen(onBack = { nav.popBackStack() }) }
     composable(Routes.INFO) { InfoScreen(onBack = { nav.popBackStack() }) }
     composable(Routes.ANNOUNCEMENT_HISTORY) { AnnouncementHistoryScreen(onBack = { nav.popBackStack() }) }
     composable(Routes.STUDENT_INFO) { StudentInfoScreen(onBack = { nav.popBackStack() }) }
@@ -376,6 +386,15 @@ private fun NavGraphBuilder.detailRoutes(nav: NavHostController, campus: Campus)
             url = MailSso.FALLBACK,
             useSso = false,
             mailMode = true,
+            onBack = { nav.popBackStack() },
+        )
+    }
+    composable(Routes.PAN) {
+        WebScreen(
+            title = "师大云盘",
+            url = PanSso.H5,
+            useSso = false,
+            panMode = true,
             onBack = { nav.popBackStack() },
         )
     }
