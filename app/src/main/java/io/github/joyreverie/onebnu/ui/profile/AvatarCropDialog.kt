@@ -8,11 +8,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,13 +16,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -36,10 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
@@ -54,6 +51,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AvatarCropDialog(
     source: Bitmap,
@@ -64,11 +62,6 @@ fun AvatarCropDialog(
     var offset by remember(source) { mutableStateOf(Offset.Zero) }
     var viewportSize by remember(source) { mutableStateOf(IntSize.Zero) }
 
-    fun updateZoom(value: Float) {
-        zoom = value.coerceIn(MIN_ZOOM, MAX_ZOOM)
-        offset = clampOffset(offset, source, viewportSize, zoom)
-    }
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -77,39 +70,35 @@ fun AvatarCropDialog(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.surface,
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(vertical = 8.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Filled.Close, contentDescription = "取消")
-                    }
-                    Text(
-                        "设置头像",
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(
-                        onClick = {
-                            cropAvatar(source, viewportSize, zoom, offset)?.let(onConfirm)
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.surface,
+                topBar = {
+                    TopAppBar(
+                        title = { Text("设置头像") },
+                        navigationIcon = {
+                            IconButton(onClick = onDismiss) {
+                                Icon(Icons.Filled.Close, contentDescription = "取消")
+                            }
                         },
-                    ) {
-                        Text("完成")
-                    }
-                }
-
-                Text(
-                    "拖动调整位置，双指缩放图片",
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
+                        actions = {
+                            Button(
+                                onClick = {
+                                    cropAvatar(source, viewportSize, zoom, offset)?.let(onConfirm)
+                                },
+                                modifier = Modifier.padding(end = 12.dp),
+                                shape = MaterialTheme.shapes.medium,
+                            ) {
+                                Text("完成")
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ),
+                    )
+                },
+            ) {
                 Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    modifier = Modifier.fillMaxSize().padding(it),
                     contentAlignment = Alignment.Center,
                 ) {
                     CropViewport(
@@ -122,23 +111,7 @@ fun AvatarCropDialog(
                             offset = clampOffset(offset + pan, source, viewportSize, nextZoom)
                         },
                         onSizeChanged = { viewportSize = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .sizeIn(maxWidth = 380.dp)
-                            .aspectRatio(1f)
-                            .padding(horizontal = 24.dp),
-                    )
-                }
-
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text("缩放", style = MaterialTheme.typography.labelLarge)
-                    Slider(
-                        value = zoom,
-                        onValueChange = ::updateZoom,
-                        valueRange = MIN_ZOOM..MAX_ZOOM,
+                        modifier = Modifier.fillMaxWidth().sizeIn(maxWidth = 380.dp).aspectRatio(1f),
                     )
                 }
             }
@@ -155,8 +128,6 @@ private fun CropViewport(
     onSizeChanged: (IntSize) -> Unit,
     modifier: Modifier,
 ) {
-    val scrim = MaterialTheme.colorScheme.scrim
-
     Canvas(
         modifier = modifier
             .onSizeChanged(onSizeChanged)
@@ -183,23 +154,17 @@ private fun CropViewport(
             )
         }
 
-        val cropBounds = Rect(
-            center.x - cropDiameter / 2f,
-            center.y - cropDiameter / 2f,
-            center.x + cropDiameter / 2f,
-            center.y + cropDiameter / 2f,
-        )
-        val overlay = Path().apply {
-            fillType = PathFillType.EvenOdd
-            addRect(Rect(0f, 0f, size.width, size.height))
-            addOval(cropBounds)
-        }
-        drawPath(overlay, scrim.copy(alpha = 0.64f))
         drawCircle(
             color = Color.White,
             radius = cropDiameter / 2f,
             center = center,
-            style = Stroke(width = 2.dp.toPx()),
+            style = Stroke(
+                width = 2.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(
+                    floatArrayOf(10.dp.toPx(), 7.dp.toPx()),
+                    phase = 0f,
+                ),
+            ),
         )
     }
 }
