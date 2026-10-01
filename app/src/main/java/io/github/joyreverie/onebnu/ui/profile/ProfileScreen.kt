@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ChevronRight
@@ -38,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -69,7 +73,19 @@ fun ProfileScreen(
     vm: ProfileViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsState()
+    val avatar by vm.avatar.collectAsState()
+    val cropSource by vm.cropSource.collectAsState()
+    val cropLoading by vm.cropLoading.collectAsState()
     var showSignOut by remember { mutableStateOf(false) }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let(vm::prepareCrop)
+    }
+
+    LaunchedEffect(state) {
+        (state as? SessionRepository.State.Ready)?.profile?.studentId
+            ?.takeIf(String::isNotBlank)
+            ?.let(vm::loadAvatar)
+    }
 
     LazyColumn(
         Modifier
@@ -78,7 +94,14 @@ fun ProfileScreen(
         contentPadding = LocalScreenInfo.current.listPadding(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { IdentityCard(state, onRetry = vm::retry) }
+        item {
+            IdentityCard(
+                state = state,
+                avatar = avatar,
+                onAvatarClick = { imagePicker.launch("image/*") },
+                onRetry = vm::retry,
+            )
+        }
 
         item {
             MenuGroup {
@@ -117,6 +140,27 @@ fun ProfileScreen(
         }
     }
 
+    if (cropLoading) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("正在读取图片") },
+            text = { CircularProgressIndicator() },
+            confirmButton = {},
+        )
+    }
+
+    cropSource?.let { source ->
+        AvatarCropDialog(
+            source = source,
+            onDismiss = vm::dismissCrop,
+            onConfirm = { cropped ->
+                val profileId = (state as? SessionRepository.State.Ready)?.profile?.studentId
+                if (profileId.isNullOrBlank()) vm.dismissCrop()
+                else vm.saveAvatar(profileId, cropped)
+            },
+        )
+    }
+
     if (showSignOut) {
         var forget by remember { mutableStateOf(true) }
         AlertDialog(
@@ -146,7 +190,12 @@ fun ProfileScreen(
 
 /** 身份卡按会话状态分三态渲染，不再出现「还在加载却显示未登录」。 */
 @Composable
-private fun IdentityCard(state: SessionRepository.State, onRetry: () -> Unit) {
+private fun IdentityCard(
+    state: SessionRepository.State,
+    avatar: android.graphics.Bitmap?,
+    onAvatarClick: () -> Unit,
+    onRetry: () -> Unit,
+) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -162,16 +211,27 @@ private fun IdentityCard(state: SessionRepository.State, onRetry: () -> Unit) {
                 Modifier
                     .size(58.dp)
                     .clip(CircleShape)
+                    .clickable(enabled = state is SessionRepository.State.Ready, onClick = onAvatarClick)
                     .background(Color.White.copy(alpha = 0.22f)),
                 contentAlignment = Alignment.Center,
             ) {
                 when (state) {
-                    is SessionRepository.State.Ready ->
-                        Text(
-                            state.profile.initial,
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color.White,
-                        )
+                    is SessionRepository.State.Ready -> {
+                        if (avatar != null) {
+                            androidx.compose.foundation.Image(
+                                bitmap = avatar.asImageBitmap(),
+                                contentDescription = "自定义头像",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            )
+                        } else {
+                            Text(
+                                state.profile.initial,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = Color.White,
+                            )
+                        }
+                    }
                     SessionRepository.State.Loading, SessionRepository.State.Idle ->
                         CircularProgressIndicator(
                             Modifier.size(22.dp),
