@@ -56,6 +56,25 @@ internal data class AnnouncementRecord(val date: String, val title: String, val 
 internal val CURRENT_ANNOUNCEMENT_ITEMS = listOf(
     AnnouncementItem(
         "1",
+        "数字京师统一身份认证近期更换了**登录加密方式**，旧版本 One BNU 登录时会提示**“密码解析错误”**，已登录用户的会话过期后也将**无法同步课表、成绩等数据**。",
+    ),
+    AnnouncementItem(
+        "2",
+        "本版本已按新方式适配，登录、自动重新登录与数据同步均恢复正常。若身边同学仍使用旧版本，请提醒其更新。",
+    ),
+    AnnouncementItem(
+        "!",
+        "请务必保持 One BNU 为**最新版本**，否则将无法登录和同步数据。可在“设置 - 版本”检查更新，或前往 **GitHub 仓库**：https://github.com/Joy-Reverie/One-BNU/releases 下载。",
+        important = true,
+    ),
+)
+
+/** 最新一份公告的 id，同时是已读标记。内容有实质变化时才改它，否则用户会被反复打断。 */
+internal const val CURRENT_ANNOUNCEMENT_ID = "2026-10-22"
+
+private val ANNOUNCEMENT_2026_09_13_ITEMS = listOf(
+    AnnouncementItem(
+        "1",
         "登录或数据同步异常时，请留意 **GitHub 发布页**，或前往“设置 - 版本”检查更新，并及时升级至最新版本。首次同步数据建议优先使用**校园网**；同步完成后，数据会缓存到**本地**，后续可使用流量或在**无网络**环境下查看已同步内容。",
     ),
     AnnouncementItem(
@@ -77,11 +96,9 @@ internal val CURRENT_ANNOUNCEMENT_ITEMS = listOf(
     ),
 )
 
-/** 最新一份公告的 id，同时是已读标记。内容有实质变化时才改它，否则用户会被反复打断。 */
-internal const val CURRENT_ANNOUNCEMENT_ID = "2026-09-13"
-
 internal val ANNOUNCEMENT_HISTORY = listOf(
-    AnnouncementRecord(CURRENT_ANNOUNCEMENT_ID, "重要公告", CURRENT_ANNOUNCEMENT_ITEMS),
+    AnnouncementRecord(CURRENT_ANNOUNCEMENT_ID, "登录方式更新，请务必升级", CURRENT_ANNOUNCEMENT_ITEMS),
+    AnnouncementRecord("2026-09-13", "重要公告", ANNOUNCEMENT_2026_09_13_ITEMS),
 )
 
 /** 「2026-09-13」→「2026 年 9 月 13 日」。 */

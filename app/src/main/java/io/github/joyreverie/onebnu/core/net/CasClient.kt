@@ -2,6 +2,7 @@ package io.github.joyreverie.onebnu.core.net
 
 import android.util.Log
 import io.github.joyreverie.onebnu.core.crypto.KingoDes
+import io.github.joyreverie.onebnu.core.crypto.RsaCrypto
 import io.github.joyreverie.onebnu.core.store.DeviceIdentity
 import org.json.JSONObject
 import java.io.IOException
@@ -12,7 +13,9 @@ import java.net.URLEncoder
  *
  * 登录流程与网页端（`/cas/comm/bnu/js/login_bnu.js`）完全一致：
  *  1. GET /cas/login?service=… ，取出 lt、execution、表单 action、是否需要图形验证码
- *  2. rsa = strEnc(用户名 + 密码 + lt, "1","2","3")，ul/pl 为用户名与密码长度
+ *  2. POST /cas/rsa 取本次会话的 RSA 公钥，ul/pl 分别为 RSA 加密后的用户名与密码，rsa 留空
+ *     （2026 年 10 月起服务端改为此方案；旧的 strEnc + 明文长度会被拒绝为「密码解析错误」。
+ *     取不到公钥时才退回旧方案，以防服务端回滚）
  *  3. POST /cas/secondAuth (method=check) 探测是否触发二次认证
  *     - info == "noAuth" → 直接提交登录表单
  *     - 否则 info 是打码手机号，走 [sendSecondAuthSms] → [completeSecondAuth]
@@ -41,6 +44,12 @@ class CasClient(
         private val RE_ACTION = Regex("""<form[^>]*id="loginForm"[^>]*action="([^"]+)"""")
         private val RE_CODE_OPEN = Regex("""value="(true|false)"\s+ref="codeOpen"""")
         private val RE_TIPS = Regex("""id="tips"[^>]*>([^<]*)<""")
+
+        /** `/cas/rsa` 的应答是 `{"publicKey":"<Base64 SPKI>"}`；拿不到或不是 JSON 时返回 null。 */
+        internal fun parsePublicKey(body: String): String? =
+            runCatching { JSONObject(body.trim()).optString("publicKey") }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
     }
 
     /**
@@ -106,13 +115,17 @@ class CasClient(
         val needCaptcha = RE_CODE_OPEN.find(page.body)?.groupValues?.get(1) == "true"
 
         val formUrl = absolute(action, page.url)
-        val rsa = KingoDes.strEnc(username + password + lt, "1", "2", "3")
-        val ul = username.length.toString()
-        val pl = password.length.toString()
 
         if (needCaptcha && captcha.isBlank()) {
             return AuthResult.NeedCaptcha(captchaUrl())
         }
+
+        val credentials = encryptCredentials(username, password, lt, formUrl, page.url)
+            // 512 位公钥一次最多加密 53 字节：网页端此时同样无法登录（JSEncrypt 返回 false）
+            ?: return AuthResult.Failed("账号或密码过长，认证服务无法加密，请在网页端修改密码后再试")
+        val rsa = credentials.rsa
+        val ul = credentials.ul
+        val pl = credentials.pl
 
         val pending = Pending(
             formUrl = formUrl,
@@ -134,6 +147,7 @@ class CasClient(
                 "ul" to ul,
                 "pl" to pl,
                 "rsa" to rsa,
+                "service" to service,
             ),
         )
         val json = probe.json ?: return AuthResult.Failed(probe.problem!!)
@@ -220,6 +234,41 @@ class CasClient(
     // ------------------------------------------------------------------
     // 内部
     // ------------------------------------------------------------------
+
+    private class Credentials(val rsa: String, val ul: String, val pl: String)
+
+    /**
+     * 网页端 login()：先 POST /cas/rsa 取公钥，再用 JSEncrypt（PKCS#1 v1.5）分别加密用户名和密码。
+     * 公钥跟着 JSESSIONID 走，必须在取完登录页之后、同一个 Cookie 会话里请求。
+     */
+    private fun encryptCredentials(
+        username: String,
+        password: String,
+        lt: String,
+        formUrl: String,
+        pageUrl: String,
+    ): Credentials? {
+        val rsaUrl = formUrl.substringBefore('?').replace(Regex("/login[^/]*$"), "/rsa")
+        val publicKey = runCatching {
+            parsePublicKey(http.postForm(rsaUrl, emptyMap(), referer = pageUrl).body)
+        }.getOrNull()
+        if (publicKey != null) {
+            Log.i(TAG, "使用 RSA 公钥加密凭据")
+            return runCatching {
+                Credentials(
+                    rsa = "",
+                    ul = RsaCrypto.encryptWithKey(username, publicKey),
+                    pl = RsaCrypto.encryptWithKey(password, publicKey),
+                )
+            }.onFailure { Log.w(TAG, "RSA 加密失败: ${it.javaClass.simpleName}") }.getOrNull()
+        }
+        Log.w(TAG, "未取到 RSA 公钥，退回旧版 DES 方案")
+        return Credentials(
+            rsa = KingoDes.strEnc(username + password + lt, "1", "2", "3"),
+            ul = username.length.toString(),
+            pl = password.length.toString(),
+        )
+    }
 
     /** 网页端的 realSubmit()：提交登录表单，CASTGC 落地即成功。 */
     private fun submitLoginForm(p: Pending): AuthResult {

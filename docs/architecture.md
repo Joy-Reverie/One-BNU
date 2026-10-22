@@ -8,7 +8,8 @@
 
 ```
 GET  /cas/login?service=…            取 lt / execution / 表单 action
-rsa = strEnc(用户名 + 密码 + lt, "1", "2", "3")
+POST /cas/rsa                        取本次会话的 RSA 公钥
+ul = RSA(用户名)，pl = RSA(密码)，rsa 留空
 POST /cas/secondAuth  method=check   探测是否需要二次认证
        ├─ info == "noAuth"           直接提交登录表单
        └─ 否则 info 为打码的手机号
@@ -17,8 +18,12 @@ POST /cas/secondAuth  method=check   探测是否需要二次认证
 POST /cas/login?service=…            CASTGC 落地，之后凭票据 SSO 进各子系统
 ```
 
-`strEnc` 是服务端指定的非标准三重 DES（`/cas/comm/js/des.js`），逐位移植在 `core/crypto/KingoDes.kt`，
-用线上 JS 实跑得到的向量做差分测试。**不能替换成标准 DES**，两者结果不同。
+RSA 与网页端的 JSEncrypt 一致：512 位公钥、PKCS#1 v1.5、Base64 输出（`core/crypto/RsaCrypto.kt`）。
+公钥跟着 JSESSIONID 走，必须在取完登录页之后、同一个 Cookie 会话里请求。
+
+2026 年 10 月之前服务端用的是 `rsa = strEnc(用户名 + 密码 + lt, "1", "2", "3")`、`ul`/`pl` 为明文长度；
+切换后旧方案会被拒绝为「密码解析错误」。`strEnc` 是非标准三重 DES（`/cas/comm/js/des.js`），逐位移植在
+`core/crypto/KingoDes.kt`，现在只在取不到公钥时兜底，以防服务端回滚。
 
 二次认证只实现了短信方式；网页端另有企业微信扫码，应用内未做。
 

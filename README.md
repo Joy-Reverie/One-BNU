@@ -152,7 +152,7 @@ adb shell am start -n $P/.widget.AutoUpdatePreviewActivity --es version 1.0.0  #
 ```
 app/src/main/java/io/github/joyreverie/onebnu/
 ├── core/
-│   ├── crypto/    统一认证使用的非标准三重 DES、RSA 公钥加密
+│   ├── crypto/    统一认证使用的 RSA 公钥加密，以及旧版非标准三重 DES
 │   ├── net/       CAS 登录、HTTP 封装（GBK 判定、重定向协议升级）、Cookie、网络诊断
 │   ├── notify/    上课提醒的定时与通知
 │   ├── store/     凭据、设置、课表缓存、个人日程、设备标识

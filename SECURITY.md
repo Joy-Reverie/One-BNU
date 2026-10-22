@@ -9,7 +9,7 @@ One BNU 会处理用户的统一身份认证账号与密码。凡是可能导致
 ## 范围
 
 - 凭据存储（`core/store/SecureStore.kt`）、会话与 Cookie 处理（`core/net/`）
-- 登录流程与加密实现（`core/net/CasClient.kt`、`core/crypto/KingoDes.kt`）
+- 登录流程与加密实现（`core/net/CasClient.kt`、`core/crypto/RsaCrypto.kt`、`core/crypto/KingoDes.kt`）
 - 内嵌浏览器（`ui/web/WebScreen.kt`）
 - 应用内更新的下载与安装（`core/update/`）
 
