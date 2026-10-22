@@ -85,6 +85,7 @@ import io.github.joyreverie.onebnu.ui.theme.Shape
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import io.github.joyreverie.onebnu.ui.theme.GlowBlob
+import io.github.joyreverie.onebnu.ui.update.ManualUpdateLink
 
 @Composable
 fun LoginScreen(
@@ -125,12 +126,7 @@ fun LoginScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         content()
                         Spacer(Modifier.height(16.dp))
-                        Text(
-                            "登不上？点此做网络诊断",
-                            Modifier.clickable(onClick = onDiagnostics).padding(6.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        Footer(onDiagnostics)
                     }
                 }
             }
@@ -548,13 +544,18 @@ fun GradientButton(
 
 @Composable
 private fun Footer(onDiagnostics: () -> Unit) {
-    Text(
-        "登不上？点此做网络诊断",
-        Modifier.clickable(onClick = onDiagnostics).padding(6.dp),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.primary,
-        textAlign = TextAlign.Center,
-    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "登不上？点此做网络诊断",
+            Modifier.clickable(onClick = onDiagnostics).padding(6.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
+        )
+        Text("·", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+        // 认证接口一变旧版本就登不上，这里必须不登录也能拿到新版本
+        ManualUpdateLink()
+    }
 }
 
 /**
