@@ -19,7 +19,10 @@ class ScheduleJsonTest {
                     teachers = listOf("张三", "李四"),
                     sessions = listOf(
                         ClassSession(setOf(1, 3, 5, 7), "1-7(单)", 2, 3, 4, "教七楼 201", capacity = 120),
-                        ClassSession((9..16).toSet(), "9-16", 4, 9, 10, "京师学堂", capacity = null),
+                        ClassSession(
+                            (9..16).toSet(), "9-16", 4, 9, 10, "京师学堂", capacity = null,
+                            teachers = listOf(TeacherWeeks("张三", (9..12).toSet()), TeacherWeeks("李四", (13..16).toSet())),
+                        ),
                     ),
                     studyType = "初修", majorType = "主修",
                 ),

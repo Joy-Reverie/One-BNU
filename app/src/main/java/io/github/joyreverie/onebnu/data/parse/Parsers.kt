@@ -41,9 +41,21 @@ object Parsers {
 
     /**
      * 列表视图比网格视图信息完整：带课程号、学分、学时、教师、以及可精确解析的
-     * 「周次 星期[节次] 地点(容量)」串，因此课表一律以它为准。
+     * 「周次 星期[节次] 地点(容量)」串，因此课表一律以它为准；
+     * 只有「哪位老师上哪几周」得从网格视图补（见 [ScheduleGridParser]）。
      */
-    fun parseSchedule(html: String, term: Term): Schedule {
+    fun parseSchedule(text: String, term: Term): Schedule {
+        // 缓存里可能跟着一份「按课表方式显示」，用来把老师按周对上
+        val (html, grid) = ScheduleGridParser.split(text)
+        val schedule = parseScheduleList(html, term)
+        if (grid == null) return schedule
+        val courses = runCatching {
+            ScheduleGridParser.attach(schedule.courses, ScheduleGridParser.parse(grid, schedule.courses))
+        }.getOrDefault(schedule.courses)
+        return schedule.copy(courses = courses)
+    }
+
+    private fun parseScheduleList(html: String, term: Term): Schedule {
         val doc = Jsoup.parse(html)
         val text = doc.text()
 

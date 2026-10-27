@@ -92,6 +92,7 @@ import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PeriodMapper
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
+import io.github.joyreverie.onebnu.data.model.TeacherWeeks
 import io.github.joyreverie.onebnu.ui.components.EmptyBox
 import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.InfoRow
@@ -117,7 +118,7 @@ private val DAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "日")
 fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
     val s by vm.state.collectAsState()
     OnResumed { vm.onResumed() }
-    var selected by remember { mutableStateOf<Pair<Course, ClassSession>?>(null) }
+    var selected by remember { mutableStateOf<SelectedSlot?>(null) }
     var weekMenu by remember { mutableStateOf(false) }
     // 双指缩放：改的是行高（字号跟一半），松手时记住
     val settings = ServiceLocator.settings
@@ -256,7 +257,7 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
                                         settings.scheduleZoom = zoom
                                         zoomTick++
                                     },
-                                    onClick = { c, sess -> selected = c to sess },
+                                    onClick = { c, sess -> selected = SelectedSlot(c, sess, s.week) },
                                     onEventClick = { editing = it },
                                     clock = clock,
                                 )
@@ -268,10 +269,10 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
         }
     }
 
-    selected?.let { (course, session) ->
+    selected?.let { slot ->
         val sheet = rememberModalBottomSheetState()
         ModalBottomSheet(onDismissRequest = { selected = null }, sheetState = sheet) {
-            CourseDetail(course, session, s.periodTimes)
+            CourseDetail(slot.course, slot.session, slot.week, s.currentWeek, s.periodTimes)
         }
     }
 
@@ -289,6 +290,9 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
         )
     }
 }
+
+/** 点开的课：连同点它时看的是第几周，详情里据此标出那一周的老师。 */
+private data class SelectedSlot(val course: Course, val session: ClassSession, val week: Int)
 
 /** 顶栏的「今」小钮：只在离开本周时出现，点一下回到当前周。 */
 @Composable
@@ -671,6 +675,8 @@ internal fun DayColumns(
                                             session = p.session,
                                             conflicting = conflicting,
                                             otherWeek = p.otherWeek,
+                                            // 多位老师分周上课时只写这一周的那位；非本周的格子不写
+                                            teacher = if (p.otherWeek) "" else p.course.teacherLabelOn(p.session, s.week),
                                             titleSize = titleSize,
                                             subSize = subSize,
                                             bottomInset = inset,
@@ -932,6 +938,7 @@ private fun CourseCell(
     modifier: Modifier = Modifier,
     conflicting: Boolean = false,
     otherWeek: Boolean = false,
+    teacher: String = "",
     titleSize: TextUnit = 10.sp,
     subSize: TextUnit = 9.sp,
     bottomInset: Dp = 0.dp,
@@ -978,12 +985,16 @@ private fun CourseCell(
                     // 非本周的格子已经让出了标签带，矮到连「一行课名 + 一行地点」都放不下时先丢地点。
                     val hasLocation = session.location.isNotBlank() &&
                         (!otherWeek || avail >= titleLineDp + subLineDp + GAP)
+                    // 老师排在地点之后：课名至少还能有两行才写，矮格子宁可不写也不挤课名
+                    val hasTeacher = teacher.isNotBlank() && hasLocation &&
+                        avail >= titleLineDp * 2 + subLineDp * 2 + GAP * 2
+                    val teacherDp = if (hasTeacher) subLineDp + GAP else 0.dp
                     val subLines = when {
                         !hasLocation -> 0
-                        avail >= titleLineDp * 4 + subLineDp * 2 -> 2
+                        avail >= titleLineDp * 4 + subLineDp * 2 + teacherDp -> 2
                         else -> 1
                     }
-                    val titleLines = ((avail - subLineDp * subLines - (if (hasLocation) GAP else 0.dp)) / titleLineDp)
+                    val titleLines = ((avail - subLineDp * subLines - (if (hasLocation) GAP else 0.dp) - teacherDp) / titleLineDp)
                         .toInt().coerceIn(1, 10)
 
                     Column {
@@ -1005,6 +1016,18 @@ private fun CourseCell(
                                 lineHeight = subSize * LINE_SPACING,
                                 maxLines = subLines,
                                 overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = textAlpha),
+                            )
+                        }
+                        if (hasTeacher) {
+                            Spacer(Modifier.height(GAP))
+                            Text(
+                                teacher,
+                                fontSize = subSize,
+                                lineHeight = subSize * LINE_SPACING,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = textAlpha),
                             )
                         }
@@ -1050,8 +1073,18 @@ private val TAG_BAND_PADDING = 1.5.dp
 private const val LINE_SPACING = 1.22f
 private val GAP = 2.dp
 
+/**
+ * 课程详情。[week] 是点开它时看的那一周，[currentWeek] 是今天所在的周（不在学期内为 null），
+ * 用来在「任课教师」里标出那一周上课的老师。
+ */
 @Composable
-private fun CourseDetail(course: Course, session: ClassSession, periodTimes: List<String>) {
+internal fun CourseDetail(
+    course: Course,
+    session: ClassSession,
+    week: Int,
+    currentWeek: Int?,
+    periodTimes: List<String>,
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -1085,11 +1118,30 @@ private fun CourseDetail(course: Course, session: ClassSession, periodTimes: Lis
             }
         }
 
+        val roster = course.teacherWeeks.ifEmpty { course.teachers.map { TeacherWeeks(it, emptySet()) } }
+        if (roster.isNotEmpty()) {
+            Spacer(Modifier.height(20.dp))
+            Text("任课教师", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(10.dp))
+            // 只有按周对得上时才标「本周」；对不上就是一份名单，谁也不标
+            val onDuty = if (course.teacherWeeks.isNotEmpty() && session.occursOn(week)) {
+                course.teachersOn(session, week).toSet()
+            } else {
+                emptySet()
+            }
+            val dutyLabel = if (week == currentWeek) "本周" else "第 $week 周"
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                roster.forEach { t ->
+                    TeacherRow(course, t, onDuty = t.name in onDuty, dutyLabel = dutyLabel)
+                }
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
         Divider()
         Spacer(Modifier.height(8.dp))
 
-        InfoRow("任课教师", course.teacherLabel.ifBlank { "—" })
+        if (roster.isEmpty()) InfoRow("任课教师", "—")
         InfoRow("上课班号", course.classNo.ifBlank { "—" })
         InfoRow("本次地点", session.location)
         InfoRow("本次周次", "第 ${session.weeksLabel} 周")
@@ -1114,6 +1166,54 @@ private fun CourseDetail(course: Course, session: ClassSession, periodTimes: Lis
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 2.dp),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * 「任课教师」里的一行：姓名与负责的周次。那一周上课的老师整行铺上课程色，
+ * 右侧挂「本周」/「第 N 周」小标，其余老师留在浅底上。
+ */
+@Composable
+private fun TeacherRow(course: Course, teacher: TeacherWeeks, onDuty: Boolean, dutyLabel: String) {
+    val accent = courseAccent(course.name)
+    val fill = courseColor(course.name)
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (onDuty) fill else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        border = if (onDuty) BorderStroke(1.dp, accent.copy(alpha = 0.35f)) else null,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    teacher.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (onDuty) FontWeight.SemiBold else FontWeight.Normal,
+                )
+                if (teacher.weeks.isNotEmpty()) {
+                    Text(
+                        "第 ${teacher.weeksLabel} 周",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (onDuty) {
+                Spacer(Modifier.width(8.dp))
+                Surface(color = accent, shape = RoundedCornerShape(50)) {
+                    Text(
+                        dutyLabel,
+                        Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = fill,
+                    )
+                }
             }
         }
     }

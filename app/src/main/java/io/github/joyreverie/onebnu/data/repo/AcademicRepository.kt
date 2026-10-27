@@ -14,6 +14,7 @@ import io.github.joyreverie.onebnu.data.model.Option
 import io.github.joyreverie.onebnu.data.model.Schedule
 import io.github.joyreverie.onebnu.data.model.Term
 import io.github.joyreverie.onebnu.data.parse.Parsers
+import io.github.joyreverie.onebnu.data.parse.ScheduleGridParser
 import io.github.joyreverie.onebnu.data.remote.ZyfwApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -264,7 +265,13 @@ class AcademicRepository(
 
     suspend fun schedule(term: Term, forceRefresh: Boolean = false): Outcome<Schedule> = cachedHtml(
         key = offlineCache?.key(OfflineCache.SCHEDULE, term.code) ?: "schedule_${term.code}",
-        request = { api.scheduleHtml(term.xn, term.xq) },
+        request = {
+            val list = api.scheduleHtml(term.xn, term.xq)
+            // 网格视图只用来把多位老师按周对上：没有这样的课就不多发这一个请求；取不到也不影响课表本身
+            val needsGrid = runCatching { Parsers.parseSchedule(list, term).courses.any { it.teachers.size > 1 } }.getOrDefault(false)
+            val grid = if (needsGrid) runCatching { api.scheduleGridHtml(term.xn, term.xq) }.getOrNull() else null
+            ScheduleGridParser.join(list, grid)
+        },
         parse = { html -> Parsers.parseSchedule(html, term) },
         shouldCache = { it.courses.isNotEmpty() },
         forceRefresh = forceRefresh,

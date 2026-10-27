@@ -32,11 +32,49 @@ data class ClassSession(
     val location: String,
     /** 教室容量，教务在地点后以括号给出；无则为 null。 */
     val capacity: Int? = null,
+    /**
+     * 这次安排里各位老师分别上哪几周，取自「按课表方式显示」；对不上或只有一位老师时为空，
+     * 这时由 [Course.teachersOn] 退回整门课的教师名单。
+     */
+    val teachers: List<TeacherWeeks> = emptyList(),
 ) {
     val periodLabel: String
         get() = if (startPeriod == endPeriod) "第 $startPeriod 节" else "第 $startPeriod-$endPeriod 节"
 
     fun occursOn(week: Int) = weeks.contains(week)
+
+    /** 第 [week] 周这次课由谁上；不知道时为空。 */
+    fun teachersOn(week: Int): List<String> = teachers.filter { week in it.weeks }.map { it.name }
+}
+
+/** 一位老师与他 / 她负责的周次。 */
+data class TeacherWeeks(val name: String, val weeks: Set<Int>) {
+    /** 如「2-8」「1-15(单)」「3,5,9-12」，展示时再套上「第 … 周」。 */
+    val weeksLabel: String get() = WeekFormat.label(weeks)
+}
+
+/** 把周次集合写回教务那种紧凑写法。 */
+object WeekFormat {
+    fun label(weeks: Set<Int>): String {
+        val sorted = weeks.sorted()
+        if (sorted.isEmpty()) return ""
+        // 隔周上：三周以上、步长恒为 2，写成「1-15(单)」
+        if (sorted.size >= 3 && sorted.zipWithNext().all { (a, b) -> b - a == 2 }) {
+            return "${sorted.first()}-${sorted.last()}(${if (sorted.first() % 2 == 1) "单" else "双"})"
+        }
+        val runs = ArrayList<IntRange>()
+        var start = sorted.first()
+        var prev = start
+        for (w in sorted.drop(1)) {
+            if (w != prev + 1) {
+                runs += start..prev
+                start = w
+            }
+            prev = w
+        }
+        runs += start..prev
+        return runs.joinToString(",") { if (it.first == it.last) "${it.first}" else "${it.first}-${it.last}" }
+    }
 }
 
 /** 一门已选课程。 */
@@ -56,6 +94,28 @@ data class Course(
     val categoryLabel: String = "",
 ) {
     val teacherLabel: String get() = teachers.joinToString("、")
+
+    /** 第 [week] 周 [session] 这次课的老师；按周对不上时退回全部任课教师。 */
+    fun teachersOn(session: ClassSession, week: Int): List<String> =
+        session.teachersOn(week).ifEmpty { teachers }
+
+    fun teacherLabelOn(session: ClassSession, week: Int): String = teachersOn(session, week).joinToString("、")
+
+    /**
+     * 每位老师在整门课里负责的周次，按开始周排序。
+     * 没有按周的对应时：只有一位老师就是全部周次；多位老师则不给周次，交给界面只列名字。
+     */
+    val teacherWeeks: List<TeacherWeeks>
+        get() {
+            val mapped = sessions.flatMap { it.teachers }
+            if (mapped.isEmpty()) {
+                val all = sessions.flatMap { it.weeks }.toSet()
+                return if (teachers.size == 1 && all.isNotEmpty()) listOf(TeacherWeeks(teachers.first(), all)) else emptyList()
+            }
+            return mapped.groupBy { it.name }
+                .map { (name, list) -> TeacherWeeks(name, list.flatMap { it.weeks }.toSet()) }
+                .sortedWith(compareBy({ it.weeks.minOrNull() ?: Int.MAX_VALUE }, { teachers.indexOf(it.name) }))
+        }
 }
 
 /** 课表整体。 */

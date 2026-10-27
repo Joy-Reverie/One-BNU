@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Scaffold
@@ -31,8 +33,10 @@ import io.github.joyreverie.onebnu.data.model.ClassSession
 import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
 import io.github.joyreverie.onebnu.data.model.Schedule
+import io.github.joyreverie.onebnu.data.model.TeacherWeeks
 import io.github.joyreverie.onebnu.data.model.Term
 import io.github.joyreverie.onebnu.ui.event.EventEditorSheet
+import io.github.joyreverie.onebnu.ui.schedule.CourseDetail
 import io.github.joyreverie.onebnu.ui.schedule.SchedulePager
 import io.github.joyreverie.onebnu.ui.schedule.ScheduleLayout
 import io.github.joyreverie.onebnu.ui.schedule.ScheduleUiState
@@ -48,6 +52,7 @@ import kotlinx.coroutines.launch
  * --es now 把「现在」指针钉在指定时刻（示例课表的本周就是真实的这一周，指针落在今天那一列）；
  * --ez plain true 隐藏顶栏的调试按钮，用来截 README 里的图；
  * --ez others true 打开「显示非本周课程」：示例里周一 5-6 / 9-10、周三 3-4 单双周、周四 1-2、周六 1-2 两门都排在别的周。
+ * --ei week 9 打开时停在第 9 周；--ez detail true 顺手点开「机器学习」的详情（王明 1-8 周、李华 9-16 周）。
  * 只在 debug 包里。
  */
 class SchedulePreviewActivity : ComponentActivity() {
@@ -60,11 +65,13 @@ class SchedulePreviewActivity : ComponentActivity() {
         val fixedNow = intent.getStringExtra("now")?.let { runCatching { LocalTime.parse(it) }.getOrNull() }
         val plain = intent.getBooleanExtra("plain", false)
         val others = intent.getBooleanExtra("others", false)
+        val startWeek = intent.getIntExtra("week", 2).coerceIn(1, 20)
+        val openDetail = intent.getBooleanExtra("detail", false)
         val state = ScheduleUiState(
             loading = false,
             term = Term("2026", "0", "2026-2027学年秋季学期"),
             schedule = sample(),
-            week = 2,
+            week = startWeek,
             currentWeek = 2,
             maxWeek = 20,
             periodTimes = ServiceLocator.settings.periodTimes,
@@ -95,6 +102,11 @@ class SchedulePreviewActivity : ComponentActivity() {
                 ProvideScreenInfo(calculateWindowSizeClass(this)) {
                     var zoom by remember { mutableFloatStateOf(ScheduleLayout.clampZoom(initialZoom)) }
                     var editing by remember { mutableStateOf<PersonalEvent?>(null) }
+                    var selected by remember {
+                        mutableStateOf(
+                            if (openDetail) state.schedule!!.courses.first { it.name == "机器学习" }.let { it to it.sessions.first() } else null,
+                        )
+                    }
                     // 分页是「现在看第几周」的唯一真源，和正式页面一样；
                     // 「跳 15 周」用来复现 1.9.26 的回归：跨多周选择曾会停在半页
                     val pager = rememberPagerState(initialPage = state.week - 1) { state.maxWeek }
@@ -128,11 +140,16 @@ class SchedulePreviewActivity : ComponentActivity() {
                                 zoom = zoom,
                                 onZoom = { zoom = ScheduleLayout.clampZoom(zoom * it) },
                                 onZoomEnd = {},
-                                onClick = { _, _ -> },
+                                onClick = { c, sess -> selected = c to sess },
                                 onEventClick = { editing = it },
                                 clock = clock,
                             )
                             }
+                        }
+                    }
+                    selected?.let { (course, session) ->
+                        ModalBottomSheet(onDismissRequest = { selected = null }, sheetState = rememberModalBottomSheetState()) {
+                            CourseDetail(course, session, week, state.currentWeek, state.periodTimes)
                         }
                     }
                     editing?.let { e ->
@@ -151,14 +168,25 @@ class SchedulePreviewActivity : ComponentActivity() {
             ClassSession(weeks.toSet(), label, dow, a, b, where)
         fun c(name: String, teacher: String, vararg sess: ClassSession) =
             Course(name, name, 2.0, 32, "01", listOf(teacher), sess.toList())
+        // 多位老师分周上的课：每次安排挂上「谁上哪几周」，和从「按课表方式显示」解析出来的一样
+        fun t(name: String, weeks: IntRange) = TeacherWeeks(name, weeks.toSet())
         return Schedule(
             Term("2026", "0", "2026-2027学年秋季学期"), "1", "示例", "示例班",
             listOf(
-                c("高级算法设计", "王老师", s(5, 1, 2, "四117"), s(5, 3, 4, "在线教学")),
+                Course(
+                    "高级算法设计", "高级算法设计", 3.0, 48, "01", listOf("张伟", "刘洋", "陈静"),
+                    listOf(
+                        s(5, 1, 2, "四117").copy(teachers = listOf(t("张伟", 1..4), t("刘洋", 5..12), t("陈静", 13..16))),
+                        s(5, 3, 4, "在线教学").copy(teachers = listOf(t("张伟", 1..4), t("刘洋", 5..12), t("陈静", 13..16))),
+                    ),
+                ),
                 c("计算机视觉", "李老师", s(2, 3, 4, "八406")),
                 c("马克思主义与社会科学方法论", "张老师", s(4, 5, 6, "四107")),
                 c("科技论文阅读与写作", "赵老师", s(5, 5, 6, "二112")),
-                c("机器学习", "陈老师", s(2, 7, 8, "四117")),
+                Course(
+                    "机器学习", "机器学习", 2.0, 32, "01", listOf("王明", "李华"),
+                    listOf(s(2, 7, 8, "四117").copy(teachers = listOf(t("王明", 1..8), t("李华", 9..16)))),
+                ),
                 c("人工智能前沿讲座", "刘老师", s(3, 7, 8, "九204")),
                 c("理论与实践课", "周老师", s(4, 7, 8, "七103")),
                 c("研究生英语", "Sarah", s(1, 9, 10, "教二 305")),

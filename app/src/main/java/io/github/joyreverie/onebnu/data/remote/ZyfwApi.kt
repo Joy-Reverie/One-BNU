@@ -288,6 +288,21 @@ class ZyfwApi(
     }
 
     /**
+     * 同一份课表的「按课表方式显示」。列表视图把多位老师写在一起，分不出谁上哪几周，
+     * 网格视图每格带着老师与周次，只拿来补这一层；参数与列表视图相同。
+     */
+    @Throws(IOException::class)
+    @Synchronized
+    fun scheduleGridHtml(xn: String, xq: String): String {
+        ensureSession()
+        val params = b64("xn=$xn&xq=$xq")
+        val url = "$activeBase/student/wsxk.xskcb10319.jsp?params=$params&t=${token()}"
+        val body = http.get(url, home).body
+        // 这页拿不到不算会话失效（列表视图刚刚还好好的），不要因此把整个会话作废
+        return if (isExpiredPage(body) || Parsers.looksLikeLoginPage(body) || Parsers.isUnauthorized(body)) "" else body
+    }
+
+    /**
      * 网上选课「选课结果」页面。不同校区与系统版本的菜单路径略有差异，
      * 依次尝试页面入口和数据页，只有解析到官方类别才提前返回。
      */

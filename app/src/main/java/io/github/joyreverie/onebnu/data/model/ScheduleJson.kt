@@ -63,6 +63,14 @@ object ScheduleJson {
         put("endPeriod", s.endPeriod)
         put("location", s.location)
         s.capacity?.let { put("capacity", it) }
+        if (s.teachers.isNotEmpty()) {
+            put(
+                "teachers",
+                JSONArray().also { arr ->
+                    s.teachers.forEach { t -> arr.put(JSONObject().put("name", t.name).put("weeks", JSONArray(t.weeks.sorted()))) }
+                },
+            )
+        }
     }
 
     private fun session(o: JSONObject): ClassSession = ClassSession(
@@ -73,6 +81,8 @@ object ScheduleJson {
         endPeriod = o.getInt("endPeriod"),
         location = o.optString("location"),
         capacity = o.intOrNull("capacity"),
+        teachers = o.optJSONArray("teachers")?.objects { TeacherWeeks(it.getString("name"), it.getJSONArray("weeks").ints().toSet()) }
+            ?: emptyList(),
     )
 
     private fun JSONObject.intOrNull(key: String): Int? = if (has(key) && !isNull(key)) getInt(key) else null

@@ -403,7 +403,7 @@ private fun TodayTimeline(s: HomeUiState, onEventClick: (PersonalEvent) -> Unit)
                 title = item.course.name,
                 detail = listOfNotNull(
                     item.session.location.takeIf { it.isNotBlank() },
-                    item.course.teacherLabel.takeIf { it.isNotBlank() },
+                    item.teachers.joinToString("、").takeIf { it.isNotBlank() },
                 ).joinToString(" · "),
                 accent = Color.Unspecified,
                 event = null,

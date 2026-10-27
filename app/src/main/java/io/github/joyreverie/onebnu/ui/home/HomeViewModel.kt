@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
 
-data class TodayCourse(val course: Course, val session: ClassSession)
+/** [teachers] 是这一周这次课的老师（多位老师分周上时只有当周那位）。 */
+data class TodayCourse(val course: Course, val session: ClassSession, val teachers: List<String> = course.teachers)
 
 data class HomeUiState(
     val freshness: DataFreshness? = null,
@@ -101,7 +102,7 @@ class HomeViewModel : ViewModel() {
                     when (val s = repo.schedule(term, forceRefresh = forceRefresh)) {
                         is Outcome.Ok -> {
                             val slots = if (week >= 1) {
-                                s.data.slotsOn(week, today).map { TodayCourse(it.first, it.second) }
+                                s.data.slotsOn(week, today).map { (c, sess) -> TodayCourse(c, sess, c.teachersOn(sess, week)) }
                             } else {
                                 emptyList()
                             }

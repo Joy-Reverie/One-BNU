@@ -161,7 +161,7 @@ object TodayWidgetModel {
         if (message != null) return Model(dateLabel, weekdayLabel, weekLabel, refreshingLabel, emptyList(), null, message)
 
         val courseRows = if (schedule != null && !termOutdated && week >= 1) {
-            schedule.slotsOn(week, i.today.dayOfWeek.value).map { (course, session) -> row(course, session, i.periodTimes, i.now) }
+            schedule.slotsOn(week, i.today.dayOfWeek.value).map { (course, session) -> row(course, session, week, i.periodTimes, i.now) }
         } else {
             emptyList()
         }
@@ -235,7 +235,7 @@ object TodayWidgetModel {
         return Triple(rows.subList(start, start + capacity), start, rows.size - start - capacity)
     }
 
-    private fun row(course: Course, s: ClassSession, periodTimes: List<String>, now: LocalTime): Row {
+    private fun row(course: Course, s: ClassSession, week: Int, periodTimes: List<String>, now: LocalTime): Row {
         val start = periodTimes.getOrNull(s.startPeriod - 1)?.substringBefore('-')?.trim().orEmpty()
         val end = periodTimes.getOrNull(s.endPeriod - 1)?.substringAfter('-')?.trim().orEmpty()
         return Row(
@@ -243,7 +243,7 @@ object TodayWidgetModel {
             end = end.ifBlank { "--:--" },
             name = course.name,
             location = s.location,
-            teacher = course.teacherLabel,
+            teacher = course.teacherLabelOn(s, week),
             periods = s.periodLabel,
             status = statusOf(start, end, now),
             colorIndex = courseColorIndex(course.name, COLOR_COUNT),
