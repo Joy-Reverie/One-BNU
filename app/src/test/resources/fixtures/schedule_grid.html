@@ -1,24 +1,318 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html>
-<head><meta http-equiv="Content-Type" content="text/html; charset=GBK" /></head>
-<body>
-<!-- 「我的课表 → 按课表方式显示」的结构样例：人工按网格版式拼出，不是线上原样抓取；数据与 schedule_list.html 同一套虚构课表 -->
-<div style="font-size:20px;font-weight:bold;">北京师范大学学生课程表</div>
-<div>（2026-2027学年秋季学期）</div>
-<table border="1" style="width:256mm;font-size:12px">
-<tr><td>节次</td><td>星期一</td><td>星期二</td><td>星期三</td><td>星期四</td><td>星期五</td><td>星期六</td><td>星期日</td></tr>
-<tr><td>第一节</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td rowspan="2">高级算法设计<br>张伟 2-6周<br>刘洋 7-16周<br>四117(60)</td><td rowspan="2"><div title="高级算法设计 刘洋 6周 四117">高级算法设计</div></td><td>&nbsp;</td></tr>
-<tr><td>第二节</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-<tr><td>第三节</td><td>&nbsp;</td><td rowspan="2">计算机视觉<br>2-9周<br>陈静<br>八406(60)<br><br>计算机视觉<br>10-16周<br>赵磊<br>八406(60)</td><td>&nbsp;</td><td>&nbsp;</td><td rowspan="2">高级算法设计<br>张伟,刘洋<br>2-16周<br>在线教学(400)</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-<tr><td>第四节</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-<tr><td>第五节</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-<tr><td>第六节</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-<tr><td>第七节</td><td>&nbsp;</td><td rowspan="2">[AIS21158302]机器学习<br>王明<br>2-8周<br>四117(60)<br><br>[AIS21158302]机器学习<br>李华<br>9-16周<br>四117(60)</td><td rowspan="2">人工智能前沿讲座<br>周杰,吴敏<br>2-16周<br>九204(102)</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-<tr><td>第八节</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-<tr><td>第九节</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-<tr><td>第十节</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-<tr><td>第十一节</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-<tr><td>第十二节</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-</table>
-</body>
+	<head>
+		<title></title>
+		<meta http-equiv="Content-Language" content="zh-cn" />
+		<meta http-equiv="Content-Type" content="text/html; charset=GBK" />
+		<link rel="stylesheet" href="../css/Form.css" type="text/css" />
+		<link rel="stylesheet" href="../css/Print.css" type="text/css" />
+	</head>
+	<body style="font-size:12px;">
+		<div>
+			<input type="hidden" id="xn" name="xn" value="2026"> 
+			<input type="hidden" id="xq_m" name="xq_m" value="0"> 
+			<input type="hidden" id="xh" name="xh" value="200000000001"> 
+		</div>
+		<div pagetitle="pagetitle" style="width:95%;font-size:20px;font-weight:bold;">
+			<div style="font-size:20px;font-weight:bold;">北京师范大学2026-2027学年秋季学期<label id="lbl_xsxkkcb" style="font-size:20px;font-weight:bold;">学生选课课程表</label></div>
+		</div>
+		<div group="group" style="width:95%;margin:0 auto;text-align:left;font-size:12px;font-weight:normal;overflow:hidden;">
+			<div style="float:left;width:40mm;"><label id="lbl_xh">学号</label>：200000000000</div>
+			<div style="float:left;width:40mm;"><label id="lbl_xm">姓名</label>：张三</div>
+			<div style="float:left;width:88mm;"><label id="lbl_bj">班级</label>：2026计算机科学与技术(人工智能 全学硕 全日制)</div>
+			<div style="float:right;"><label id="lbl_kcms">课程门数</label>：9&ensp;<label id="lbl_zxf">总学分</label>：17.0&ensp;</div>
+		</div>
+		<table  class='table'  id='mytable' name='mytable' >
+			<thead></thead>
+			<tbody >
+				<tr class="H">
+					<td class="td0" style='width:5%;padding:0px;' colspan='2'></td>
+						<td class='td0' style="width:13%;height:20px;">
+						星期一
+						</td>
+						<td class='td0' style="width:13%;height:20px;">
+						星期二
+						</td>
+						<td class='td0' style="width:13%;height:20px;">
+						星期三
+						</td>
+						<td class='td0' style="width:13%;height:20px;">
+						星期四
+						</td>
+						<td class='td0' style="width:13%;height:20px;">
+						星期五
+						</td>
+						<td class='td0' style="width:13%;height:20px;">
+						星期六
+						</td>
+						<td class='td0' style="width:13%;height:20px;">
+						星期日
+						</td>
+				</tr>
+				<tr>
+					<td class='td1' rowspan='2' valign='middle' style="vertical-align: middle">
+						<div style='background-color: white; '><b><label id="lbl_swsd">上午</label></b></div>
+					</td>
+					<td class='td1' style="vertical-align: middle">
+							<b>一</b>
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k11'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k21'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k31'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k41'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>高级算法设计<br>刘洋 <br>7-16[1-2]<br>四117</div><div style='padding-bottom:5px;clear:both;'>高级算法设计<br>张伟 <br>2-6[1-2]<br>四117</div>
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>高级算法设计<br>张伟 <br>6[1-2]<br>四117</div>
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k71'>
+							</div>
+						
+					</td>
+				</tr>
+				<tr>
+					<td class='td1' style="vertical-align: middle">
+							<b>二</b>
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k12'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>计算机视觉<br>赵磊 <br>10-16[3-4]<br>八406</div><div style='padding-bottom:5px;clear:both;'>计算机视觉<br>陈静 <br>2-9[3-4]<br>八406</div>
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k32'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k42'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>高级算法设计<br>刘洋 <br>7-16[3-4]<br>在线教学</div><div style='padding-bottom:5px;clear:both;'>高级算法设计<br>张伟 <br>2-6[3-4]<br>在线教学</div>
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>高级算法设计<br>张伟 <br>6[3-4]<br>在线教学</div>
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>数据与智能技术应用<br>何强 <br>3[4]<br>在线教学</div>
+					</td>
+				</tr>
+				<!-- 
+				</tbody>
+				<tbody block="block">
+				 -->
+				<tr>
+					<td class='td1' rowspan='2' valign='middle' style="vertical-align: middle">
+						<div style='background-color: white; '><b><label id="lbl_xwsd">下午</label></b></div>
+					</td>
+					<td class='td1' style="vertical-align: middle">
+							<b>三</b>
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k13'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k23'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k33'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>马克思主义与社会科学方法论<br>高峰 <br>2-9[5-6]<br>四107</div>
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>科技论文阅读与写作<br>孙丽 <br>2-9[5-6]<br>二112</div><div style='padding-bottom:5px;clear:both;'>科技论文阅读与写作<br>郑浩 <br>10-16[5-6]<br>二112</div>
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k63'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k73'>
+							</div>
+						
+					</td>
+				</tr>
+				<tr>
+					<td class='td1' style="vertical-align: middle">
+							<b>四</b>
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k14'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>机器学习<br>李华 <br>9-16[7-8]<br>四117</div><div style='padding-bottom:5px;clear:both;'>机器学习<br>王明 <br>2-8[7-8]<br>四117</div>
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>人工智能前沿讲座<br>吴敏 <br>2-16[7-8]<br>九204</div>
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>理论与实践课<br>徐静 <br>2-16[7-8]<br>七103</div>
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k54'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k64'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k74'>
+							</div>
+						
+					</td>
+				</tr>
+				<!-- 
+				</tbody>
+				<tbody block="block">
+				 -->
+				<tr>
+					<td class='td1' rowspan='2' valign='middle' style="vertical-align: middle">
+						<div style='background-color: white; '><b><label id="lbl_wssd">晚上</label></b></div>
+					</td>
+					<td class='td1' style="vertical-align: middle">
+							<b>五</b>
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k15'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k25'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k35'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k45'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k55'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k65'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k75'>
+							</div>
+						
+					</td>
+				</tr>
+				<tr>
+					<td class='td1' style="vertical-align: middle">
+							<b>六</b>
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k16'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k26'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k36'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k46'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k56'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							
+							<div class='div_nokb' id='k66'>
+							</div>
+						
+					</td>
+						<td class='td' style="width:13%;">
+							<div style='padding-bottom:5px;clear:both;'>科研伦理与学术规范<br>林芳 <br>3[12]<br>在线教学</div>
+					</td>
+				</tr>
+			</tbody>
+		</table>
+	</body>
 </html>

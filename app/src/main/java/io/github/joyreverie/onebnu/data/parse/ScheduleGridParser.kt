@@ -58,6 +58,35 @@ object ScheduleGridParser {
         """(\d+(?:\s*[-－~～,，、]\s*\d+)*)\s*(?:[(（]\s*([单双])\s*[)）])?\s*([单双])?\s*周\s*(?:[(（]\s*([单双])\s*[)）])?""",
     )
 
+    /**
+     * 北京校区网格视图的实际写法：每门课一个 div，「课程名 / 老师 / 周次[节次] / 地点」，
+     * 周次后面不带「周」字，节次写在方括号里 ——「2-16[1-2]」「3-6,8-9[5-6]」「02[5-6]」「3[4]」。
+     * 组 1 周次，组 2/3 单双周，组 4/5 节次。
+     */
+    private val GRID_TOKEN = Regex(
+        """(\d+(?:\s*[-－~～,，、]\s*\d+)*)\s*(?:[(（]\s*([单双])\s*周?\s*[)）]|([单双])\s*周?)?\s*周?\s*[\[【]\s*(\d+)\s*(?:[-－~～]\s*(\d+))?\s*[]】]""",
+    )
+
+    /** 一处周次写法：在段里的位置、周次、方括号里的节次（「…周」写法没有节次）。 */
+    private class WeekHit(val at: Int, val weeks: Set<Int>, val periods: IntRange?)
+
+    private fun weekHits(chunk: String): List<WeekHit> {
+        val grid = GRID_TOKEN.findAll(chunk).mapNotNull { m ->
+            val weeks = weeksOf(m.groupValues[1], m.groupValues[2].ifEmpty { m.groupValues[3] }) ?: return@mapNotNull null
+            val a = m.groupValues[4].toIntOrNull()
+            val b = m.groupValues[5].toIntOrNull() ?: a
+            val periods = if (a != null && b != null && a in 1..20 && b in a..20) a..b else null
+            m.range to WeekHit(m.range.first, weeks, periods)
+        }.toList()
+        // 「2-16周[1-2]」两种写法都认得出，同一处只算一次
+        val plain = WEEK_TOKEN.findAll(chunk).filter { m -> grid.none { (r, _) -> r.first <= m.range.last && m.range.first <= r.last } }
+            .mapNotNull { m ->
+                val parity = listOf(m.groupValues[2], m.groupValues[3], m.groupValues[4]).firstOrNull { it.isNotEmpty() }.orEmpty()
+                weeksOf(m.groupValues[1], parity)?.let { WeekHit(m.range.first, it, null) }
+            }.toList()
+        return (grid.map { it.second } + plain).sortedBy { it.at }
+    }
+
     fun parse(html: String, courses: List<Course>): List<Entry> {
         if (courses.isEmpty() || html.isBlank()) return emptyList()
         val doc = Jsoup.parse(html)
@@ -193,7 +222,7 @@ object ScheduleGridParser {
             // 同一门课紧挨着的锚点（「[课程号]课程名」）并成一段
             var next = k + 1
             while (next < anchors.size && anchors[next].course == course &&
-                WEEK_TOKEN.find(text.substring(anchors[k].start, anchors[next].start)) == null
+                weekHits(text.substring(anchors[k].start, anchors[next].start)).isEmpty()
             ) next++
             val end = if (next < anchors.size) anchors[next].start else text.length
             val chunk = text.substring(anchors[k].start, end)
@@ -207,6 +236,7 @@ object ScheduleGridParser {
      * 一段里的老师与周次。一段里只有一组时直接配对；一段里写了好几组
      * （「王明 2-8周 李华 9-16周」或「2-8周 王明 9-16周 李华」）时，老师与周次交替出现、个数相同，
      * 就按出现顺序两两配对；对不齐的不硬配，整段算作这几位老师合上这些周。
+     * 方括号里写了节次就用它，比行头推出来的节次准（一格可能跨好几行）。
      */
     private fun chunkEntries(chunk: String, course: Int, roster: List<String>, day: Int?, periods: IntRange?): List<Entry> {
         val names = roster.filter { it.length >= 2 }
@@ -214,27 +244,26 @@ object ScheduleGridParser {
             Regex(Regex.escape(name)).findAll(chunk).map { it.range.first to name }.toList()
         }.sortedBy { it.first }
         if (teacherHits.isEmpty()) return emptyList()
-        val weekHits = WEEK_TOKEN.findAll(chunk).mapNotNull { m -> weeksOf(m)?.let { m.range.first to it } }.toList()
+        val weekHits = weekHits(chunk)
 
         val distinctTeachers = teacherHits.map { it.second }.distinct()
         if (teacherHits.size >= 2 && teacherHits.size == weekHits.size) {
-            val merged = (teacherHits.map { it.first to true } + weekHits.map { it.first to false }).sortedBy { it.first }
+            val merged = (teacherHits.map { it.first to true } + weekHits.map { it.at to false }).sortedBy { it.first }
             val alternates = merged.zipWithNext().all { (a, b) -> a.second != b.second }
             if (alternates) {
                 return teacherHits.indices.map { i ->
-                    Entry(course, day, weekHits[i].second, listOf(teacherHits[i].second), periods)
+                    Entry(course, day, weekHits[i].weeks, listOf(teacherHits[i].second), weekHits[i].periods ?: periods)
                 }
             }
         }
-        val weeks = if (weekHits.isEmpty()) null else weekHits.flatMap { it.second }.toSortedSet()
-        return listOf(Entry(course, day, weeks, distinctTeachers, periods))
+        val weeks = if (weekHits.isEmpty()) null else weekHits.flatMap { it.weeks }.toSortedSet()
+        val bracketed = weekHits.mapNotNull { it.periods }
+        val span = if (bracketed.isEmpty()) periods else bracketed.minOf { it.first }..bracketed.maxOf { it.last }
+        return listOf(Entry(course, day, weeks, distinctTeachers, span))
     }
 
-    private fun weeksOf(m: MatchResult): Set<Int>? {
-        val raw = m.groupValues[1].replace(Regex("""[－~～]"""), "-").replace('、', ',')
-        val parity = listOf(m.groupValues[2], m.groupValues[3], m.groupValues[4]).firstOrNull { it.isNotEmpty() }.orEmpty()
-        return Parsers.expandWeeks(raw, parity).takeIf { it.isNotEmpty() }
-    }
+    private fun weeksOf(raw: String, parity: String): Set<Int>? =
+        Parsers.expandWeeks(raw.replace(Regex("""[－~～]"""), "-").replace('、', ','), parity).takeIf { it.isNotEmpty() }
 
     /**
      * 把网格里认出的老师挂到每次安排上。只有多位老师的课才需要；

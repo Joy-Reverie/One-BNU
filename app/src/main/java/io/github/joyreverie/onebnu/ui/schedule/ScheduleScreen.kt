@@ -1118,7 +1118,10 @@ internal fun CourseDetail(
             }
         }
 
-        val roster = course.teacherWeeks.ifEmpty { course.teachers.map { TeacherWeeks(it, emptySet()) } }
+        // 网格视图里没出现的老师（只挂名、没排到具体周）也列出来，只是不写周次
+        val roster = course.teacherWeeks.let { mapped ->
+            mapped + course.teachers.filter { name -> mapped.none { it.name == name } }.map { TeacherWeeks(it, emptySet()) }
+        }
         if (roster.isNotEmpty()) {
             Spacer(Modifier.height(20.dp))
             Text("任课教师", style = MaterialTheme.typography.titleSmall)
