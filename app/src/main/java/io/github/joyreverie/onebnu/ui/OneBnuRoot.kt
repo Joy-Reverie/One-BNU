@@ -1,16 +1,5 @@
 package io.github.joyreverie.onebnu.ui
 
-import androidx.compose.animation.AnimatedContentScope
-import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.navigation.NavBackStackEntry
-import io.github.joyreverie.onebnu.ui.components.circularReveal
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -212,21 +201,8 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
             val current = backStack?.destination?.route
             val showNav = current in TABS.map { it.route }
 
-            // 底部页签切换时新页面从点中的页签处圆形扩散开；记下各页签中心（根坐标）当圆心
-            val tabCenters = remember { mutableStateMapOf<String, Offset>() }
-            var revealOrigin by remember { mutableStateOf<Offset?>(null) }
-            LaunchedEffect(revealOrigin) {
-                if (revealOrigin != null) {
-                    delay(REVEAL_MS + 120L)
-                    revealOrigin = null
-                }
-            }
-            val tabModifier = { tab: Tab -> Modifier.onGloballyPositioned { tabCenters[tab.route] = it.boundsInRoot().center } }
-            val revealing = { scope: AnimatedVisibilityScope -> Modifier.fillMaxSize().circularReveal(scope, revealOrigin, REVEAL_MS) }
-
             val onTab: (Tab) -> Unit = { tab ->
                 if (current != tab.route) {
-                    revealOrigin = tabCenters[tab.route]
                     nav.navigate(tab.route) {
                         popUpTo(Routes.HOME) { saveState = true }
                         launchSingleTop = true
@@ -252,19 +228,17 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                             },
                         )
                     }
-                    tabComposable(Routes.HOME) { Box(revealing(this)) { HomeScreen(nav) } }
-                    tabComposable(Routes.SCHEDULE) { Box(revealing(this)) { ScheduleScreen() } }
-                    tabComposable(Routes.GRADE) { Box(revealing(this)) { GradeScreen() } }
-                    tabComposable(Routes.PROFILE) {
-                        Box(revealing(this)) {
-                            ProfileScreen(
-                                nav = nav,
-                                onSignedOut = {
-                                    loggedIn = false
-                                    nav.navigate(Routes.LOGIN) { popUpTo(0) }
-                                },
-                            )
-                        }
+    composable(Routes.HOME) { HomeScreen(nav) }
+                    composable(Routes.SCHEDULE) { ScheduleScreen() }
+                    composable(Routes.GRADE) { GradeScreen() }
+                    composable(Routes.PROFILE) {
+                        ProfileScreen(
+                            nav = nav,
+                            onSignedOut = {
+                                loggedIn = false
+                                nav.navigate(Routes.LOGIN) { popUpTo(0) }
+                            },
+                        )
                     }
                     detailRoutes(nav, activeCampus)
                 }
@@ -287,7 +261,6 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                                 NavigationRailItem(
                                     selected = current == tab.route,
                                     onClick = { onTab(tab) },
-                                    modifier = tabModifier(tab),
                                     icon = { Icon(tab.icon, tab.label) },
                                     label = { Text(tab.label) },
                                 )
@@ -322,7 +295,6 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                                         NavigationBarItem(
                                             selected = current == tab.route,
                                             onClick = { onTab(tab) },
-                                            modifier = tabModifier(tab),
                                             icon = { Icon(tab.icon, tab.label) },
                                             label = { Text(tab.label) },
                                         )
@@ -355,44 +327,6 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
             AnnouncementPrompt()
         }
     }
-}
-
-/** 圆形扩散转场的时长。 */
-private const val REVEAL_MS = 420
-
-private val TAB_ROUTES = TABS.map { it.route }.toSet()
-
-private fun NavBackStackEntry.isTab() = destination.route in TAB_ROUTES
-
-/**
- * 底部页签：页签之间切换时不用默认的淡入淡出，改由内容自己画圆形扩散（见 [circularReveal]）；
- * 这里的淡入淡出几乎看不出来，只用来把转场撑到同样的时长，旧页面在圆铺满前不被移走。
- * 从详情页返回、登录后进首页等其余情况照旧淡入淡出。
- */
-private fun NavGraphBuilder.tabComposable(
-    route: String,
-    content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
-) {
-    composable(
-        route,
-        enterTransition = {
-            if (initialState.isTab() && targetState.isTab()) fadeIn(tween(REVEAL_MS), initialAlpha = 0.99f)
-            else fadeIn(tween(700))
-        },
-        exitTransition = {
-            if (initialState.isTab() && targetState.isTab()) fadeOut(tween(REVEAL_MS), targetAlpha = 0.99f)
-            else fadeOut(tween(700))
-        },
-        popEnterTransition = {
-            if (initialState.isTab() && targetState.isTab()) fadeIn(tween(REVEAL_MS), initialAlpha = 0.99f)
-            else fadeIn(tween(700))
-        },
-        popExitTransition = {
-            if (initialState.isTab() && targetState.isTab()) fadeOut(tween(REVEAL_MS), targetAlpha = 0.99f)
-            else fadeOut(tween(700))
-        },
-        content = content,
-    )
 }
 
 private fun hasInternet(context: android.content.Context): Boolean {

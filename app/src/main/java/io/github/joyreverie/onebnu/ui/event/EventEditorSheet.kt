@@ -1,6 +1,18 @@
 package io.github.joyreverie.onebnu.ui.event
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.Notes
+import androidx.compose.material.icons.outlined.Place
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import io.github.joyreverie.onebnu.ui.theme.LocalAccents
+import io.github.joyreverie.onebnu.ui.theme.Shape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,7 +38,6 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,8 +45,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -106,101 +115,113 @@ fun EventEditorSheet(
     val valid = title.isNotBlank() && timeOk && repeatOk
     val preview = PersonalEvent("", "", date, start, end, repeatDays = repeatDays, repeatUntil = repeatUntil)
 
+    val accents = LocalAccents.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        // 底色比分组卡片深一档，白色的分组才浮得起来
+        containerColor = MaterialTheme.colorScheme.background,
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
-            Text(if (initial == null) "添加日程" else "编辑日程", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(14.dp))
-
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text("事件") },
-                placeholder = { Text("如：体检、组会、讲座") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+            Text(
+                if (initial == null) "添加日程" else "编辑日程",
+                Modifier.padding(start = 4.dp, bottom = 14.dp),
+                style = MaterialTheme.typography.headlineSmall,
             )
-            Spacer(Modifier.height(10.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FieldButton(
-                    icon = Icons.Outlined.CalendarMonth,
-                    label = if (repeatDays.isEmpty()) "日期" else "开始日期",
-                    value = "${date.monthValue}月${date.dayOfMonth}日 周${PersonalEvent.DAY_NAMES[date.dayOfWeek.value - 1]}",
-                    weight = 1.4f,
-                ) { pickingDate = true }
-                FieldButton(icon = Icons.Outlined.Schedule, label = "开始", value = start.format(PersonalEvent.HM)) { pickingTime = 0 }
-                FieldButton(icon = null, label = "结束", value = end.format(PersonalEvent.HM)) { pickingTime = 1 }
+            // 事件名单独一组，字号放大，像一张卡片的标题
+            Group {
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier
+                            .size(width = 4.dp, height = 24.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.tertiary),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    InlineField(
+                        value = title,
+                        onValueChange = { title = it },
+                        placeholder = "事件，如：体检、组会、讲座",
+                        style = MaterialTheme.typography.titleLarge,
+                        singleLine = true,
+                    )
+                }
             }
-            if (!timeOk) {
-                Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(12.dp))
+
+            Group {
+                GroupRow(Icons.Outlined.CalendarMonth, 2, if (repeatDays.isEmpty()) "日期" else "开始日期", onClick = { pickingDate = true }) {
+                    RowValue("${date.monthValue}月${date.dayOfMonth}日 周${PersonalEvent.DAY_NAMES[date.dayOfWeek.value - 1]}")
+                }
+                GroupDivider()
+                GroupRow(Icons.Outlined.Schedule, 1, "时间") {
+                    TimePill(start.format(PersonalEvent.HM), error = false) { pickingTime = 0 }
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        null,
+                        Modifier.padding(horizontal = 6.dp).size(16.dp),
+                        tint = MaterialTheme.colorScheme.outline,
+                    )
+                    TimePill(end.format(PersonalEvent.HM), error = !timeOk) { pickingTime = 1 }
+                }
+                GroupDivider()
+                GroupRow(Icons.Outlined.Repeat, 0, "重复", onClick = { editingRepeat = true }) {
+                    RowValue(preview.repeatLabel)
+                }
+            }
+            if (!timeOk || !repeatOk) {
                 Text(
-                    "结束时间需要晚于开始时间",
+                    if (!timeOk) "结束时间需要晚于开始时间" else "重复结束日期不能早于开始日期",
+                    Modifier.padding(start = 16.dp, top = 8.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
-            if (!repeatOk) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "重复结束日期不能早于开始日期",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
 
-            Row {
-                FieldButton(icon = Icons.Outlined.Repeat, label = "重复", value = preview.repeatLabel) { editingRepeat = true }
+            Group {
+                GroupRow(Icons.Outlined.Place, 4, null) {
+                    InlineField(location, { location = it }, "地点", singleLine = true)
+                }
+                GroupDivider()
+                GroupRow(Icons.AutoMirrored.Outlined.Notes, 3, null, top = true) {
+                    InlineField(note, { note = it }, "备注", singleLine = false)
+                }
             }
-            Spacer(Modifier.height(10.dp))
-
-            OutlinedTextField(
-                value = location,
-                onValueChange = { location = it },
-                label = { Text("地点") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                label = { Text("备注") },
-                minLines = 2,
-                maxLines = 4,
-                modifier = Modifier.fillMaxWidth(),
-            )
             if (initial != null && initial.repeats) {
-                Spacer(Modifier.height(8.dp))
                 Text(
                     "这是重复日程，修改或删除会应用到每一次。",
+                    Modifier.padding(start = 16.dp, top = 8.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                 )
             }
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(20.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (initial != null && onDelete != null) {
-                    OutlinedButton(
+                    Surface(
                         onClick = { onDelete(initial) },
                         enabled = saving == null,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.size(48.dp),
                     ) {
-                        Icon(Icons.Outlined.Delete, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("删除")
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Outlined.Delete, "删除", tint = MaterialTheme.colorScheme.onErrorContainer)
+                        }
                     }
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(12.dp))
                 }
                 MorphButton(
                     text = "保存",
@@ -217,17 +238,14 @@ fun EventEditorSheet(
                             repeatUntil = if (repeatDays.isEmpty()) null else repeatUntil,
                         )
                     },
-                    background = SolidColor(
-                        if (valid) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                    ),
-                    contentColor = if (valid) MaterialTheme.colorScheme.onPrimary
+                    background = if (valid) accents.heroGradient
+                    else SolidColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
+                    contentColor = if (valid) Color.White
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                     done = saving != null,
                     enabled = valid,
-                    height = 44.dp,
-                    corner = 22.dp,
-                    textStyle = MaterialTheme.typography.labelLarge,
+                    height = 48.dp,
+                    corner = 24.dp,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -387,30 +405,120 @@ private fun DatePickerDialogFor(initial: LocalDate, onDismiss: () -> Unit, onPic
     ) { DatePicker(state = state) }
 }
 
+/** 一组设置项的白色圆角底板，和应用里的卡片同一套描边。 */
 @Composable
-private fun RowScope.FieldButton(
-    icon: ImageVector?,
-    label: String,
-    value: String,
-    weight: Float = 1f,
-    onClick: () -> Unit,
-) {
+private fun Group(content: @Composable ColumnScope.() -> Unit) {
     Surface(
-        modifier = Modifier.weight(weight).clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(Shape.card),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = BorderStroke(1.dp, LocalAccents.current.hairline),
+    ) { Column(content = content) }
+}
+
+/** 组内分隔线，从图标右侧起画，和 iOS 式分组列表一样不切断图标列。 */
+@Composable
+private fun GroupDivider() {
+    HorizontalDivider(Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+}
+
+/**
+ * 组里的一行：彩色小图标块 + 名称 + 右侧内容。[tint] 是色板下标，与首页服务图标同一套颜色。
+ * [label] 为空时右侧内容占满整行（地点、备注直接在行里输入）；[top] 让图标贴顶，供多行输入用。
+ */
+@Composable
+private fun GroupRow(
+    icon: ImageVector,
+    tint: Int,
+    label: String?,
+    onClick: (() -> Unit)? = null,
+    top: Boolean = false,
+    trailing: @Composable RowScope.() -> Unit,
+) {
+    val accents = LocalAccents.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = if (top) Alignment.Top else Alignment.CenterVertically,
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (icon != null) {
-                    Icon(icon, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.outline)
-                    Spacer(Modifier.width(4.dp))
-                }
-                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-            }
-            Spacer(Modifier.height(2.dp))
-            Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1)
+        Box(
+            Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(accents.courseColors[tint % accents.courseColors.size]),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, null, Modifier.size(18.dp), tint = accents.courseAccents[tint % accents.courseAccents.size])
         }
+        Spacer(Modifier.width(14.dp))
+        if (label != null) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        }
+        trailing()
     }
+}
+
+/** 行右侧的取值 + 小箭头，表示点开可改。 */
+@Composable
+private fun RowValue(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+    )
+    Icon(
+        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+        null,
+        Modifier.size(20.dp),
+        tint = MaterialTheme.colorScheme.outline,
+    )
+}
+
+/** 起止时间各一枚胶囊，点开滚轮；结束早于开始时胶囊变红。 */
+@Composable
+private fun TimePill(text: String, error: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
+        color = if (error) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Text(
+            text,
+            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    }
+}
+
+/** 无边框的行内输入框，空着时显示灰色占位字。 */
+@Composable
+private fun RowScope.InlineField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    style: TextStyle = MaterialTheme.typography.bodyLarge,
+    singleLine: Boolean,
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.weight(1f).padding(top = if (singleLine) 0.dp else 5.dp),
+        textStyle = style.copy(color = MaterialTheme.colorScheme.onSurface),
+        singleLine = singleLine,
+        minLines = if (singleLine) 1 else 2,
+        maxLines = if (singleLine) 1 else 4,
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        decorationBox = { inner ->
+            Box {
+                if (value.isEmpty()) Text(placeholder, style = style, color = MaterialTheme.colorScheme.outline)
+                inner()
+            }
+        },
+    )
 }

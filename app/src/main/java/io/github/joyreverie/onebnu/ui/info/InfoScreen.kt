@@ -173,12 +173,6 @@ private fun AboutCard() {
                 "北京师范大学校园助手 · ${ServiceLocator.activeCampus.label}，版本 ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "使用数字京师统一身份认证登录，直接对接学校官方系统，不设中间服务器，账号与数据不经过任何第三方。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
         }
     }
 }

@@ -109,12 +109,18 @@ internal fun announcementDateLabel(id: String): String {
     return "$y 年 ${m.trimStart('0')} 月 ${d.trimStart('0')} 日"
 }
 
+/**
+ * 启动时是否弹出 [CURRENT_ANNOUNCEMENT_ID]。2026-10-22 那份登录方式公告随 2627s1.16 / 1.17 发出，
+ * 能装上之后版本的用户已经登得上了，从 2627s1.20 起不再弹，只留在「我的 → 公告」里；发新公告时换 id 并改回 true。
+ */
+private const val ANNOUNCE_ON_LAUNCH = false
+
 /** 启动公告：同一份公告只在没读过时显示一次，放在根层确保登录页和主界面都能看到。 */
 @Composable
 fun AnnouncementPrompt() {
     val context = androidx.compose.ui.platform.LocalContext.current
     var visible by rememberSaveable {
-        mutableStateOf(AnnouncementStore.shouldShow(context, CURRENT_ANNOUNCEMENT_ID))
+        mutableStateOf(ANNOUNCE_ON_LAUNCH && AnnouncementStore.shouldShow(context, CURRENT_ANNOUNCEMENT_ID))
     }
     var confirming by rememberSaveable { mutableStateOf(false) }
     var welcome by rememberSaveable { mutableStateOf(false) }

@@ -13,10 +13,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import io.github.joyreverie.onebnu.ui.components.RollingNumber
 import io.github.joyreverie.onebnu.ui.schedule.rememberMinuteClock
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -111,6 +109,7 @@ import io.github.joyreverie.onebnu.ui.components.ErrorBox
 import io.github.joyreverie.onebnu.ui.components.ListSkeleton
 import io.github.joyreverie.onebnu.ui.components.SectionHeader
 import io.github.joyreverie.onebnu.ui.components.dashedOutline
+import io.github.joyreverie.onebnu.ui.components.shadowSoft
 import io.github.joyreverie.onebnu.ui.event.EventEditorSheet
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
@@ -251,8 +250,16 @@ internal fun HomeContent(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = HOME_LIST_BOTTOM),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        // Hero 需要顶到屏幕边缘，因此不吃列表的左右内边距
-        item { HeroCard(s, items, clock) }
+        // 状态栏下面留一点空，Hero 与下面的卡片吃同样的左右内边距
+        item {
+            HeroCard(
+                s,
+                Modifier
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(pad.horizontalOnly())
+                    .padding(top = 10.dp),
+            )
+        }
 
         item {
             Box(Modifier.padding(pad.horizontalOnly())) {
@@ -344,109 +351,60 @@ private fun androidx.compose.foundation.layout.PaddingValues.horizontalOnly():
 
 /**
  * 顶部主视觉：渐变 + 模糊光斑，信息按「问候 / 姓名 / 学期周次」三级排布。
- * 今天有课或日程时右侧挂一枚进度环：结束了几项、一共几项，随时间推进转圈、数字滚动。
+ * 做成一张浮起的圆角卡片，四边与下面的卡片对齐、不贴屏幕边缘。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HeroCard(s: HomeUiState, items: List<TimelineItem>, now: LocalTime) {
+private fun HeroCard(s: HomeUiState, modifier: Modifier = Modifier) {
     val accents = LocalAccents.current
-    val shape = RoundedCornerShape(bottomStart = Shape.cardLarge, bottomEnd = Shape.cardLarge)
+    val shape = RoundedCornerShape(Shape.cardLarge)
 
     Box(
-        Modifier
+        modifier
             .fillMaxWidth()
+            .shadowSoft(shape, elevation = 6.dp)
             .clip(shape)
             .background(accents.heroGradient),
     ) {
-        GlowBlob(
-            Color.White,
-            Modifier.align(Alignment.TopEnd).size(240.dp).offset(x = 70.dp, y = (-90).dp),
-            alpha = 0.20f,
-        )
-        GlowBlob(
-            Color.White,
-            Modifier.align(Alignment.BottomEnd).size(180.dp).offset(x = 50.dp, y = 70.dp),
-            alpha = 0.13f,
-        )
+        // 光斑只做装饰，放进跟卡片一样大的层里，不能把卡片撑高
+        Box(Modifier.matchParentSize()) {
+            GlowBlob(
+                Color.White,
+                Modifier.align(Alignment.TopEnd).size(180.dp).offset(x = 60.dp, y = (-70).dp),
+                alpha = 0.20f,
+            )
+            GlowBlob(
+                Color.White,
+                Modifier.align(Alignment.BottomEnd).size(130.dp).offset(x = 40.dp, y = 55.dp),
+                alpha = 0.13f,
+            )
+        }
 
-        Row(
-            Modifier
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(start = 22.dp, end = 22.dp, top = 20.dp, bottom = 24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    s.greeting,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.9f),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    s.userName.ifBlank { "同学" },
-                    style = MaterialTheme.typography.displaySmall,
-                    color = Color.White,
-                )
-                if (s.subtitle.isNotBlank()) {
-                    Spacer(Modifier.height(14.dp))
-                    // 系统字体放大后三枚芯片一行放不下，让它们换行而不是把最后一枚挤成两行
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        s.subtitle.split(" · ").take(3).forEach { HeroChip(it) }
-                    }
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 18.dp)) {
+            Text(
+                s.greeting,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.9f),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                s.userName.ifBlank { "同学" },
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.White,
+            )
+            if (s.subtitle.isNotBlank()) {
+                Spacer(Modifier.height(12.dp))
+                // 系统字体放大后三枚芯片一行放不下，让它们换行而不是把最后一枚挤成两行
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    s.subtitle.split(" · ").take(3).forEach { HeroChip(it) }
                 }
             }
-            if (items.isNotEmpty()) {
-                Spacer(Modifier.width(12.dp))
-                TodayRing(done = items.count { !now.isBefore(it.endAt) }, total = items.size)
-            }
         }
     }
 }
-
-/** 今日进度环：环转到「结束项 / 总项」，中间的数字跟着滚动；全部结束时环闭合。 */
-@Composable
-private fun TodayRing(done: Int, total: Int) {
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { shown = true }
-    val sweep by animateFloatAsState(
-        if (shown && total > 0) done.toFloat() / total else 0f,
-        tween(700, easing = FastOutSlowInEasing),
-        label = "ring",
-    )
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier
-                .size(RING_SIZE)
-                .drawBehind {
-                    val w = 5.dp.toPx()
-                    val inset = w / 2
-                    val arc = Size(size.width - w, size.height - w)
-                    drawArc(Color.White.copy(alpha = 0.22f), 0f, 360f, false, Offset(inset, inset), arc, style = Stroke(w))
-                    if (sweep > 0f) {
-                        drawArc(Color.White, -90f, 360f * sweep, false, Offset(inset, inset), arc, style = Stroke(w, cap = StrokeCap.Round))
-                    }
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                RollingNumber(done, style = MaterialTheme.typography.titleLarge, color = Color.White)
-                Text(
-                    "/$total",
-                    Modifier.padding(bottom = 2.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.8f),
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Text("今日完成", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.85f))
-    }
-}
-
-private val RING_SIZE = 64.dp
 
 @Composable
 private fun HeroChip(text: String) {

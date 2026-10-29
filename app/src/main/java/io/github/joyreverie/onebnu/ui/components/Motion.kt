@@ -4,15 +4,12 @@ import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -24,7 +21,12 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.animation.core.exponentialDecay
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.snapFlingBehavior
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
@@ -57,22 +59,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onPlaced
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
@@ -83,15 +76,13 @@ import io.github.joyreverie.onebnu.ui.theme.LocalAccents
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.hypot
-import kotlin.math.max
 import kotlin.math.sin
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 /*
- * 动效小件：滚动数字、完成反馈按钮、惯性滚轮、圆形扩散转场。
+ * 动效小件：滚动数字、完成反馈按钮、惯性滚轮。
  * 都只做「状态变了怎么过渡」，不改变任何数据流；系统关掉动画时 Compose 的时长缩放会把它们一起压成瞬变。
  */
 
@@ -253,7 +244,19 @@ fun WheelPicker(
     label: (Int) -> String = { "%02d".format(it) },
 ) {
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initial.coerceIn(0, count - 1))
-    val fling = rememberSnapFlingBehavior(state)
+    // 系统默认的甩动减速很急，一下就停、感觉不到惯性：把初速压低、摩擦调小，滑得距离差不多但减速过程更长，
+    // 最后吸附到刻度的回位也放软一点
+    val fling = remember(state) {
+        val snap = snapFlingBehavior(
+            SnapLayoutInfoProvider(state, SnapPosition.Center),
+            exponentialDecay(frictionMultiplier = WHEEL_FRICTION),
+            spring(dampingRatio = 0.9f, stiffness = 300f),
+        )
+        object : FlingBehavior {
+            override suspend fun ScrollScope.performFling(initialVelocity: Float): Float =
+                with(snap) { performFling(initialVelocity * WHEEL_VELOCITY) }
+        }
+    }
     val scope = rememberCoroutineScope()
     val view = LocalView.current
     val itemPx = with(LocalDensity.current) { itemHeight.toPx() }
@@ -308,42 +311,6 @@ fun WheelPicker(
 }
 
 val WHEEL_ITEM = 44.dp
+private const val WHEEL_FRICTION = 0.6f
+private const val WHEEL_VELOCITY = 0.8f
 const val WHEEL_ROWS = 5
-
-/**
- * 圆形扩散转场：新页面从 [origin]（根坐标，通常是手指点的那个底部页签）长出一个圆，铺满整屏；
- * 旧页面同时在同一个圆处被挖空。两边互补，不论谁叠在上面看起来都一样，返回时也「原路扩回来」。
- * [origin] 为空（不是页签切换，例如从详情页返回）时什么都不做。
- */
-fun Modifier.circularReveal(scope: AnimatedVisibilityScope, origin: Offset?, durationMs: Int): Modifier =
-    composed {
-        val transition = scope.transition
-        val p by transition.animateFloat(
-            transitionSpec = { tween(durationMs, easing = FastOutSlowInEasing) },
-            label = "reveal",
-        ) { if (it == EnterExitState.Visible) 1f else 0f }
-        val entering = transition.targetState == EnterExitState.Visible
-        var coords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-        val path = remember { Path() }
-        this
-            .onPlaced { coords = it }
-            .drawWithContent {
-                val c = coords
-                val running = transition.currentState != transition.targetState
-                if (origin == null || c == null || !running) {
-                    drawContent()
-                    return@drawWithContent
-                }
-                val o = origin - c.positionInRoot()
-                val far = max(
-                    max(hypot(o.x, o.y), hypot(size.width - o.x, o.y)),
-                    max(hypot(o.x, size.height - o.y), hypot(size.width - o.x, size.height - o.y)),
-                )
-                val r = far * if (entering) p else 1f - p
-                path.reset()
-                path.addOval(Rect(o, r))
-                clipPath(path, if (entering) ClipOp.Intersect else ClipOp.Difference) {
-                    this@drawWithContent.drawContent()
-                }
-            }
-    }
