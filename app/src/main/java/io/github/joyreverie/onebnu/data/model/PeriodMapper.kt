@@ -70,6 +70,26 @@ object PeriodMapper {
         return periods.size.toFloat()
     }
 
+    /**
+     * 课表「现在」指针的位置（行单位）。和 [position] 不同，这里不把课间并进前一节：
+     * 上课时按这一节自己的起止线性走，下课铃一响正好走到这一行的下沿；课间（不论长短）停在两节的分界线上，
+     * 不会在已经下课的那一行里继续往下爬，看着像这节课还没上完。第一节前停在顶端，最后一节后停在底端。
+     * 日程格子仍用 [position]：它们需要把短课间算进前一节，首尾相接的日程才排得开。
+     */
+    fun nowPosition(t: LocalTime, periodTimes: List<String>): Float {
+        val periods = periodTimes.mapNotNull { parsePeriod(it) }
+        if (periods.isEmpty()) return 0f
+        for ((i, p) in periods.withIndex()) {
+            val (a, b) = p
+            if (t.isBefore(a)) return i.toFloat()
+            if (t.isBefore(b)) {
+                val length = Duration.between(a, b).seconds.toFloat().coerceAtLeast(1f)
+                return i + Duration.between(a, t).seconds / length
+            }
+        }
+        return periods.size.toFloat()
+    }
+
     /** 第 [i] 节所在的行覆盖到什么时刻：下一节紧接着（间隔不超过 [MAX_BREAK_MINUTES]）就覆盖到它开始，否则到本节下课。 */
     private fun rowEnd(periods: List<Pair<LocalTime, LocalTime>>, i: Int): LocalTime {
         val end = periods[i].second

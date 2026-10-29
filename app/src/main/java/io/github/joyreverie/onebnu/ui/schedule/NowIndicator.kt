@@ -50,9 +50,9 @@ private const val MINUTE_MS = 60_000L
  * 今天这一列上的「现在」指针。
  *
  * 指针以上到网格顶端蒙一层页面底色，把已经上过的课洗淡；指针本体是一条主色细线，
- * 左端一枚带光晕的圆点。纵向位置与日程用同一套换算（[PeriodMapper.position]）：
- * 上课时按节内进度线性落位，课间并在前一节的行里，午休、晚上开课前这类长空档贴到下一节上沿，
- * 第一节之前停在顶端、最后一节之后停在底端。
+ * 左端一枚带光晕的圆点。纵向位置用 [PeriodMapper.nowPosition]：上课时按这一节的起止线性落位，
+ * 下课铃响正好到这一行下沿；课间不论长短都停在两节的分界线上（不像日程那样把短课间并进前一节，
+ * 否则下课后指针还在那一行里往下爬，像没下课），第一节之前停在顶端、最后一节之后停在底端。
  *
  * 只画图、不接管触摸，格子照常可点。
  */
@@ -70,7 +70,7 @@ internal fun NowIndicator(
     Box(
         modifier.drawBehind {
             val stroke = LINE_WIDTH.toPx()
-            val rows = PeriodMapper.position(clock.value, periodTimes)
+            val rows = PeriodMapper.nowPosition(clock.value, periodTimes)
             val y = (rows * rowHeight.toPx()).coerceIn(stroke / 2, (size.height - stroke / 2).coerceAtLeast(stroke / 2))
             if (y > stroke) drawRect(wash, size = Size(size.width, y))
 

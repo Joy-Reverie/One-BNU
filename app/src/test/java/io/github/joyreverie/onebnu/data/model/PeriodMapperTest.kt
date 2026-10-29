@@ -119,4 +119,20 @@ class PeriodMapperTest {
         // 正常上课时段
         assertFalse(PeriodMapper.insideLongBreak(LocalTime.of(8, 0), LocalTime.of(9, 0), p))
     }
+
+    @Test
+    fun `现在指针上课按本节进度走，课间停在两节分界线上`() {
+        fun now(h: Int, m: Int) = PeriodMapper.nowPosition(LocalTime.of(h, m), p)
+        // 第 6 节 14:25-15:10：上课中按 45 分钟线性走，下课正好到第 6 行下沿
+        assertEquals(5f + 23f / 45f, now(14, 48), 1e-4f)
+        assertEquals(6f, now(15, 10), 1e-4f)
+        // 15:10-15:30 的 20 分钟课间：整段停在第 6、7 节分界线上，不在第 6 行里往下爬
+        assertEquals(6f, now(15, 11), 1e-4f)
+        assertEquals(6f, now(15, 29), 1e-4f)
+        assertEquals(6f + 1f / 45f, now(15, 31), 1e-4f)
+        // 午休同样停在分界线上；第一节前在顶端，最后一节后在底端
+        assertEquals(4f, now(12, 30), 1e-4f)
+        assertEquals(0f, now(7, 0), 1e-4f)
+        assertEquals(p.size.toFloat(), now(23, 0), 1e-4f)
+    }
 }
