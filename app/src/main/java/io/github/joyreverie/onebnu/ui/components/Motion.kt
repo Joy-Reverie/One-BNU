@@ -355,6 +355,10 @@ fun CircleTabButton(
         if (seen && selected) {
             pulse.snapTo(0f)
             pulse.animateTo(1f, tween(520, easing = LinearOutSlowInEasing))
+        } else if (pulse.value < 1f) {
+            // 波纹还没荡完就被切走：上一段动画随 selected 变化被取消，值停在半路，
+            // 不收尾的话那圈环会一直留在旧页签上。快速荡完，让它自然消失
+            pulse.animateTo(1f, tween(160))
         }
         seen = true
     }
