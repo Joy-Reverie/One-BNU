@@ -131,8 +131,8 @@ object ScheduleLayout {
 
     /**
      * 行范围互有交集的一片格子，界面上作为一块整体布局，块内每个格子按自己的 [GridItem.top] /
-     * [GridItem.bottom] 绝对定位。[clusters] 是块内按**时间**真正重叠的分簇：同一簇一次只显示一个、
-     * 底部切换条换下一个；不同簇（如 8:00–9:00 与 9:00–10:00 两条相接的日程）同时显示。
+     * [GridItem.bottom] 绝对定位。[clusters] 是块内按**时间**真正重叠的分簇：同一簇再按 [layers] 分层，
+     * 一次显示一层、底部切换条换下一层；不同簇（如 8:00–9:00 与 9:00–10:00 两条相接的日程）同时显示。
      */
     data class GridGroup<T>(
         val start: Int,
@@ -142,6 +142,23 @@ object ScheduleLayout {
         val clusters: List<List<GridItem<T>>>,
     ) {
         val span: Int get() = end - start + 1
+    }
+
+    /**
+     * 把一簇重叠的格子分成若干「层」：同一层里的格子彼此不重叠，可以同时显示；切换条在层之间切换。
+     * 例如一条长日程和它覆盖的三节互不重叠的课，分成「日程」与「三节课」两层，点一次就切过去，而不是逐个点四次。
+     *
+     * 按上沿从早到晚放进第一个放得下的层（区间图的首次适配），层数恰好等于同一时刻最多叠了几个，
+     * 不可能更少。贴在行沿上的空档日程（[GridItem.pinned]）共用一条细带，仍然一个一层、逐个切换。
+     */
+    fun <T> layers(cluster: List<GridItem<T>>): List<List<GridItem<T>>> {
+        if (cluster.any { it.pinned }) return cluster.map { listOf(it) }
+        val layers = ArrayList<MutableList<GridItem<T>>>()
+        for (item in cluster.sortedBy { it.top }) {
+            val fit = layers.firstOrNull { layer -> layer.none { it.overlaps(item) } }
+            if (fit != null) fit += item else layers += arrayListOf(item)
+        }
+        return layers
     }
 
     /**

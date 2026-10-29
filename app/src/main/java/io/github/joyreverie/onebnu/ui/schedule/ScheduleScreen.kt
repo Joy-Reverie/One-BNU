@@ -565,7 +565,7 @@ private fun PeriodGutter(
 
 /**
  * 某一周的七列。课与日程放进同一列：课程占整节，日程按起止时刻在行内定位；
- * 时间上真正重叠的才归为一簇（一次显示一个），首尾相接的各自显示。
+ * 时间上真正重叠的才归为一簇（再分成互不重叠的几层，一次显示一层），首尾相接的各自显示。
  * 本周的「今天」一列上叠着「现在」指针（[NowIndicator]），[clock] 为 null 时不画。
  */
 @Composable
@@ -580,7 +580,7 @@ internal fun DayColumns(
     onEventClick: (PersonalEvent) -> Unit = {},
     clock: State<LocalTime>? = null,
 ) {
-    // 重叠格子当前显示第几个，键为「周:星期:起始节」
+    // 重叠格子当前显示第几层，键为「周:星期:起始节:簇」
     val shown = remember { mutableStateMapOf<String, Int>() }
     val s = state
     val today = s.today.dayOfWeek.value
@@ -648,66 +648,75 @@ internal fun DayColumns(
                         Box(Modifier.height(blockHeight).fillMaxWidth()) {
                             Column { repeat(group.span) { EmptyCell(rowHeight) } }
                             group.clusters.forEachIndexed { clusterIndex, items ->
-                                // 时间上重叠的一簇不并排挤成细条：一次只显示一个，底部的切换条点一下换下一个
-                                val key = "${s.week}:$day:${group.start}:$clusterIndex"
-                                val shownIndex = (shown[key] ?: 0).mod(items.size)
-                                val item = items[shownIndex]
-                                // 只有本周真上的课撞在一起才算冲突；非本周的课彼此挤在一格只是都排在别的周
-                                val conflicting = items.count { (it.payload as? GridPayload.CourseSlot)?.otherWeek == false } > 1
-                                val inset = if (items.size > 1) OVERLAP_STRIP else 0.dp
-                                val shift = if (item.pinned) 0.dp else reserved[item.top] ?: 0.dp
-                                // 按时刻定位、按时长取高；太短的日程保证一个最小高度，能读出标题
-                                val rawHeight = if (item.pinned) {
-                                    MIN_CELL_HEIGHT
-                                } else {
-                                    maxOf(rowHeight * (item.bottom - item.top) - shift, MIN_CELL_HEIGHT)
+                                // 时间上重叠的一簇不并排挤成细条：分成互不重叠的几层，一次显示一层，底部的切换条点一下换下一层。
+                                // 一条长日程盖住几节互不重叠的课时只有两层：日程一层、那几节课一层。有本周课的层排在前面、默认显示
+                                // 不能 remember：groupColumn 每次重组都造新的格子对象，缓存住的旧层和这一轮的 items
+                                // 内容相等却不是同一个对象，下面按对象判「另一节课」时会把自己当成冲突对象。分层本身很便宜
+                                val layers = ScheduleLayout.layers(items).sortedByDescending { layer ->
+                                    layer.any { it.isThisWeekCourse() }
                                 }
-                                val cellHeight = minOf(rawHeight, blockHeight)
-                                val cellTop = (rowHeight * (item.top - (group.start - 1)) + shift)
-                                    .coerceIn(0.dp, (blockHeight - cellHeight).coerceAtLeast(0.dp))
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = cellTop)
-                                        .height(cellHeight)
-                                        .padding(1.5.dp),
-                                ) {
-                                    when (val p = item.payload) {
-                                        is GridPayload.CourseSlot -> CourseCell(
-                                            course = p.course,
-                                            session = p.session,
-                                            conflicting = conflicting,
-                                            otherWeek = p.otherWeek,
-                                            // 多位老师分周上课时只写这一周的那位；非本周的格子不写
-                                            teacher = if (p.otherWeek) "" else p.course.teacherLabelOn(p.session, s.week),
-                                            titleSize = titleSize,
-                                            subSize = subSize,
-                                            bottomInset = inset,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clickable { onClick(p.course, p.session) },
-                                        )
-                                        is GridPayload.Event -> EventCell(
-                                            event = p.event,
-                                            titleSize = titleSize,
-                                            subSize = subSize,
-                                            bottomInset = inset,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clickable { onEventClick(p.event) },
-                                        )
+                                val key = "${s.week}:$day:${group.start}:$clusterIndex"
+                                val shownIndex = (shown[key] ?: 0).mod(layers.size)
+                                val inset = if (layers.size > 1) OVERLAP_STRIP else 0.dp
+                                layers[shownIndex].forEach { item ->
+                                    // 只有本周真上的课彼此撞在一起才算冲突：和日程重叠不算，非本周的课挤在一格也不算
+                                    val conflicting = item.isThisWeekCourse() &&
+                                        items.any { it !== item && it.isThisWeekCourse() && it.overlaps(item) }
+                                    val shift = if (item.pinned) 0.dp else reserved[item.top] ?: 0.dp
+                                    // 按时刻定位、按时长取高；太短的日程保证一个最小高度，能读出标题
+                                    val rawHeight = if (item.pinned) {
+                                        MIN_CELL_HEIGHT
+                                    } else {
+                                        maxOf(rowHeight * (item.bottom - item.top) - shift, MIN_CELL_HEIGHT)
                                     }
-                                    if (items.size > 1) {
-                                        // 非本周的课从不与本周的格子同簇，看当前显示的这个就知道整簇是不是洗淡的
-                                        val muted = (item.payload as? GridPayload.CourseSlot)?.otherWeek == true
-                                        OverlapSwitch(
-                                            index = shownIndex + 1,
-                                            total = items.size,
-                                            subSize = subSize,
-                                            modifier = Modifier
-                                                .align(Alignment.BottomCenter)
-                                                .alpha(if (muted) OTHER_WEEK_SWITCH_ALPHA else 1f),
-                                        ) { shown[key] = shownIndex + 1 }
+                                    val cellHeight = minOf(rawHeight, blockHeight)
+                                    val cellTop = (rowHeight * (item.top - (group.start - 1)) + shift)
+                                        .coerceIn(0.dp, (blockHeight - cellHeight).coerceAtLeast(0.dp))
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = cellTop)
+                                            .height(cellHeight)
+                                            .padding(1.5.dp),
+                                    ) {
+                                        when (val p = item.payload) {
+                                            is GridPayload.CourseSlot -> CourseCell(
+                                                course = p.course,
+                                                session = p.session,
+                                                conflicting = conflicting,
+                                                otherWeek = p.otherWeek,
+                                                // 多位老师分周上课时只写这一周的那位；非本周的格子不写
+                                                teacher = if (p.otherWeek) "" else p.course.teacherLabelOn(p.session, s.week),
+                                                titleSize = titleSize,
+                                                subSize = subSize,
+                                                bottomInset = inset,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .clickable { onClick(p.course, p.session) },
+                                            )
+                                            is GridPayload.Event -> EventCell(
+                                                event = p.event,
+                                                titleSize = titleSize,
+                                                subSize = subSize,
+                                                bottomInset = inset,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .clickable { onEventClick(p.event) },
+                                            )
+                                        }
+                                        if (layers.size > 1) {
+                                            // 同一层的每一格都带切换条，点哪一格都是整层一起换
+                                            // 非本周的课从不与本周的格子同簇，看当前显示的这个就知道整簇是不是洗淡的
+                                            val muted = (item.payload as? GridPayload.CourseSlot)?.otherWeek == true
+                                            OverlapSwitch(
+                                                index = shownIndex + 1,
+                                                total = layers.size,
+                                                subSize = subSize,
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomCenter)
+                                                    .alpha(if (muted) OTHER_WEEK_SWITCH_ALPHA else 1f),
+                                            ) { shown[key] = shownIndex + 1 }
+                                        }
                                     }
                                 }
                             }
@@ -815,7 +824,11 @@ private fun EmptyCell(rowHeight: Dp) {
     }
 }
 
-/** 重叠格子底部的切换条：写着「第几个 / 共几个」，点它换下一个显示。 */
+/** 本周真上的一节课（不是日程，也不是洗淡显示的非本周课）。 */
+private fun ScheduleLayout.GridItem<GridPayload>.isThisWeekCourse(): Boolean =
+    (payload as? GridPayload.CourseSlot)?.otherWeek == false
+
+/** 重叠格子底部的切换条：写着「第几层 / 共几层」，点它换下一层显示。 */
 @Composable
 private fun OverlapSwitch(
     index: Int,

@@ -79,8 +79,8 @@ class SchedulePreviewActivity : ComponentActivity() {
             showOtherWeeks = others,
             events = listOf(
                 PersonalEvent("e1", "体检", LocalDate.of(2026, 9, 18), LocalTime.of(8, 0), LocalTime.of(10, 0), "校医院", "带学生卡"),
-                // 与周四 5-6 节的课重叠，验证并排与上下对齐
-                PersonalEvent("e2", "导师组会", LocalDate.of(2026, 9, 17), LocalTime.of(14, 0), LocalTime.of(16, 0), "生地楼 306"),
+                // 一条长日程盖住周四 5-6、7-8、9-10 三节互不重叠的课：只分「日程」与「三节课」两层，点一次就切换
+                PersonalEvent("e2", "导师组会", LocalDate.of(2026, 9, 17), LocalTime.of(14, 0), LocalTime.of(19, 0), "生地楼 306"),
                 PersonalEvent("e3", "讲座：人工智能前沿", LocalDate.of(2026, 9, 14), LocalTime.of(19, 0), LocalTime.of(20, 30), "京师学堂"),
                 // 首尾相接的两条日程：不算重叠，按时间比例上下排开
                 PersonalEvent("e5", "吃饭", LocalDate.of(2026, 9, 16), LocalTime.of(8, 0), LocalTime.of(9, 0), "学五食堂"),
@@ -189,6 +189,7 @@ class SchedulePreviewActivity : ComponentActivity() {
                 ),
                 c("人工智能前沿讲座", "刘老师", s(3, 7, 8, "九204")),
                 c("理论与实践课", "周老师", s(4, 7, 8, "七103")),
+                c("自然语言处理", "郑老师", s(4, 9, 10, "二111")),
                 c("研究生英语", "Sarah", s(1, 9, 10, "教二 305")),
                 // 以下都不在第 2 周上，只有打开「显示非本周课程」才洗淡出现：
                 // 周一 5-6 与贴在第 5 节上沿的「取快递」同一行沿 —— 要让出细带；周一 9-10 与「讲座」重叠 —— 第 2 周不画

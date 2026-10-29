@@ -189,4 +189,42 @@ class ScheduleLayoutTest {
         )
         assertEquals(listOf(listOf("取快递", "午饭")), groups[0].clusters.map { c -> c.map { it.payload } })
     }
+
+    @Test
+    fun `一条长日程盖住三节互不重叠的课，分成两层而不是四个`() {
+        val cluster = ScheduleLayout.groupColumn(
+            listOf(
+                GridItem.periods(5, 6, "近代史"),
+                GridItem.periods(7, 8, "程序设计"),
+                GridItem.periods(9, 10, "体育"),
+                event("吃饭", "13:30", "19:40"),
+            ),
+        ).single().clusters.single()
+        val layers = ScheduleLayout.layers(cluster)
+        assertEquals(2, layers.size)
+        assertEquals(listOf("近代史", "程序设计", "体育"), layers[0].map { it.payload })
+        assertEquals(listOf("吃饭"), layers[1].map { it.payload })
+    }
+
+    @Test
+    fun `层数等于同一时刻最多叠了几个`() {
+        // A、B 同时开始，C 接在 A 后面又与 B 重叠：最多两个同时进行，所以两层，C 与 A 同层
+        val layers = ScheduleLayout.layers(
+            listOf(
+                GridItem.periods(1, 2, "A"),
+                GridItem.periods(1, 4, "B"),
+                GridItem.periods(3, 4, "C"),
+            ),
+        )
+        assertEquals(listOf(listOf("A", "C"), listOf("B")), layers.map { l -> l.map { it.payload } })
+    }
+
+    @Test
+    fun `贴在行沿上的空档日程仍然一个一层`() {
+        val pinned = listOf(
+            GridItem(4f, 4.2f, "取快递", pinned = true),
+            GridItem(4f, 4.2f, "午饭", pinned = true),
+        )
+        assertEquals(2, ScheduleLayout.layers(pinned).size)
+    }
 }
