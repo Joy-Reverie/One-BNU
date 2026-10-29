@@ -1,5 +1,6 @@
 package io.github.joyreverie.onebnu.ui.exam
 
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -31,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -70,32 +69,49 @@ fun ExamScreen(onBack: () -> Unit, vm: ExamViewModel = viewModel()) {
                 },
                 actions = {
                     IconButton(onClick = { vm.load(forceRefresh = true) }) { Icon(Icons.Filled.Refresh, "刷新") }
-                    if (s.rounds.isNotEmpty()) {
-                        Box {
-                            TextButton(onClick = { menu = true }) {
-                                Text(
-                                    s.round?.name ?: "选择轮次",
-                                    modifier = Modifier.widthIn(max = 220.dp),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Icon(Icons.Filled.ExpandMore, null)
-                            }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                s.rounds.forEach { r ->
-                                    DropdownMenuItem(
-                                        text = { Text(r.name) },
-                                        onClick = { menu = false; vm.selectRound(r) },
-                                    )
-                                }
-                            }
-                        }
-                    }
                 },
             )
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            // 轮次名称很长（「2025-2026学年春季学期随堂考试」），放在标题栏里会把「考试安排」挤成竖排，单独占一行
+            if (s.rounds.isNotEmpty()) {
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    Surface(
+                        onClick = { menu = true },
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                    ) {
+                        Row(
+                            Modifier.padding(start = 14.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                s.round?.name ?: "选择轮次",
+                                Modifier.weight(1f, fill = false),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Icon(
+                                Icons.Filled.ExpandMore,
+                                null,
+                                Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        }
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        s.rounds.forEach { r ->
+                            DropdownMenuItem(
+                                text = { Text(r.name) },
+                                onClick = { menu = false; vm.selectRound(r) },
+                            )
+                        }
+                    }
+                }
+            }
             // 缓存优先渲染时给一行说明；后台取到新数据这行自己消失
             if (s.fromCache) {
                 CacheBanner(

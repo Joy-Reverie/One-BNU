@@ -13,6 +13,14 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
 import io.github.joyreverie.onebnu.ui.components.CircleTabButton
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -32,7 +40,6 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
@@ -225,6 +232,11 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                 }
             }
 
+            // 四个页签自己给底栏留位置，不再由外层按「底栏在不在」动态加内边距：
+            // 否则从首页打开网页等详情页时底栏一消失，正在淡出的首页瞬间变高、滚动位置被夹回去，看着像先跳一下再开页面。
+            val tabBarSpace = if (screen.useNavRail) 0.dp
+            else BOTTOM_NAV_HEIGHT + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
             val graph: @Composable (Modifier) -> Unit = { mod ->
                 NavHost(
                     navController = nav,
@@ -242,17 +254,19 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                             },
                         )
                     }
-    composable(Routes.HOME) { HomeScreen(nav) }
-                    composable(Routes.SCHEDULE) { ScheduleScreen() }
-                    composable(Routes.GRADE) { GradeScreen() }
+                    composable(Routes.HOME) { TabPage(tabBarSpace) { HomeScreen(nav) } }
+                    composable(Routes.SCHEDULE) { TabPage(tabBarSpace) { ScheduleScreen() } }
+                    composable(Routes.GRADE) { TabPage(tabBarSpace) { GradeScreen() } }
                     composable(Routes.PROFILE) {
-                        ProfileScreen(
-                            nav = nav,
-                            onSignedOut = {
-                                loggedIn = false
-                                nav.navigate(Routes.LOGIN) { popUpTo(0) }
-                            },
-                        )
+                        TabPage(tabBarSpace) {
+                            ProfileScreen(
+                                nav = nav,
+                                onSignedOut = {
+                                    loggedIn = false
+                                    nav.navigate(Routes.LOGIN) { popUpTo(0) }
+                                },
+                            )
+                        }
                     }
                     detailRoutes(nav, activeCampus)
                 }
@@ -300,15 +314,17 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                         }
                     }
                 } else {
-                    Scaffold(
-                        // 不在这里消费 window insets：首页的渐变要铺到状态栏下面，
-                        // 其余带 TopAppBar 的页面由各自的 Scaffold 处理。
-                        contentWindowInsets = WindowInsets(0),
-                        bottomBar = {
-                            if (showNav) CircleTabBar(current, onTab)
-                        },
-                    ) { padding ->
-                        graph(Modifier.padding(padding))
+                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                        graph(Modifier.fillMaxSize())
+                        // 底栏浮在页面之上；进出详情页时滑出 / 滑回，不改变下面页面的尺寸
+                        AnimatedVisibility(
+                            visible = showNav,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                            enter = slideInVertically(tween(260)) { it } + fadeIn(tween(260)),
+                            exit = slideOutVertically(tween(220)) { it } + fadeOut(tween(220)),
+                        ) {
+                            CircleTabBar(current, onTab)
+                        }
                     }
                 }
 
@@ -362,6 +378,12 @@ private fun CircleTabBar(current: String?, onTab: (Tab) -> Unit) {
             }
         }
     }
+}
+
+/** 页签页面：底部留出底栏的高度，内容不被浮在上面的底栏挡住。 */
+@Composable
+private fun TabPage(bottom: Dp, content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize().padding(bottom = bottom)) { content() }
 }
 
 private fun hasInternet(context: android.content.Context): Boolean {
