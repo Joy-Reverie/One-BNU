@@ -62,3 +62,39 @@ object MiuiShortcutPermission {
         clazz.getMethod("get", String::class.java).invoke(null, "ro.miui.ui.version.name") as String
     }.getOrDefault("")
 }
+
+/**
+ * MIUI 的「自启动」：关着时，进程被清理后系统不再替我们拉起提醒的广播接收器，
+ * 到点的提醒要等用户自己打开应用才送出。同样没有公开接口，只能查状态、把人带到自启动管理页。
+ */
+object MiuiAutoStart {
+
+    /** MIUI 里「自启动」对应的 AppOps 编号。 */
+    private const val OP_AUTO_START = 10008
+
+    /** debug 预览页用：true 表示强行当成「小米且自启动关着」。 */
+    var previewOverride: Boolean? = null
+
+    /** 只在 MIUI 上、且能确认自启动关着时为 true；查不到（反射失败、非小米）一律当作正常。 */
+    fun needsGrant(context: Context): Boolean {
+        previewOverride?.let { return it }
+        if (!MiuiShortcutPermission.isMiui) return false
+        return runCatching {
+            val ops = context.getSystemService(AppOpsManager::class.java) ?: return false
+            val method = AppOpsManager::class.java.getMethod(
+                "checkOpNoThrow", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, String::class.java,
+            )
+            method.invoke(ops, OP_AUTO_START, android.os.Process.myUid(), context.packageName) as Int != AppOpsManager.MODE_ALLOWED
+        }.getOrDefault(false)
+    }
+
+    /** 打开 MIUI 的自启动管理页；找不到时退回应用权限编辑页。 */
+    fun openSettings(context: Context) {
+        val intent = Intent()
+            .setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (!runCatching { context.startActivity(intent); true }.getOrDefault(false)) {
+            MiuiShortcutPermission.openSettings(context)
+        }
+    }
+}

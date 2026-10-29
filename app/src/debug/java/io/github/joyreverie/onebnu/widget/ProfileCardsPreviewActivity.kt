@@ -30,6 +30,8 @@ class ProfileCardsPreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // --ez miui true：模拟「小米且未授权桌面快捷方式」，看小组件卡上的授权提示
         if (intent.getBooleanExtra("miui", false)) MiuiShortcutPermission.previewOverride = true
+        // --ez autostart true：模拟「小米且自启动关着」，看提醒卡上的「自启动未开启」一行
+        if (intent.getBooleanExtra("autostart", false)) MiuiAutoStart.previewOverride = true
         // --ez alarm true [--ei delay 秒]：延迟起铃，便于先锁屏 / 灭屏再看闹钟的全屏页
         if (intent.getBooleanExtra("alarm", false)) {
             val delay = intent.getIntExtra("delay", 5).coerceIn(0, 120) * 1000L

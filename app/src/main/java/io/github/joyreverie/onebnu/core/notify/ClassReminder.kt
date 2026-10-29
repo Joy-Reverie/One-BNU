@@ -41,9 +41,9 @@ import java.time.format.DateTimeFormatter
  *  - 真正拦住提醒的是系统权限与国产 ROM 的后台限制。「我的」页只在系统**确实**会拦住时才出一行状态
  *    （通知权限、频道被关、精确闹钟、全屏通知、电池优化），每行一个按钮由用户自己去系统页，从不自动跳。
  *  - 通知只有两行：课名 + 「N 分钟后开始 · 教室」，没有多余小字；高优先级渠道保证横幅弹出。
- *  - 两种送达方式（[ReminderStyle]）：通知提醒发一条普通通知；闹钟提醒改用 [AlarmManager.setAlarmClock]
- *    登记 —— 系统把它当作用户可见的闹钟，Doze 不延后、状态栏显示闹钟图标、国产 ROM 对它的拦截也最轻 ——
- *    到点由 [AlarmService] 按闹钟音量响铃，最长两分钟。
+ *  - 定时一律用 [AlarmManager.setAlarmClock] 登记 —— 系统把它当作用户可见的闹钟，Doze 不延后、状态栏显示闹钟图标、
+ *    国产 ROM 对它的拦截也最轻。两种送达方式（[ReminderStyle]）只在到点后有区别：通知提醒发一条普通通知；
+ *    闹钟提醒由 [AlarmService] 按闹钟音量响铃，最长两分钟。
  */
 object ClassReminder {
 
@@ -251,12 +251,11 @@ object ClassReminder {
         )
         runCatching {
             when {
-                // 闹钟方式走系统的「闹钟」通道：不受 Doze 与省电策略延后，状态栏会出现闹钟图标，
-                // 点图标能回到应用（showIntent）。定时由系统保管，应用被清理也不影响。
-                settings.reminderStyle == ReminderStyle.ALARM && canScheduleExact(context) ->
-                    am.setAlarmClock(AlarmManager.AlarmClockInfo(fireMillis, openIntent(context)), pending)
+                // 两种方式都登记在系统的「闹钟」通道上：只有它 Doze 不延后、小米等 ROM 的省电策略也不压。
+                // 通知方式以前用 setExactAndAllowWhileIdle，小米上熄屏后会被攒着，等亮屏或打开应用才一起送到。
+                // 代价是状态栏有闹钟图标；到点仍只发一条通知，不会响铃。点图标能回到应用（showIntent）。
                 canScheduleExact(context) ->
-                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireMillis, pending)
+                    am.setAlarmClock(AlarmManager.AlarmClockInfo(fireMillis, openIntent(context)), pending)
                 // 拿不到精确闹钟权限时退回非精确闹钟，可能延后送达
                 else -> am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireMillis, pending)
             }

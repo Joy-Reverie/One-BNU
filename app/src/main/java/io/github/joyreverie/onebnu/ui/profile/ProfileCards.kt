@@ -73,6 +73,7 @@ import io.github.joyreverie.onebnu.core.notify.AlarmService
 import io.github.joyreverie.onebnu.core.notify.ClassReminder
 import io.github.joyreverie.onebnu.core.store.ReminderStyle
 import io.github.joyreverie.onebnu.ui.components.SectionCard
+import io.github.joyreverie.onebnu.widget.MiuiAutoStart
 import io.github.joyreverie.onebnu.widget.MiuiShortcutPermission
 import io.github.joyreverie.onebnu.widget.TodayWidgetProvider
 import io.github.joyreverie.onebnu.widget.WidgetSize
@@ -476,6 +477,14 @@ fun ReminderCard() {
                         ) { openSystemPage { ClassReminder.openFullScreenIntentSettings(context) } },
                     )
                 }
+                if (!status.autoStartOk) {
+                    add(
+                        StatusItem(
+                            Icons.Outlined.BatteryAlert, "自启动未开启", "应用被清理后提醒要等打开应用才送达",
+                            error = true, action = "去开启",
+                        ) { openSystemPage { MiuiAutoStart.openSettings(context); true } },
+                    )
+                }
                 if (!status.batteryOk) {
                     add(
                         StatusItem(
@@ -518,6 +527,7 @@ private data class ReminderStatus(
     val exactOk: Boolean,
     val fullScreenOk: Boolean,
     val batteryOk: Boolean,
+    val autoStartOk: Boolean,
 ) {
     companion object {
         fun read(context: Context) = ReminderStatus(
@@ -528,6 +538,7 @@ private data class ReminderStatus(
             exactOk = ClassReminder.canScheduleExact(context),
             fullScreenOk = ClassReminder.canUseFullScreenIntent(context),
             batteryOk = ClassReminder.ignoringBatteryOptimizations(context),
+            autoStartOk = !MiuiAutoStart.needsGrant(context),
         )
     }
 }
