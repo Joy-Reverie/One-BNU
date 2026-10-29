@@ -34,6 +34,7 @@ import java.time.LocalTime
  * 「校园服务」默认跟设置里的挑选走；--es pinned exam,pan 临时指定默认展示的入口（逗号分隔的入口键），
  * --es pinned none 看全部折叠、只剩箭头的样子；--ez expanded true 一打开就是展开的。
  * --es campus zhuhai 看珠海校区的入口；设置里的挑选按校区分开存，预览的不是当前校区时按没改过处理。
+ * --es now 10:20 把「现在」钉在这个时刻，看时间轴画到哪儿、进度环转到几。
  */
 class HomePreviewActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
@@ -58,6 +59,7 @@ class HomePreviewActivity : ComponentActivity() {
             if (raw == "none") emptySet() else raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         }
         val expandServices = intent.getBooleanExtra("expanded", false)
+        val now = intent.getStringExtra("now")?.let { runCatching { LocalTime.parse(it) }.getOrNull() }
         val campus = if (intent.getStringExtra("campus") == "zhuhai") Campus.ZHUHAI else Campus.BEIJING
         val initialEvents = if (empty || single) emptyList() else listOf(
             PersonalEvent("e1", "导师组会", today, LocalTime.of(12, 0), LocalTime.of(13, 0), "生地楼 306", "带上周报"),
@@ -88,6 +90,7 @@ class HomePreviewActivity : ComponentActivity() {
                             campus = campus,
                             pinnedEntries = pinnedOverride ?: storedPinned.takeIf { campus == ServiceLocator.activeCampus },
                             expandServices = expandServices,
+                            now = now,
                         )
                     }
                 }

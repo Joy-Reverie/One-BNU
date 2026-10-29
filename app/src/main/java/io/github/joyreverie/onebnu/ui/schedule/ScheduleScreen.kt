@@ -1,5 +1,7 @@
 package io.github.joyreverie.onebnu.ui.schedule
 
+import io.github.joyreverie.onebnu.ui.components.RollingNumber
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -208,12 +210,13 @@ fun ScheduleScreen(vm: ScheduleViewModel = viewModel()) {
                             modifier = Modifier.widthIn(min = 72.dp),
                             contentPadding = PaddingValues(horizontal = 4.dp),
                         ) {
-                            Text(
-                                "第 ${s.week} 周",
-                                maxLines = 1,
-                                softWrap = false,
-                                fontWeight = if (s.isCurrentWeek) FontWeight.Bold else FontWeight.Normal,
-                            )
+                            // 切周时周次数字上下滚动，方向与翻页一致
+                            val weight = if (s.isCurrentWeek) FontWeight.Bold else FontWeight.Normal
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("第 ", maxLines = 1, softWrap = false, fontWeight = weight)
+                                RollingNumber(s.week, style = LocalTextStyle.current.copy(fontWeight = weight))
+                                Text(" 周", maxLines = 1, softWrap = false, fontWeight = weight)
+                            }
                         }
                         WeekMenu(
                             expanded = weekMenu,

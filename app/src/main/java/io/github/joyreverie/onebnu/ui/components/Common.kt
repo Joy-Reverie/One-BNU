@@ -26,17 +26,17 @@ import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -371,8 +371,10 @@ fun InfoRow(label: String, value: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** 选一个时刻（24 小时制）。日程的起止时间与作息时间都用它，样式一致。 */
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 选一个时刻（24 小时制）。日程的起止时间与作息时间都用它，样式一致。
+ * 时、分各一只惯性滚轮，中间一条高亮带标出选中的那一行。
+ */
 @Composable
 fun TimePickerDialog(
     title: String,
@@ -380,13 +382,33 @@ fun TimePickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (LocalTime) -> Unit,
 ) {
-    val state = rememberTimePickerState(initialHour = initial.hour, initialMinute = initial.minute, is24Hour = true)
+    var hour by remember { mutableIntStateOf(initial.hour) }
+    var minute by remember { mutableIntStateOf(initial.minute) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { TimePicker(state = state) },
+        text = {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(WHEEL_ITEM)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    WheelPicker(24, initial.hour, { hour = it }, Modifier.width(76.dp))
+                    Text(
+                        ":",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    WheelPicker(60, initial.minute, { minute = it }, Modifier.width(76.dp))
+                }
+            }
+        },
         confirmButton = {
-            TextButton(onClick = { onConfirm(LocalTime.of(state.hour, state.minute)) }) { Text("确定") }
+            TextButton(onClick = { onConfirm(LocalTime.of(hour, minute)) }) { Text("确定") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )

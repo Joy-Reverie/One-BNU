@@ -60,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalFocusManager
@@ -82,6 +83,8 @@ import io.github.joyreverie.onebnu.core.store.Campus
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
 import io.github.joyreverie.onebnu.ui.theme.Shape
+import io.github.joyreverie.onebnu.ui.components.MorphButton
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import io.github.joyreverie.onebnu.ui.theme.GlowBlob
@@ -96,14 +99,24 @@ fun LoginScreen(
     val state by vm.state.collectAsState()
     val screen = LocalScreenInfo.current
 
+    // 登录成功先让按钮打完勾，再进首页
+    var succeeded by remember { mutableStateOf(false) }
+    val finish = { succeeded = true }
+    LaunchedEffect(succeeded) {
+        if (succeeded) {
+            delay(SUCCESS_HOLD_MS)
+            onLoggedIn()
+        }
+    }
+
     // 自动登录只做一次；标记放在 ViewModel 里，旋转屏幕重建界面不会再触发
-    LaunchedEffect(Unit) { vm.autoLogin(onLoggedIn) }
+    LaunchedEffect(Unit) { vm.autoLogin(finish) }
 
     Box(Modifier.fillMaxSize()) {
         AuroraBackground()
 
         val content: @Composable () -> Unit = {
-            LoginCard(state, vm, onLoggedIn, Modifier.widthIn(max = 400.dp))
+            LoginCard(state, vm, finish, succeeded, Modifier.widthIn(max = 400.dp))
         }
 
         // 横屏（高度紧张）左右分栏：左边品牌，右边表单，
@@ -226,6 +239,7 @@ private fun LoginCard(
     state: LoginUiState,
     vm: LoginViewModel,
     onLoggedIn: () -> Unit,
+    succeeded: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val focus = LocalFocusManager.current
@@ -368,6 +382,7 @@ private fun LoginCard(
             GradientButton(
                 text = "登 录",
                 loading = state.loading,
+                done = succeeded,
                 onClick = submit,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -509,37 +524,31 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedContainerColor = Color.Transparent,
 )
 
-/** 渐变主按钮：纯色按钮在这个页面上太平，渐变能把品牌色带下来。 */
+/**
+ * 渐变主按钮：纯色按钮在这个页面上太平，渐变能把品牌色带下来。
+ * 登录中收成圆形转圈，[done] 时打勾迸粒子，再进首页。
+ */
 @Composable
 fun GradientButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     loading: Boolean = false,
+    done: Boolean = false,
     enabled: Boolean = true,
 ) {
     val accents = LocalAccents.current
-    val shape = RoundedCornerShape(Shape.field)
-    Box(
-        modifier
-            .height(52.dp)
-            .clip(shape)
-            .background(if (enabled) accents.heroGradient else Brush.linearGradient(
-                listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.surfaceVariant),
-            ))
-            .clickable(enabled = enabled && !loading, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (loading) {
-            CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Color.White)
-        } else {
-            Text(
-                text,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (enabled) Color.White else MaterialTheme.colorScheme.outline,
-            )
-        }
-    }
+    MorphButton(
+        text = text,
+        onClick = onClick,
+        background = if (enabled) accents.heroGradient else SolidColor(MaterialTheme.colorScheme.surfaceVariant),
+        contentColor = if (enabled) Color.White else MaterialTheme.colorScheme.outline,
+        modifier = modifier,
+        loading = loading,
+        done = done,
+        enabled = enabled,
+        corner = Shape.field,
+    )
 }
 
 @Composable
@@ -601,3 +610,6 @@ private fun CaptchaImage(
         }
     }
 }
+
+/** 登录成功后按钮打勾、粒子迸完再跳首页的停留时长。 */
+private const val SUCCESS_HOLD_MS = 720L

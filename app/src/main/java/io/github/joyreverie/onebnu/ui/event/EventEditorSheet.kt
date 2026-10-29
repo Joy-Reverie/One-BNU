@@ -26,7 +26,6 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -43,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,15 +50,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.joyreverie.onebnu.data.model.PersonalEvent
+import io.github.joyreverie.onebnu.ui.components.MorphButton
 import io.github.joyreverie.onebnu.ui.components.TimePickerDialog
 import java.time.LocalDate
 import java.time.LocalTime
+import kotlinx.coroutines.delay
 
 private const val DAY_MILLIS = 86_400_000L
+
+/** 保存后按钮打勾停留的时长，粒子迸完正好收起弹层。 */
+private const val SAVE_HOLD_MS = 700L
 
 /**
  * 添加 / 编辑个人日程的底部弹层：事件、日期、开始与结束时间、重复规则、地点、备注。
@@ -85,6 +91,14 @@ fun EventEditorSheet(
     // 0 = 改开始时间，1 = 改结束时间
     var pickingTime by remember { mutableStateOf<Int?>(null) }
     var editingRepeat by remember { mutableStateOf(false) }
+    // 点了保存：按钮先打勾迸粒子，停一下再交出去关弹层
+    var saving by remember { mutableStateOf<PersonalEvent?>(null) }
+    LaunchedEffect(saving) {
+        saving?.let {
+            delay(SAVE_HOLD_MS)
+            onSave(it)
+        }
+    }
 
     val timeOk = end.isAfter(start)
     // 重复结束日期早于开始日期的日程永远不会发生，不让它存下来
@@ -179,6 +193,7 @@ fun EventEditorSheet(
                 if (initial != null && onDelete != null) {
                     OutlinedButton(
                         onClick = { onDelete(initial) },
+                        enabled = saving == null,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                     ) {
                         Icon(Icons.Outlined.Delete, null, Modifier.size(18.dp))
@@ -187,25 +202,34 @@ fun EventEditorSheet(
                     }
                     Spacer(Modifier.width(10.dp))
                 }
-                Button(
+                MorphButton(
+                    text = "保存",
                     onClick = {
-                        onSave(
-                            PersonalEvent(
-                                id = initial?.id ?: PersonalEvent.newId(),
-                                title = title.trim(),
-                                date = date,
-                                start = start,
-                                end = end,
-                                location = location.trim(),
-                                note = note.trim(),
-                                repeatDays = repeatDays,
-                                repeatUntil = if (repeatDays.isEmpty()) null else repeatUntil,
-                            ),
+                        saving = PersonalEvent(
+                            id = initial?.id ?: PersonalEvent.newId(),
+                            title = title.trim(),
+                            date = date,
+                            start = start,
+                            end = end,
+                            location = location.trim(),
+                            note = note.trim(),
+                            repeatDays = repeatDays,
+                            repeatUntil = if (repeatDays.isEmpty()) null else repeatUntil,
                         )
                     },
+                    background = SolidColor(
+                        if (valid) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                    ),
+                    contentColor = if (valid) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    done = saving != null,
                     enabled = valid,
+                    height = 44.dp,
+                    corner = 22.dp,
+                    textStyle = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.weight(1f),
-                ) { Text("保存") }
+                )
             }
         }
     }

@@ -1,6 +1,23 @@
 package io.github.joyreverie.onebnu.ui.home
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import io.github.joyreverie.onebnu.ui.components.RollingNumber
+import io.github.joyreverie.onebnu.ui.schedule.rememberMinuteClock
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -169,6 +186,7 @@ internal fun serviceEntries(campus: Campus): List<ServiceEntry> =
 /** 今日时间轴上的一项：一节课或一条日程，统一按开始时刻排序。 */
 private data class TimelineItem(
     val startAt: LocalTime,
+    val endAt: LocalTime,
     val start: String,
     val end: String,
     val title: String,
@@ -210,8 +228,12 @@ internal fun HomeContent(
     pinnedEntries: Set<String>? = null,
     /** 「校园服务」一打开是否就是展开的；只有 debug 预览会传 true。 */
     expandServices: Boolean = false,
+    /** 把「现在」钉在某个时刻，只有 debug 预览会传。 */
+    now: LocalTime? = null,
 ) {
     val screen = LocalScreenInfo.current
+    val clock by rememberMinuteClock(now)
+    val items = remember(s.todayCourses, s.todayEvents, s.periodTimes) { timelineItems(s) }
     val pad = screen.listPadding(top = 0.dp, bottom = 24.dp)
     var editor by remember { mutableStateOf<EditorTarget?>(null) }
     // 默认展示的在前、折叠的在后，各自保持首页顺序；收起时放几个跟着屏幕走，转屏、分屏后重新分
@@ -230,7 +252,7 @@ internal fun HomeContent(
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         // Hero 需要顶到屏幕边缘，因此不吃列表的左右内边距
-        item { HeroCard(s) }
+        item { HeroCard(s, items, clock) }
 
         item {
             Box(Modifier.padding(pad.horizontalOnly())) {
@@ -270,7 +292,7 @@ internal fun HomeContent(
                         ErrorBox(s.error) { onRetry() }
                     }
                     s.todayCourses.isEmpty() && s.todayEvents.isEmpty() -> EmptyToday(s.todayHint)
-                    else -> TodayTimeline(s, onEventClick = { editor = EditorTarget(it) })
+                    else -> TodayTimeline(items, clock, onEventClick = { editor = EditorTarget(it) })
                 }
             }
         }
@@ -320,10 +342,13 @@ private fun androidx.compose.foundation.layout.PaddingValues.horizontalOnly():
     )
 }
 
-/** 顶部主视觉：渐变 + 模糊光斑，信息按「问候 / 姓名 / 学期周次」三级排布。 */
+/**
+ * 顶部主视觉：渐变 + 模糊光斑，信息按「问候 / 姓名 / 学期周次」三级排布。
+ * 今天有课或日程时右侧挂一枚进度环：结束了几项、一共几项，随时间推进转圈、数字滚动。
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HeroCard(s: HomeUiState) {
+private fun HeroCard(s: HomeUiState, items: List<TimelineItem>, now: LocalTime) {
     val accents = LocalAccents.current
     val shape = RoundedCornerShape(bottomStart = Shape.cardLarge, bottomEnd = Shape.cardLarge)
 
@@ -344,35 +369,84 @@ private fun HeroCard(s: HomeUiState) {
             alpha = 0.13f,
         )
 
-        Column(
+        Row(
             Modifier
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(start = 22.dp, end = 22.dp, top = 20.dp, bottom = 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                s.greeting,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.9f),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                s.userName.ifBlank { "同学" },
-                style = MaterialTheme.typography.displaySmall,
-                color = Color.White,
-            )
-            if (s.subtitle.isNotBlank()) {
-                Spacer(Modifier.height(14.dp))
-                // 系统字体放大后三枚芯片一行放不下，让它们换行而不是把最后一枚挤成两行
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    s.subtitle.split(" · ").take(3).forEach { HeroChip(it) }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    s.greeting,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.9f),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    s.userName.ifBlank { "同学" },
+                    style = MaterialTheme.typography.displaySmall,
+                    color = Color.White,
+                )
+                if (s.subtitle.isNotBlank()) {
+                    Spacer(Modifier.height(14.dp))
+                    // 系统字体放大后三枚芯片一行放不下，让它们换行而不是把最后一枚挤成两行
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        s.subtitle.split(" · ").take(3).forEach { HeroChip(it) }
+                    }
                 }
+            }
+            if (items.isNotEmpty()) {
+                Spacer(Modifier.width(12.dp))
+                TodayRing(done = items.count { !now.isBefore(it.endAt) }, total = items.size)
             }
         }
     }
 }
+
+/** 今日进度环：环转到「结束项 / 总项」，中间的数字跟着滚动；全部结束时环闭合。 */
+@Composable
+private fun TodayRing(done: Int, total: Int) {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val sweep by animateFloatAsState(
+        if (shown && total > 0) done.toFloat() / total else 0f,
+        tween(700, easing = FastOutSlowInEasing),
+        label = "ring",
+    )
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .size(RING_SIZE)
+                .drawBehind {
+                    val w = 5.dp.toPx()
+                    val inset = w / 2
+                    val arc = Size(size.width - w, size.height - w)
+                    drawArc(Color.White.copy(alpha = 0.22f), 0f, 360f, false, Offset(inset, inset), arc, style = Stroke(w))
+                    if (sweep > 0f) {
+                        drawArc(Color.White, -90f, 360f * sweep, false, Offset(inset, inset), arc, style = Stroke(w, cap = StrokeCap.Round))
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                RollingNumber(done, style = MaterialTheme.typography.titleLarge, color = Color.White)
+                Text(
+                    "/$total",
+                    Modifier.padding(bottom = 2.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.8f),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text("今日完成", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.85f))
+    }
+}
+
+private val RING_SIZE = 64.dp
 
 @Composable
 private fun HeroChip(text: String) {
@@ -389,43 +463,73 @@ private fun HeroChip(text: String) {
     }
 }
 
-/** 今日课程与日程用同一条时间轴呈现：左侧时间刻度 + 竖线圆点。日程带「日程」标签，点开可改。 */
-@Composable
-private fun TodayTimeline(s: HomeUiState, onEventClick: (PersonalEvent) -> Unit) {
-    val items = remember(s.todayCourses, s.todayEvents, s.periodTimes) {
-        val courses = s.todayCourses.map { item ->
-            val startSpec = s.periodTimes.getOrNull(item.session.startPeriod - 1)?.substringBefore('-').orEmpty()
-            val endSpec = s.periodTimes.getOrNull(item.session.endPeriod - 1)?.substringAfter('-').orEmpty()
-            TimelineItem(
-                startAt = PeriodMapper.parse(startSpec) ?: LocalTime.MIDNIGHT,
-                start = startSpec.ifBlank { "—" },
-                end = endSpec,
-                title = item.course.name,
-                detail = listOfNotNull(
-                    item.session.location.takeIf { it.isNotBlank() },
-                    item.teachers.joinToString("、").takeIf { it.isNotBlank() },
-                ).joinToString(" · "),
-                accent = Color.Unspecified,
-                event = null,
-            )
-        }
-        val events = s.todayEvents.map { e ->
-            TimelineItem(
-                startAt = e.start,
-                start = e.start.format(PersonalEvent.HM),
-                end = e.end.format(PersonalEvent.HM),
-                title = e.title,
-                detail = listOfNotNull(
-                    e.location.takeIf { it.isNotBlank() },
-                    e.note.takeIf { it.isNotBlank() },
-                    e.repeatLabel.takeIf { e.repeats },
-                ).joinToString(" · "),
-                accent = Color.Unspecified,
-                event = e,
-            )
-        }
-        (courses + events).sortedBy { it.startAt }
+/** 今日课程与日程合成一条时间轴，按开始时刻排序。 */
+private fun timelineItems(s: HomeUiState): List<TimelineItem> {
+    val courses = s.todayCourses.map { item ->
+        val startSpec = s.periodTimes.getOrNull(item.session.startPeriod - 1)?.substringBefore('-').orEmpty()
+        val endSpec = s.periodTimes.getOrNull(item.session.endPeriod - 1)?.substringAfter('-').orEmpty()
+        val startAt = PeriodMapper.parse(startSpec) ?: LocalTime.MIDNIGHT
+        TimelineItem(
+            startAt = startAt,
+            endAt = PeriodMapper.parse(endSpec) ?: startAt,
+            start = startSpec.ifBlank { "—" },
+            end = endSpec,
+            title = item.course.name,
+            detail = listOfNotNull(
+                item.session.location.takeIf { it.isNotBlank() },
+                item.teachers.joinToString("、").takeIf { it.isNotBlank() },
+            ).joinToString(" · "),
+            accent = Color.Unspecified,
+            event = null,
+        )
     }
+    val events = s.todayEvents.map { e ->
+        TimelineItem(
+            startAt = e.start,
+            endAt = e.end,
+            start = e.start.format(PersonalEvent.HM),
+            end = e.end.format(PersonalEvent.HM),
+            title = e.title,
+            detail = listOfNotNull(
+                e.location.takeIf { it.isNotBlank() },
+                e.note.takeIf { it.isNotBlank() },
+                e.repeatLabel.takeIf { e.repeats },
+            ).joinToString(" · "),
+            accent = Color.Unspecified,
+            event = e,
+        )
+    }
+    return (courses + events).sortedBy { it.startAt }
+}
+
+/**
+ * 时间轴走到哪儿了，以圆点为单位：-1 表示第一项还没开始；i 表示第 i 项已开始，
+ * 小数部分是从第 i 项开始到第 i+1 项开始之间过去的比例，线就画到那里。最后一项开始后停在最后一个点。
+ */
+private fun timelineProgress(items: List<TimelineItem>, now: LocalTime): Float {
+    val i = items.indexOfLast { !now.isBefore(it.startAt) }
+    if (i < 0) return -1f
+    if (i == items.lastIndex) return i.toFloat()
+    val a = items[i].startAt.toSecondOfDay()
+    val b = items[i + 1].startAt.toSecondOfDay()
+    val frac = if (b > a) (now.toSecondOfDay() - a).toFloat() / (b - a) else 1f
+    return i + frac.coerceIn(0f, 1f)
+}
+
+/**
+ * 今日课程与日程用同一条时间轴呈现：左侧时间刻度 + 竖线圆点。日程带「日程」标签，点开可改。
+ * 已经开始的点实心、还没到的空心；线从第一个点起一段一段画到「现在」，进页面时从头画起，之后随时间往前走。
+ * 正在进行的那项圆点带光晕，已经结束的整行淡一些。
+ */
+@Composable
+private fun TodayTimeline(items: List<TimelineItem>, now: LocalTime, onEventClick: (PersonalEvent) -> Unit) {
+    val target = timelineProgress(items, now)
+    val drawn = remember { Animatable(-1f) }
+    LaunchedEffect(target) {
+        val span = kotlin.math.abs(target - drawn.value)
+        drawn.animateTo(target, tween((220 + span * 240).toInt().coerceAtMost(1400), delayMillis = 120, easing = FastOutSlowInEasing))
+    }
+    val progress = { drawn.value }
 
     // 卡片高度只增不减：一节课也撑到与空态同高，行在其中居中；课多了再往下长
     BnuCard(Modifier.fillMaxWidth()) {
@@ -439,8 +543,11 @@ private fun TodayTimeline(s: HomeUiState, onEventClick: (PersonalEvent) -> Unit)
             items.forEachIndexed { i, item ->
                 TimelineRow(
                     item = item,
-                    first = i == 0,
+                    index = i,
                     last = i == items.lastIndex,
+                    progress = progress,
+                    ongoing = !now.isBefore(item.startAt) && now.isBefore(item.endAt),
+                    ended = !now.isBefore(item.endAt),
                     onClick = item.event?.let { e -> { onEventClick(e) } },
                 )
             }
@@ -448,11 +555,25 @@ private fun TodayTimeline(s: HomeUiState, onEventClick: (PersonalEvent) -> Unit)
     }
 }
 
-/** 时间轴的一行：时间刻度、轨道（线随行高伸缩，首尾行不画多余的段）、标题与说明。 */
+/**
+ * 时间轴的一行：时间刻度、轨道（线随行高伸缩，首尾行不画多余的段）、标题与说明。
+ * [progress] 只在绘制时读，时间轴动起来时不触发重组。
+ */
 @Composable
-private fun TimelineRow(item: TimelineItem, first: Boolean, last: Boolean, onClick: (() -> Unit)?) {
+private fun TimelineRow(
+    item: TimelineItem,
+    index: Int,
+    last: Boolean,
+    progress: () -> Float,
+    ongoing: Boolean,
+    ended: Boolean,
+    onClick: (() -> Unit)?,
+) {
     val accent = if (item.event != null) MaterialTheme.colorScheme.tertiary else courseAccent(item.title)
     val line = MaterialTheme.colorScheme.outlineVariant
+    val ink = MaterialTheme.colorScheme.primary
+    val surface = MaterialTheme.colorScheme.surface
+    val fade by animateFloatAsState(if (ended) 0.55f else 1f, tween(400), label = "ended")
     Row(
         Modifier
             .fillMaxWidth()
@@ -462,7 +583,7 @@ private fun TimelineRow(item: TimelineItem, first: Boolean, last: Boolean, onCli
     ) {
         // 系统字体放大到 1.3 倍时 46dp 固定宽会把「08:00」裁成「08:0」，给下限即可
         Column(
-            Modifier.widthIn(min = 46.dp).padding(top = ROW_PAD, end = 4.dp),
+            Modifier.widthIn(min = 46.dp).padding(top = ROW_PAD, end = 4.dp).graphicsLayer { alpha = fade },
             horizontalAlignment = Alignment.End,
         ) {
             Text(
@@ -485,12 +606,33 @@ private fun TimelineRow(item: TimelineItem, first: Boolean, last: Boolean, onCli
             Modifier.width(26.dp).fillMaxHeight(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(Modifier.width(2.dp).height(ROW_PAD + 4.dp).background(if (first) Color.Transparent else line))
-            Box(Modifier.size(10.dp).clip(CircleShape).background(accent))
-            Box(Modifier.width(2.dp).weight(1f).background(if (last) Color.Transparent else line))
+            // 上一点到这一点的线：前 80% 画在上一行的下半段，后 20% 画在这一行的上半段
+            Box(
+                Modifier.width(2.dp).height(ROW_PAD + 4.dp).then(
+                    if (index == 0) Modifier else Modifier.trackSegment(line, ink) { ((progress() - (index - 1) - 0.8f) / 0.2f) },
+                ),
+            )
+            Box(
+                Modifier.size(10.dp).drawBehind {
+                    val reached = progress() >= index - 0.001f
+                    val r = size.minDimension / 2
+                    if (ongoing && reached) drawCircle(accent.copy(alpha = 0.22f), radius = r * 2f)
+                    if (reached) {
+                        drawCircle(accent, radius = r)
+                    } else {
+                        drawCircle(surface, radius = r)
+                        drawCircle(accent, radius = r - 1.dp.toPx(), style = Stroke(2.dp.toPx()))
+                    }
+                },
+            )
+            Box(
+                Modifier.width(2.dp).weight(1f).then(
+                    if (last) Modifier else Modifier.trackSegment(line, ink) { (progress() - index) / 0.8f },
+                ),
+            )
         }
 
-        Column(Modifier.weight(1f).padding(vertical = ROW_PAD)) {
+        Column(Modifier.weight(1f).padding(vertical = ROW_PAD).graphicsLayer { alpha = fade }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     item.title,
@@ -523,6 +665,13 @@ private fun TimelineRow(item: TimelineItem, first: Boolean, last: Boolean, onCli
             }
         }
     }
+}
+
+/** 轨道的一段：底色细线，上面按 [fill]（0~1，超出会被夹住）从上往下盖一层走过的颜色。 */
+private fun Modifier.trackSegment(base: Color, ink: Color, fill: () -> Float): Modifier = drawBehind {
+    drawRect(base)
+    val f = fill().coerceIn(0f, 1f)
+    if (f > 0f) drawRect(ink, size = Size(size.width, size.height * f))
 }
 
 /** 今日课程卡的最小高度，与空态卡一致，一节课时也不会缩成一条。 */
@@ -599,17 +748,23 @@ private fun ServiceGrid(
                 if (shownRows > 0) {
                     Column(Modifier.padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(TILE_ROW_GAP)) {
                         rows.take(shownRows).forEachIndexed { r, row ->
-                            TileRow(columns, row, click, revealFrom = pinned.size - r * columns, expanded = expanded)
+                            TileRow(columns, row, click, revealFrom = pinned.size - r * columns, expanded = expanded, foldedCount = folded.size)
                         }
                     }
                 }
+                // 高度整块展开，入口一个接一个弹出来；收起时倒着一个个缩回去，再合上
                 androidx.compose.animation.AnimatedVisibility(
                     visible = expanded && rows.size > shownRows,
-                    enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
-                    exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+                    enter = expandVertically(expandFrom = Alignment.Top),
+                    exit = shrinkVertically(tween(FOLD_MS, delayMillis = FOLD_STEP_MS * folded.size / 2), shrinkTowards = Alignment.Top),
                 ) {
                     Column(Modifier.padding(top = TILE_ROW_GAP), verticalArrangement = Arrangement.spacedBy(TILE_ROW_GAP)) {
-                        rows.drop(shownRows).forEach { row -> TileRow(columns, row, click) }
+                        rows.drop(shownRows).forEachIndexed { r, row ->
+                            val first = (shownRows + r) * columns - pinned.size
+                            TileRow(columns, row, click, tileModifier = { i ->
+                                Modifier.animateEnterExit(foldEnter(first + i), foldExit(first + i, folded.size))
+                            })
+                        }
                     }
                 }
             }
@@ -627,6 +782,24 @@ private fun ServiceGrid(
         }
     }
 }
+
+/** 第 [k] 个折叠入口弹出来：稍晚一点起步，从略小、略靠上的位置落到原位。 */
+private fun foldEnter(k: Int): EnterTransition {
+    val delay = k * FOLD_STEP_MS
+    return fadeIn(tween(FOLD_MS, delayMillis = delay)) +
+        scaleIn(tween(FOLD_MS, delayMillis = delay, easing = FastOutSlowInEasing), initialScale = 0.7f) +
+        slideInVertically(tween(FOLD_MS, delayMillis = delay, easing = FastOutSlowInEasing)) { -it / 3 }
+}
+
+/** 收起时倒过来：最后一个先缩回去，第一个最后走。 */
+private fun foldExit(k: Int, count: Int): ExitTransition {
+    val delay = (count - 1 - k).coerceAtLeast(0) * FOLD_STEP_MS / 2
+    return fadeOut(tween(FOLD_MS / 2, delayMillis = delay)) +
+        scaleOut(tween(FOLD_MS / 2, delayMillis = delay), targetScale = 0.7f)
+}
+
+private const val FOLD_MS = 260
+private const val FOLD_STEP_MS = 35
 
 /**
  * 只看不点的宫格，设置里的首页预览用：[entries] 按列数分行，凑不满 [slots] 个的格子画成虚线空位，
@@ -651,14 +824,22 @@ private fun TileRow(
     onClick: ((ServiceEntry) -> Unit)?,
     revealFrom: Int = row.size,
     expanded: Boolean = true,
+    /** 折叠入口一共几个，倒序收起时据此排先后。 */
+    foldedCount: Int = 0,
+    /** 给第 i 格加的修饰，展开区里用它挂逐个弹出的动画。 */
+    tileModifier: @Composable (Int) -> Modifier = { Modifier },
 ) {
     Row(Modifier.fillMaxWidth()) {
         row.forEachIndexed { i, e ->
             when {
                 e == null -> EmptySlot(Modifier.weight(1f))
-                i < revealFrom -> EntryTile(e, Modifier.weight(1f), onClick = onClick?.let { click -> { click(e) } })
+                i < revealFrom -> EntryTile(e, Modifier.weight(1f).then(tileModifier(i)), onClick = onClick?.let { click -> { click(e) } })
                 else -> Box(Modifier.weight(1f)) {
-                    androidx.compose.animation.AnimatedVisibility(expanded, enter = fadeIn(), exit = fadeOut()) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        expanded,
+                        enter = foldEnter(i - revealFrom),
+                        exit = foldExit(i - revealFrom, foldedCount),
+                    ) {
                         EntryTile(e, Modifier.fillMaxWidth(), onClick = onClick?.let { click -> { click(e) } })
                     }
                 }
