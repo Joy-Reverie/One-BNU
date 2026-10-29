@@ -69,6 +69,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ripple
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -173,7 +181,7 @@ fun MorphButton(
                 .background(background)
                 .clickable(
                     interactionSource = source,
-                    indication = androidx.compose.material3.ripple(),
+                    indication = ripple(),
                     enabled = enabled && !collapsed,
                     role = Role.Button,
                     onClick = onClick,
@@ -314,3 +322,79 @@ val WHEEL_ITEM = 44.dp
 private const val WHEEL_FRICTION = 0.6f
 private const val WHEEL_VELOCITY = 0.8f
 const val WHEEL_ROWS = 5
+
+/**
+ * 底部导航的圆形页签：只有图标，没有文字（文字留给读屏）。按下时和完成反馈按钮一样轻轻一压；
+ * 选中时品牌渐变的实心圆从中心弹开，外面荡开一圈淡淡的波纹，图标换成白色实心款。
+ */
+@Composable
+fun CircleTabButton(
+    icon: ImageVector,
+    selectedIcon: ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val accents = LocalAccents.current
+    val ring = MaterialTheme.colorScheme.primary
+    val idle = MaterialTheme.colorScheme.onSurfaceVariant
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val press by animateFloatAsState(if (pressed) 0.88f else 1f, spring(stiffness = Spring.StiffnessMedium), label = "press")
+    // 阻尼小于 1，实心圆弹开时略过头再回来
+    val fill by animateFloatAsState(
+        if (selected) 1f else 0f,
+        spring(dampingRatio = 0.55f, stiffness = 420f),
+        label = "fill",
+    )
+    val pulse = remember { Animatable(1f) }
+    var seen by remember { mutableStateOf(false) }
+    LaunchedEffect(selected) {
+        // 第一次显示不荡波纹，只有真的切过来才荡
+        if (seen && selected) {
+            pulse.snapTo(0f)
+            pulse.animateTo(1f, tween(520, easing = LinearOutSlowInEasing))
+        }
+        seen = true
+    }
+    val view = LocalView.current
+    Box(
+        modifier
+            .size(TAB_SIZE)
+            .graphicsLayer { scaleX = press; scaleY = press }
+            .drawBehind {
+                val r = size.minDimension / 2
+                val p = pulse.value
+                if (p < 1f) {
+                    drawCircle(ring.copy(alpha = (1f - p) * 0.45f), radius = r * (1f + 0.4f * p), style = Stroke(2.dp.toPx()))
+                }
+                if (fill > 0f) drawCircle(accents.heroGradient, radius = r * fill.coerceAtMost(1.08f))
+            }
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = source,
+                indication = ripple(),
+                role = Role.Tab,
+                onClickLabel = label,
+            ) {
+                if (!selected) view.tick()
+                onClick()
+            }
+            .semantics {
+                contentDescription = label
+                this.selected = selected
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            // 图标跟着实心圆走：圆长过一半换实心款、缩过一半换回线框，不会在白底上闪一下白色实心图标
+            if (fill > 0.5f) selectedIcon else icon,
+            null,
+            Modifier.size(24.dp),
+            tint = lerp(idle, Color.White, fill.coerceIn(0f, 1f)),
+        )
+    }
+}
+
+val TAB_SIZE = 50.dp

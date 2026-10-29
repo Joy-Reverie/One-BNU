@@ -1,5 +1,18 @@
 package io.github.joyreverie.onebnu.ui
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import io.github.joyreverie.onebnu.ui.components.CircleTabButton
+import io.github.joyreverie.onebnu.ui.theme.LocalAccents
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -18,10 +31,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
@@ -134,19 +144,20 @@ object Routes {
     }
 }
 
-internal data class Tab(val route: String, val label: String, val icon: ImageVector)
+/** [icon] 是未选中时的线框图标，[selectedIcon] 是选中时放在实心圆里的实心图标。 */
+internal data class Tab(val route: String, val label: String, val icon: ImageVector, val selectedIcon: ImageVector)
 
 /** NavigationRail 的标准宽度，用于把可用宽度从屏宽里扣掉。 */
 private const val RAIL_WIDTH = 80
 
-/** 手机底部导航栏的 Material 3 标准高度，提醒浮层需要停在它上方。 */
-private val BOTTOM_NAV_HEIGHT = 80.dp
+/** 手机底部导航栏的高度（不含系统手势条），提醒浮层需要停在它上方。 */
+private val BOTTOM_NAV_HEIGHT = 68.dp
 
 private val TABS = listOf(
-    Tab(Routes.HOME, "首页", Icons.Filled.Home),
-    Tab(Routes.SCHEDULE, "课表", Icons.Filled.CalendarMonth),
-    Tab(Routes.GRADE, "成绩", Icons.Filled.School),
-    Tab(Routes.PROFILE, "我的", Icons.Filled.Person),
+    Tab(Routes.HOME, "首页", Icons.Outlined.Home, Icons.Filled.Home),
+    Tab(Routes.SCHEDULE, "课表", Icons.Outlined.CalendarMonth, Icons.Filled.CalendarMonth),
+    Tab(Routes.GRADE, "成绩", Icons.Outlined.School, Icons.Filled.School),
+    Tab(Routes.PROFILE, "我的", Icons.Outlined.Person, Icons.Filled.Person),
 )
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
@@ -258,11 +269,13 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                         ) {
                             Spacer(Modifier.weight(1f))
                             TABS.forEach { tab ->
-                                NavigationRailItem(
+                                CircleTabButton(
+                                    tab.icon,
+                                    tab.selectedIcon,
+                                    tab.label,
                                     selected = current == tab.route,
                                     onClick = { onTab(tab) },
-                                    icon = { Icon(tab.icon, tab.label) },
-                                    label = { Text(tab.label) },
+                                    modifier = Modifier.padding(vertical = 8.dp),
                                 )
                             }
                             Spacer(Modifier.weight(1f))
@@ -289,18 +302,7 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                         // 其余带 TopAppBar 的页面由各自的 Scaffold 处理。
                         contentWindowInsets = WindowInsets(0),
                         bottomBar = {
-                            if (showNav) {
-                                NavigationBar {
-                                    TABS.forEach { tab ->
-                                        NavigationBarItem(
-                                            selected = current == tab.route,
-                                            onClick = { onTab(tab) },
-                                            icon = { Icon(tab.icon, tab.label) },
-                                            label = { Text(tab.label) },
-                                        )
-                                    }
-                                }
-                            }
+                            if (showNav) CircleTabBar(current, onTab)
                         },
                     ) { padding ->
                         graph(Modifier.padding(padding))
@@ -325,6 +327,36 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
             // 启动时联网自动检查更新（设置里可关）；对话框浮在任何页面之上
             AutoUpdatePrompt()
             AnnouncementPrompt()
+        }
+    }
+}
+
+/**
+ * 手机底部导航：四枚只有图标的圆形页签均匀排开，白底、顶上一道细线和内容分开。
+ * 系统手势条的高度另算，页签始终落在手势条上方。
+ */
+@Composable
+private fun CircleTabBar(current: String?, onTab: (Tab) -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        val hairline = LocalAccents.current.hairline
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .drawBehind { drawRect(hairline, size = Size(size.width, 1.dp.toPx())) }
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .height(BOTTOM_NAV_HEIGHT),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TABS.forEach { tab ->
+                CircleTabButton(
+                    tab.icon,
+                    tab.selectedIcon,
+                    tab.label,
+                    selected = current == tab.route,
+                    onClick = { onTab(tab) },
+                )
+            }
         }
     }
 }
