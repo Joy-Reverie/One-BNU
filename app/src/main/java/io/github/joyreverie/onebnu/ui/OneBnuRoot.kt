@@ -3,7 +3,6 @@ package io.github.joyreverie.onebnu.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Home
@@ -151,14 +150,11 @@ internal data class Tab(val route: String, val label: String, val icon: ImageVec
 /** NavigationRail 的标准宽度，用于把可用宽度从屏宽里扣掉。 */
 private const val RAIL_WIDTH = 80
 
-/** 手机底部导航栏放页签那一段的高度（不含下方留空），提醒浮层需要停在它上方。 */
-private val BOTTOM_NAV_HEIGHT = 68.dp
-
 /**
- * 页签下方至少留这么高的空。小米等隐藏手势条的全面屏几乎不给底部 inset，
- * 不兜底的话圆形页签会贴着屏幕下沿；有手势条、inset 本来就够的机型不再叠加。
+ * 手机底部导航栏的高度（不含系统手势区），页签在这段里上下居中；提醒浮层需要停在它上方。
+ * 小米等隐藏手势条的全面屏几乎不给底部 inset，所以这段本身要留足上下空白，页签才不会贴着屏幕下沿。
  */
-private val BOTTOM_NAV_MIN_GAP = 18.dp
+private val BOTTOM_NAV_HEIGHT = 84.dp
 
 private val TABS = listOf(
     Tab(Routes.HOME, "首页", Icons.Outlined.Home, Icons.Filled.Home),
@@ -324,7 +320,7 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
                             // 底部导航栏属于同一个根 Box，额外留出它的高度，
                             // 这样提醒会落在导航栏上方的空白处；导航栏模式切到侧栏时不需要这段偏移。
                             .padding(
-                                bottom = if (showNav && !screen.useNavRail) BOTTOM_NAV_HEIGHT + BOTTOM_NAV_MIN_GAP else 0.dp,
+                                bottom = if (showNav && !screen.useNavRail) BOTTOM_NAV_HEIGHT else 0.dp,
                             )
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
@@ -339,8 +335,8 @@ fun OneBnuRoot(windowSizeClass: WindowSizeClass) {
 }
 
 /**
- * 手机底部导航：四枚只有图标的圆形页签均匀排开，白底、顶上一道细线和内容分开。
- * 系统手势条的高度另算，页签始终落在手势条上方。
+ * 手机底部导航：四枚只有图标的圆形页签均匀排开、上下居中，白底、顶上一道细线和内容分开。
+ * 系统手势区的高度另算、垫在下面，页签始终在手势条上方那一段里居中。
  */
 @Composable
 private fun CircleTabBar(current: String?, onTab: (Tab) -> Unit) {
@@ -350,7 +346,7 @@ private fun CircleTabBar(current: String?, onTab: (Tab) -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .drawBehind { drawRect(hairline, size = Size(size.width, 1.dp.toPx())) }
-                .padding(bottom = maxOf(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(), BOTTOM_NAV_MIN_GAP))
+                .windowInsetsPadding(WindowInsets.navigationBars)
                 .height(BOTTOM_NAV_HEIGHT),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
