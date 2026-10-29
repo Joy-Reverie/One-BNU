@@ -11,6 +11,7 @@ import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
 import io.github.joyreverie.onebnu.ui.theme.Shape
 import androidx.compose.foundation.background
@@ -131,8 +132,9 @@ fun EventEditorSheet(
         ) {
             Text(
                 if (initial == null) "添加日程" else "编辑日程",
-                Modifier.padding(start = 4.dp, bottom = 14.dp),
+                Modifier.fillMaxWidth().padding(bottom = 14.dp),
                 style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
             )
 
             // 事件名单独一组，字号放大，像一张卡片的标题
@@ -151,7 +153,7 @@ fun EventEditorSheet(
                     InlineField(
                         value = title,
                         onValueChange = { title = it },
-                        placeholder = "事件，如：体检、组会、讲座",
+                        placeholder = "事件",
                         style = MaterialTheme.typography.titleLarge,
                         singleLine = true,
                     )
