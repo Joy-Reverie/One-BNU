@@ -73,6 +73,13 @@ data class ClassroomUiState(
                 }
             }
         }.sortedBy { it.name }
+
+    /** 整楼状态：所选时段空闲的排前面，占用的跟在后面——默认进来看的是整楼，不只是空闲名单。 */
+    val buildingRooms: List<Classroom>
+        get() {
+            val free = freeRooms.toSet()
+            return rooms.sortedWith(compareByDescending<Classroom> { it in free }.thenBy { it.name })
+        }
 }
 
 /**
@@ -129,19 +136,22 @@ class ClassroomViewModel : ViewModel() {
                     week = AcademicCalendar.weekOf(start, today).coerceIn(1, maxWeek),
                     dayOfWeek = today.dayOfWeek.value,
                     // 默认选中「现在」所在的节次：进来就该看眼前能用的空教室。
-                    periods = PeriodMapper.periodsFor(LocalTime.now(), LocalTime.now(), ServiceLocator.settings.periodTimes)
-                        .toList(),
+                    periods = PeriodMapper.periodsFor(
+                        LocalTime.now(), LocalTime.now(), ServiceLocator.settings.periodTimes,
+                    ).toList(),
                 )
             }
 
             // 课表联动：学生课表另路取（缓存优先，几乎即时）。失败静默——联动是锦上添花，不能卡住楼房列表。
+            if (term == null) coursesResolved = true
             term?.let { t ->
                 viewModelScope.launch {
                     when (val sc = repo.schedule(t, forceRefresh = forceRefresh)) {
-                        is Outcome.Ok -> _state.update {
-                            it.copy(myCourses = sc.data.courses)
-                        }.also { maybeAutoPickBuilding() }
+                        is Outcome.Ok -> _state.update { it.copy(myCourses = sc.data.courses) }
                         else -> Unit
+                    }.also {
+                        coursesResolved = true
+                        maybeAutoSelectBuilding()
                     }
                 }
             }
@@ -161,27 +171,32 @@ class ClassroomViewModel : ViewModel() {
         when (val b = repo.buildings(campusCode, forceRefresh = forceRefresh)) {
             is Outcome.Ok -> _state.update {
                 it.copy(loadingOptions = false, buildings = commonFirst(b.data))
-            }.also { maybeAutoPickBuilding() }
+            }.also { maybeAutoSelectBuilding() }
             is Outcome.Empty -> _state.update { it.copy(loadingOptions = false, error = b.reason) }
             is Outcome.Error -> _state.update { it.copy(loadingOptions = false, error = b.message) }
         }
     }
 
-    /** 用户手动选过楼之后，自动跟随课表选楼就退场，不再抢用户的决定。 */
+    /** 用户手动选过楼之后，自动选楼就退场，不再抢用户的决定。 */
     private var buildingManual = false
 
+    /** 课表是另路异步取的：不管取到还是确定取不到，都要放行自动选楼（否则兜底一直不生效）。 */
+    private var coursesResolved = false
+
     /**
-     * 自动选楼：没手动选过、且楼房与课表都拿到了、且正在看「今天」时，
-     * 默认选中当前（或最近一节）自己要上的课所在的教学楼——与 BNU Sparks 网页端同规则：
-     * 同时段的几节课不在同一栋楼时宁可不猜。手动选楼一次后即失效。
+     * 进入页面自动出结果：没手动选过楼时，优先跟随课表——正在看「今天」时，当前（或最近一节）
+     * 自己要上的课在哪栋楼就选哪栋（同时段几节课不在同一栋楼宁可不猜）；
+     * 猜不中再退回上次查看的楼。楼一定下来就直接查询，不再等用户点按钮。
      */
-    private fun maybeAutoPickBuilding() {
+    private fun maybeAutoSelectBuilding() {
         val s = _state.value
-        if (buildingManual || s.building != null || s.buildings.isEmpty() || s.myCourses.isEmpty()) return
-        if (s.date != LocalDate.now()) return
-        val target = currentCourseBuilding(s.myCourses, s.week, s.dayOfWeek) ?: return
-        val match = matchBuildingOption(s.buildings, target) ?: return
+        if (buildingManual || s.building != null || s.buildings.isEmpty() || !coursesResolved || s.loading) return
+        val target = if (s.date == LocalDate.now()) currentCourseBuilding(s.myCourses, s.week, s.dayOfWeek) else null
+        val name = target ?: ServiceLocator.settings.classroomLastBuilding ?: return
+        val match = matchBuildingOption(s.buildings, name) ?: return
         _state.update { it.copy(building = match) }
+        ServiceLocator.settings.classroomLastBuilding = match.name
+        query()
     }
 
     /** 当前正在上、不在上课则取与当前时刻最近的一节课；并列候选楼不一致时返回 null。 */
@@ -228,6 +243,9 @@ class ClassroomViewModel : ViewModel() {
     fun selectBuilding(b: Option) {
         buildingManual = true
         _state.update { it.copy(building = b, rooms = emptyList(), queried = false, error = null) }
+        // 手动换楼同样直接查询并记住：换完就出结果，查询按钮留给强制刷新
+        ServiceLocator.settings.classroomLastBuilding = b.name
+        query()
     }
 
     fun setWeek(w: Int) = _state.update { it.copy(week = w.coerceIn(1, it.maxWeek)) }

@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -218,38 +219,18 @@ private fun FilterPanel(s: ClassroomUiState, vm: ClassroomViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
-        // 节次逐节点选（查询取「全部所选节次都空闲」的交集），配合下面的快速选一行。
-        // 与我的课表联动：有课的节次带课程色圆点，再下一行直接说哪几节有课——
+        // 节次成对摆放（1-2、3-4……）好点不散；整对未选时点一下两节都选上，
+        // 之后每个数字就是自己的开关，点选中状态里的某个数字只取消它。
+        // 与我的课表联动：有课的节次带课程色圆点，下面几行直接说哪几节有课——
         // 提示而不是禁用：帮同学代查空闲时仍可以选自己有课的时段。
         val myByPeriod = myLessonAt(s)
         val mySpans = myLessonSpans(s)
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            (1..12).forEach { p ->
-                val lesson = myByPeriod[p]
-                FilterChip(
-                    selected = p in s.periods,
-                    onClick = { vm.togglePeriod(p) },
-                    label = {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("$p")
-                            if (lesson != null) {
-                                Box(
-                                    Modifier
-                                        .size(7.dp)
-                                        .clip(CircleShape)
-                                        .background(courseAccent(lesson.name)),
-                                )
-                            }
-                        }
-                    },
-                )
+            listOf(1 to 2, 3 to 4, 5 to 6, 7 to 8, 9 to 10, 11 to 12).forEach { (a, b) ->
+                PeriodPairChip(a, b, s.periods, myByPeriod[a] ?: myByPeriod[b], vm::togglePeriod)
             }
         }
         // 快速选：从所选最早一节出发——往后带两节 / 一路到晚间最后一段 / 全天。
@@ -403,6 +384,83 @@ private fun CollapsedFilterBar(onExpand: () -> Unit, modifier: Modifier = Modifi
     }
 }
 
+/**
+ * 一对节次一颗 chip：整对未选时点一下两节都选上；之后每个数字就是独立的开关，
+ * 点选中状态里的某个数字只取消它——不用在 12 颗散开的小 chip 之间来回找。
+ */
+@Composable
+private fun PeriodPairChip(
+    a: Int,
+    b: Int,
+    periods: List<Int>,
+    lesson: Course?,
+    onToggle: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val selectedA = a in periods
+    val selectedB = b in periods
+    val anySelected = selectedA || selectedB
+    val accent = lesson?.let { courseAccent(it.name) }
+    Box(
+        modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                when {
+                    selectedA && selectedB -> MaterialTheme.colorScheme.secondaryContainer
+                    anySelected -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+                    else -> MaterialTheme.colorScheme.surface
+                },
+            )
+            .border(
+                1.dp,
+                if (anySelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                RoundedCornerShape(18.dp),
+            )
+            .padding(horizontal = 2.dp, vertical = 6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PeriodHalf(a, selectedA, accent, onToggle, Modifier.weight(1f))
+            Text("-", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            PeriodHalf(b, selectedB, accent, onToggle, Modifier.weight(1f))
+            Text(
+                "节",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 2.dp, end = 7.dp),
+            )
+        }
+    }
+}
+
+/** 一对里的半个：整个半区都是点击域，数字本身按选中与否变色加粗，读屏单独报状态。 */
+@Composable
+private fun PeriodHalf(
+    p: Int,
+    selected: Boolean,
+    accent: Color?,
+    onToggle: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier
+            .semantics(mergeDescendants = true) { contentDescription = "第$p 节" + if (selected) "，已选" else "，未选" }
+            .clickable { onToggle(p) }
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "$p",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (accent != null) {
+            Box(Modifier.size(6.dp).clip(CircleShape).background(accent))
+        }
+    }
+}
+
 @Composable
 private fun ResultList(
     s: ClassroomUiState,
@@ -411,7 +469,10 @@ private fun ResultList(
     onScrollDown: () -> Unit,
 ) {
     val free = s.freeRooms
-    // 我的课整张列表共享一份（同一节所有教室都一样），在这里算好传下去，别每张卡各算各的。
+    val freeSet = free.toSet()
+    // 整楼状态：空闲的排前面，占用的跟在后面。我的课整张列表共享一份（同一节所有教室都一样），
+    // 在这里算好传下去，别每张卡各算各的。
+    val ordered = s.buildingRooms
     val myBusy = myLessonAt(s).keys
     // 向下滑 = 往列表深处翻，说明筛选已经用完：通知外层收起面板。只收不自动展开，展开只认箭头。
     // 阈值 100px 滤掉手抖；快速下滑时 snapshotFlow 会跳发，跨过的距离更大，同样触发。
@@ -445,7 +506,7 @@ private fun ResultList(
         }
 
         // key 去掉下标：换查询条件时同一间教室仍是同一个身份，animateItem 才能接管它的移动
-        itemsIndexed(free, key = { _, room -> "${room.building}|${room.name}" }) { _, room ->
+        itemsIndexed(ordered, key = { _, room -> "${room.building}|${room.name}" }) { _, room ->
             RoomCard(
                 room,
                 s.week,
@@ -453,6 +514,7 @@ private fun ResultList(
                 s.periods,
                 periodTimes,
                 myBusy,
+                isFree = room in freeSet,
                 modifier = Modifier.animateItem(),
             )
         }
@@ -669,6 +731,7 @@ private fun RoomCard(
     selected: List<Int>,
     periodTimes: List<String>,
     myBusy: Set<Int>,
+    isFree: Boolean,
     modifier: Modifier = Modifier,
 ) {
     BnuCard(modifier.fillMaxWidth()) {
@@ -692,16 +755,18 @@ private fun RoomCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                FreeChip()
+                if (isFree) FreeChip() else OccupiedChip()
             }
             Spacer(Modifier.height(11.dp))
             DayStrip(room, week, dayOfWeek, selected)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                continuationLabel(room, week, dayOfWeek, selected, periodTimes, myBusy),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (isFree) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    continuationLabel(room, week, dayOfWeek, selected, periodTimes, myBusy),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -723,6 +788,23 @@ private fun FreeChip() {
             color = LocalAccents.current.success,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+/** 整楼列表里排在后面的占用教室：灰 chip 与绿色的「空闲」形成对照，色带仍是主角。 */
+@Composable
+private fun OccupiedChip() {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Text(
+            "占用",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
         )
     }
 }
