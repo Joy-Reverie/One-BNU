@@ -268,12 +268,14 @@ class ClassroomViewModel : ViewModel() {
     }
 
     /**
-     * 胶囊里一个数字的点按：整对都没选时，点任一个数字把两节一起选上（首次激活免点两下）；
-     * 之后点谁就只切换谁，两节都能单独取消。全部取消也合法，那就是整楼浏览。
+     * 胶囊里一个数字的点按：只要这一对（两个数字）都没选——不管别处选了什么——点任一个
+     * 数字就把两节一起选上；胶囊已激活时点谁就只切换谁，两节都能单独取消。
+     * 全部取消也合法，那就是整楼浏览。
      */
     fun tapSegment(pairA: Int, pairB: Int, p: Int) = _state.update {
+        val pairInactive = pairA !in it.periods && pairB !in it.periods
         val next = when {
-            it.periods.isEmpty() -> it.periods + pairA + pairB
+            pairInactive -> (it.periods + pairA + pairB).distinct()
             p in it.periods -> it.periods - p
             else -> it.periods + p
         }
