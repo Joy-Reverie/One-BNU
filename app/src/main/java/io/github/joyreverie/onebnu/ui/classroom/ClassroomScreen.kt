@@ -228,6 +228,7 @@ private fun FilterPanel(s: ClassroomUiState, vm: ClassroomViewModel) {
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             listOf(1 to 2, 3 to 4, 5 to 6, 7 to 8, 9 to 10, 11 to 12).forEach { (a, b) ->
                 PeriodPairChip(a, b, s.periods, myByPeriod[a] ?: myByPeriod[b], vm::togglePeriod)
@@ -419,9 +420,10 @@ private fun PeriodPairChip(
             .padding(horizontal = 2.dp, vertical = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            PeriodHalf(a, selectedA, accent, onToggle, Modifier.weight(1f))
+            // 半区不能 weight：外层处于 horizontalScroll，宽度约束无限，weight 会把子项压成 0 宽、数字被裁没
+            PeriodHalf(a, selectedA, accent, onToggle)
             Text("-", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            PeriodHalf(b, selectedB, accent, onToggle, Modifier.weight(1f))
+            PeriodHalf(b, selectedB, accent, onToggle)
             Text(
                 "节",
                 style = MaterialTheme.typography.labelMedium,
@@ -445,7 +447,7 @@ private fun PeriodHalf(
         modifier
             .semantics(mergeDescendants = true) { contentDescription = "第$p 节" + if (selected) "，已选" else "，未选" }
             .clickable { onToggle(p) }
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .padding(horizontal = 10.dp, vertical = 3.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
