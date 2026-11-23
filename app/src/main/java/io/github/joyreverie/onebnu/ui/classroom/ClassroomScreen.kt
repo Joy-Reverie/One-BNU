@@ -1,7 +1,13 @@
 package io.github.joyreverie.onebnu.ui.classroom
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -18,8 +24,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -48,11 +56,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -90,6 +100,9 @@ fun ClassroomScreen(onBack: () -> Unit, vm: ClassroomViewModel = viewModel()) {
     val s by vm.state.collectAsState()
     // 色带的「可连自习到几点」按用户自定义作息换算成钟点；设置里改完作息，这里跟着变。
     val periodTimes by ServiceLocator.settings.periodTimesFlow.collectAsState()
+    // 收起状态放在这一层：收起的是筛选面板，滚动发生在它下面的结果列表，两者是兄弟节点。
+    var filtersExpanded by remember { mutableStateOf(true) }
+    val listState = rememberLazyListState()
 
     Scaffold(
         topBar = {
@@ -108,7 +121,17 @@ fun ClassroomScreen(onBack: () -> Unit, vm: ClassroomViewModel = viewModel()) {
                 // 楼房都没拿到，筛选面板无从展示，整页给出错误与重试
                 s.buildings.isEmpty() && s.error != null -> ErrorBox(s.error!!) { vm.retry() }
                 else -> {
-                    FilterPanel(s, vm)
+                    // 查完之后筛选就完成了：结果列表向下滑时收起面板，把屏幕还给内容；点箭头再展开。
+                    Column(Modifier.animateContentSize()) {
+                        AnimatedVisibility(
+                            filtersExpanded,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut(),
+                        ) {
+                            FilterPanel(s, vm)
+                        }
+                        if (!filtersExpanded) CollapsedFilterBar(onExpand = { filtersExpanded = true })
+                    }
                     Divider()
 
                     Box(Modifier.fillMaxSize()) {
@@ -120,7 +143,7 @@ fun ClassroomScreen(onBack: () -> Unit, vm: ClassroomViewModel = viewModel()) {
                                 hint = "结果由教室课表取补集算出，只反映排课占用，不含临时借用",
                             )
                             s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.query() })
-                            else -> ResultList(s, periodTimes)
+                            else -> ResultList(s, periodTimes, listState) { filtersExpanded = false }
                         }
                     }
                 }
@@ -311,11 +334,38 @@ private fun OptionPicker(
     }
 }
 
+/** 收起后的那颗箭头：点它把筛选面板再展开。保持 48dp 点击域，别缩成小图标。 */
 @Composable
-private fun ResultList(s: ClassroomUiState, periodTimes: List<String>) {
+private fun CollapsedFilterBar(onExpand: () -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
+        IconButton(onClick = onExpand) {
+            Icon(Icons.Filled.ExpandMore, contentDescription = "展开筛选")
+        }
+    }
+}
+
+@Composable
+private fun ResultList(
+    s: ClassroomUiState,
+    periodTimes: List<String>,
+    listState: LazyListState,
+    onScrollDown: () -> Unit,
+) {
     val free = s.freeRooms
+    // 向下滑 = 往列表深处翻，说明筛选已经用完：通知外层收起面板。只收不自动展开，展开只认箭头。
+    // 阈值 100px 滤掉手抖；快速下滑时 snapshotFlow 会跳发，跨过的距离更大，同样触发。
+    // 只 key 到 listState 不 key 回调：回调每次重组都是新实例，key 进去会在展开的一瞬重启并误收起。
+    LaunchedEffect(listState) {
+        var last = 0
+        snapshotFlow { listState.firstVisibleItemIndex * 10000 + listState.firstVisibleItemScrollOffset }
+            .collect { pos ->
+                if (pos > last + 100) onScrollDown()
+                last = pos
+            }
+    }
     LazyColumn(
-        Modifier.fillMaxSize(),
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
         contentPadding = LocalScreenInfo.current.listPadding(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {

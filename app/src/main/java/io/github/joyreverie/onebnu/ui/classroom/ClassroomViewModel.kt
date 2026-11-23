@@ -18,6 +18,19 @@ import java.time.LocalDate
 /** 没有官方校历可依据时允许拨到的最大周次。 */
 private const val DEFAULT_MAX_WEEK = 25
 
+/**
+ * 常用教学楼排前面：教务的楼房下拉按全称拼音序，常用的几栋淹没在几十栋楼里。
+ * 口径与 BNU Sparks 网页端一致（教二到教九 + 化学楼、生地楼、艺术楼、电子楼）；
+ * 用包含匹配兼容「教二楼 / 教二教学楼」这类全称差异，没匹配上的保持教务原顺序排在后面。
+ */
+private val COMMON_BUILDING_KEYS = listOf("教二", "教三", "教四", "教七", "教八", "教九", "化学", "生地", "艺术", "电子")
+
+private fun commonFirst(buildings: List<Option>): List<Option> = buildings.sortedWith(
+    compareBy { option ->
+        COMMON_BUILDING_KEYS.indexOfFirst { option.name.contains(it) }.let { if (it >= 0) it else COMMON_BUILDING_KEYS.size }
+    },
+)
+
 data class ClassroomUiState(
     val freshness: DataFreshness? = null,
     val loading: Boolean = false,
@@ -121,7 +134,7 @@ class ClassroomViewModel : ViewModel() {
 
     private suspend fun loadBuildings(campusCode: String, forceRefresh: Boolean = false) {
         when (val b = repo.buildings(campusCode, forceRefresh = forceRefresh)) {
-            is Outcome.Ok -> _state.update { it.copy(loadingOptions = false, buildings = b.data) }
+            is Outcome.Ok -> _state.update { it.copy(loadingOptions = false, buildings = commonFirst(b.data)) }
             is Outcome.Empty -> _state.update { it.copy(loadingOptions = false, error = b.reason) }
             is Outcome.Error -> _state.update { it.copy(loadingOptions = false, error = b.message) }
         }
