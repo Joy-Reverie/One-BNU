@@ -231,7 +231,7 @@ private fun FilterPanel(s: ClassroomUiState, vm: ClassroomViewModel) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             listOf(1 to 2, 3 to 4, 5 to 6, 7 to 8, 9 to 10, 11 to 12).forEach { (a, b) ->
-                PeriodPairChip(a, b, s.periods, myByPeriod[a] ?: myByPeriod[b], vm::togglePeriod)
+                PeriodPairChip(a, b, s.periods, myByPeriod[a] ?: myByPeriod[b], vm::tapPair)
             }
         }
         // 快速选：从所选最早一节出发——往后带两节 / 一路到晚间最后一段 / 全天。
@@ -386,8 +386,9 @@ private fun CollapsedFilterBar(onExpand: () -> Unit, modifier: Modifier = Modifi
 }
 
 /**
- * 一对节次一颗 chip：整对未选时点一下两节都选上；之后每个数字就是独立的开关，
- * 点选中状态里的某个数字只取消它——不用在 12 颗散开的小 chip 之间来回找。
+ * 一对节次一颗胶囊，整颗就是一个三态开关：未选时点一下两节都选上；再点先取消后面那节
+ * （保留前面的锚点节，后两节 / 到21:30 都从锚点出发）；又点全取消、回到整楼浏览。
+ * 选中可见度靠实底区分：两节全选是实心主色胶囊（白字），最远就能认出来；半选是浅主色晕染。
  */
 @Composable
 private fun PeriodPairChip(
@@ -395,67 +396,72 @@ private fun PeriodPairChip(
     b: Int,
     periods: List<Int>,
     lesson: Course?,
-    onToggle: (Int) -> Unit,
+    onTapPair: (Int, Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val selectedA = a in periods
     val selectedB = b in periods
+    val both = selectedA && selectedB
     val anySelected = selectedA || selectedB
     val accent = lesson?.let { courseAccent(it.name) }
+    val shape = RoundedCornerShape(18.dp)
+    val stateDesc = when {
+        both -> "两节都已选"
+        selectedA -> "已选第 $a 节"
+        selectedB -> "已选第 $b 节"
+        else -> "未选"
+    }
     Box(
         modifier
-            .clip(RoundedCornerShape(18.dp))
+            .semantics(mergeDescendants = true) { contentDescription = "第 $a-$b 节，$stateDesc" }
+            .clip(shape)
             .background(
                 when {
-                    selectedA && selectedB -> MaterialTheme.colorScheme.secondaryContainer
-                    anySelected -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+                    both -> MaterialTheme.colorScheme.primary
+                    anySelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
                     else -> MaterialTheme.colorScheme.surface
                 },
             )
             .border(
                 1.dp,
-                if (anySelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                RoundedCornerShape(18.dp),
+                when {
+                    both -> MaterialTheme.colorScheme.primary
+                    anySelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+                    else -> MaterialTheme.colorScheme.outlineVariant
+                },
+                shape,
             )
-            .padding(horizontal = 2.dp, vertical = 6.dp),
+            .clickable { onTapPair(a, b) }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // 半区不能 weight：外层处于 horizontalScroll，宽度约束无限，weight 会把子项压成 0 宽、数字被裁没
-            PeriodHalf(a, selectedA, accent, onToggle)
-            Text("-", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            PeriodHalf(b, selectedB, accent, onToggle)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            val dim = if (both) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
+            PeriodDigit(a, selectedA, both, accent)
+            Text("-", style = MaterialTheme.typography.labelMedium, color = dim)
+            PeriodDigit(b, selectedB, both, accent)
             Text(
                 "节",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 2.dp, end = 7.dp),
+                color = dim,
+                modifier = Modifier.padding(start = 1.dp),
             )
         }
     }
 }
 
-/** 一对里的半个：整个半区都是点击域，数字本身按选中与否变色加粗，读屏单独报状态。 */
+/** 胶囊里的一个数字：选中加粗变色，旁边保留课程色圆点标出「这节你有课」。 */
 @Composable
-private fun PeriodHalf(
-    p: Int,
-    selected: Boolean,
-    accent: Color?,
-    onToggle: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier
-            .semantics(mergeDescendants = true) { contentDescription = "第$p 节" + if (selected) "，已选" else "，未选" }
-            .clickable { onToggle(p) }
-            .padding(horizontal = 10.dp, vertical = 3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+private fun PeriodDigit(p: Int, selected: Boolean, bothSelected: Boolean, accent: Color?) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             "$p",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = when {
+                bothSelected -> MaterialTheme.colorScheme.onPrimary
+                selected -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
         )
         if (accent != null) {
             Box(Modifier.size(6.dp).clip(CircleShape).background(accent))
@@ -495,7 +501,7 @@ private fun ResultList(
     ) {
         item { SummaryCard(s, free.size, periodTimes) }
 
-        if (free.isEmpty()) {
+        if (s.periods.isNotEmpty() && free.isEmpty()) {
             item {
                 Text(
                     "该时段这栋楼没有空闲教室",
@@ -540,35 +546,43 @@ private fun SummaryCard(s: ClassroomUiState, freeCount: Int, periodTimes: List<S
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.Bottom) {
-                RollingNumber(
-                    value = freeCount,
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.width(7.dp))
+            if (s.periods.isEmpty()) {
                 Text(
-                    "/ ${s.rooms.size} 间空闲",
+                    "整楼 ${s.rooms.size} 间教室 · 未选节次，点上方数字即可筛选空闲",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp),
                 )
-            }
-            Spacer(Modifier.height(9.dp))
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            ) {
+            } else {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    RollingNumber(
+                        value = freeCount,
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        "/ ${s.rooms.size} 间空闲",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+                Spacer(Modifier.height(9.dp))
                 Box(
                     Modifier
-                        .fillMaxWidth(animated.coerceIn(0f, 1f))
+                        .fillMaxWidth()
                         .height(5.dp)
                         .clip(RoundedCornerShape(3.dp))
-                        .background(LocalAccents.current.success),
-                )
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(animated.coerceIn(0f, 1f))
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(LocalAccents.current.success),
+                    )
+                }
             }
             Spacer(Modifier.height(9.dp))
             Text(
@@ -593,8 +607,9 @@ private fun SummaryCard(s: ClassroomUiState, freeCount: Int, periodTimes: List<S
     }
 }
 
-/** 所查节次换算成钟点，如「第 3、5-6 节 · 10:00-17:10」；作息取不到时只报节次。 */
+/** 所查节次换算成钟点，如「第 3、5-6 节 · 10:00-17:10」；未选节次时就是整楼浏览。 */
 private fun periodRangeLabel(s: ClassroomUiState, periodTimes: List<String>): String {
+    if (s.periods.isEmpty()) return "整楼浏览"
     val range = periodsLabel(s.periods)
     val start = periodTimes.getOrNull(s.periods.first() - 1)?.let { PeriodMapper.parsePeriod(it)?.first }
     val end = periodTimes.getOrNull(s.periods.last() - 1)?.let { PeriodMapper.parsePeriod(it)?.second }
@@ -721,8 +736,11 @@ private fun stripDescription(busyOf: Map<Int, ClassSession>, selected: List<Int>
         parts += if (session == null) "$label 空闲" else "$label 有课（${session.location.ifBlank { "课程" }}）"
         p = q + 1
     }
-    val range = periodsLabel(selected)
-    return parts.joinToString("；") + "；主色描边为所选的$range"
+    return if (selected.isEmpty()) {
+        parts.joinToString("；") + "；未选节次，整楼浏览"
+    } else {
+        parts.joinToString("；") + "；主色描边为所选的${periodsLabel(selected)}"
+    }
 }
 
 @Composable
@@ -757,11 +775,17 @@ private fun RoomCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (isFree) FreeChip() else OccupiedChip()
+                if (selected.isEmpty()) {
+                    // 未选节次＝整楼浏览，空闲 / 占用的说法不成立，不放 chip
+                } else if (isFree) {
+                    FreeChip()
+                } else {
+                    OccupiedChip()
+                }
             }
             Spacer(Modifier.height(11.dp))
             DayStrip(room, week, dayOfWeek, selected)
-            if (isFree) {
+            if (isFree && selected.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     continuationLabel(room, week, dayOfWeek, selected, periodTimes, myBusy),

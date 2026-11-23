@@ -66,18 +66,22 @@ data class ClassroomUiState(
     val lastDate: LocalDate get() = AcademicCalendar.dateOf(termStart, maxWeek, 7)
 
     val freeRooms: List<Classroom>
-        get() = rooms.filter { room ->
-            periods.all { p ->
-                room.busy.none { s ->
-                    s.dayOfWeek == dayOfWeek && s.occursOn(week) && s.startPeriod <= p && s.endPeriod >= p
+        get() {
+            // 未选节次＝整楼浏览，没有「空闲」可言；界面各处按未选节次分支处理。
+            if (periods.isEmpty()) return emptyList()
+            return rooms.filter { room ->
+                periods.all { p ->
+                    room.busy.none { s ->
+                        s.dayOfWeek == dayOfWeek && s.occursOn(week) && s.startPeriod <= p && s.endPeriod >= p
+                    }
                 }
-            }
-        }.sortedBy { it.name }
+            }.sortedBy { it.name }
+        }
 
-    /** 整楼状态：所选时段空闲的排前面，占用的跟在后面——默认进来看的是整楼，不只是空闲名单。 */
+    /** 整楼状态：选了节次时空闲的排前面、占用的跟在后面；未选节次就是纯整楼浏览，按教室名排。 */
     val buildingRooms: List<Classroom>
         get() {
-            val free = freeRooms.toSet()
+            val free = if (periods.isEmpty()) emptySet() else freeRooms.toSet()
             return rooms.sortedWith(compareByDescending<Classroom> { it in free }.thenBy { it.name })
         }
 }
@@ -257,16 +261,25 @@ class ClassroomViewModel : ViewModel() {
         if (w in 1..it.maxWeek) it.copy(week = w, dayOfWeek = d.dayOfWeek.value) else it
     }
 
-    /** 点一个节次加进 / 移出所选。只剩最后一个时不许清空：本页没有「不选节次」的浏览形态。 */
+    /** 点一个节次加进 / 移出所选。全部取消也合法：那就是整楼浏览，不按节次筛空闲。 */
     fun togglePeriod(p: Int) = _state.update {
         val next = if (p in it.periods) it.periods - p else it.periods + p
-        if (next.isEmpty()) it else it.copy(periods = next.sorted())
+        it.copy(periods = next.sorted())
+    }
+
+    /** 成对胶囊的整颗点按：未选→两节都选上；已选→先取消后面那节，再点取消剩下的锚点节。 */
+    fun tapPair(a: Int, b: Int) = _state.update {
+        val next = when {
+            a in it.periods && b in it.periods -> it.periods - b
+            a in it.periods -> it.periods - a
+            else -> (it.periods + a + b).distinct()
+        }
+        it.copy(periods = next.sorted())
     }
 
     /** 快速选（后两节 / 到最后 / 全天）：整体替换所选节次，越界值丢掉、去重排序。 */
     fun applyPeriods(ps: List<Int>) = _state.update {
-        val next = ps.filter { p -> p in 1..12 }.distinct().sorted()
-        if (next.isEmpty()) it else it.copy(periods = next)
+        it.copy(periods = ps.filter { p -> p in 1..12 }.distinct().sorted())
     }
 
     fun query(forceRefresh: Boolean = false) {
