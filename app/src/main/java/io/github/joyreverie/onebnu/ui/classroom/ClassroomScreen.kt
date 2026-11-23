@@ -231,7 +231,7 @@ private fun FilterPanel(s: ClassroomUiState, vm: ClassroomViewModel) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             listOf(1 to 2, 3 to 4, 5 to 6, 7 to 8, 9 to 10, 11 to 12).forEach { (a, b) ->
-                PeriodPairChip(a, b, s.periods, myByPeriod[a] ?: myByPeriod[b], vm::tapPair)
+                PeriodPairChip(a, b, s.periods, myByPeriod[a] ?: myByPeriod[b], vm::tapSegment)
             }
         }
         // 快速选：从所选最早一节出发——往后带两节 / 一路到晚间最后一段 / 全天。
@@ -386,9 +386,10 @@ private fun CollapsedFilterBar(onExpand: () -> Unit, modifier: Modifier = Modifi
 }
 
 /**
- * 一对节次一颗胶囊，整颗就是一个三态开关：未选时点一下两节都选上；再点先取消后面那节
- * （保留前面的锚点节，后两节 / 到21:30 都从锚点出发）；又点全取消、回到整楼浏览。
- * 选中可见度靠实底区分：两节全选是实心主色胶囊（白字），最远就能认出来；半选是浅主色晕染。
+ * 一对节次一颗胶囊，里面两个数字各是独立的实心开关：
+ * 整对都没选时，点任一个数字会把两节一起选上（首次激活不用点两下）；
+ * 之后点哪个数字就只切换哪一节，两节都能单独取消，任意组合都可达。
+ * 选中是实心主色小药丸 + 白字加粗，未选中是空心灰字——状态一眼可辨。
  */
 @Composable
 private fun PeriodPairChip(
@@ -396,75 +397,71 @@ private fun PeriodPairChip(
     b: Int,
     periods: List<Int>,
     lesson: Course?,
-    onTapPair: (Int, Int) -> Unit,
+    onTapSegment: (Int, Int, Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val selectedA = a in periods
     val selectedB = b in periods
-    val both = selectedA && selectedB
-    val anySelected = selectedA || selectedB
     val accent = lesson?.let { courseAccent(it.name) }
-    val shape = RoundedCornerShape(18.dp)
     val stateDesc = when {
-        both -> "两节都已选"
+        selectedA && selectedB -> "两节都已选"
         selectedA -> "已选第 $a 节"
         selectedB -> "已选第 $b 节"
         else -> "未选"
     }
-    Box(
+    Row(
         modifier
             .semantics(mergeDescendants = true) { contentDescription = "第 $a-$b 节，$stateDesc" }
-            .clip(shape)
-            .background(
-                when {
-                    both -> MaterialTheme.colorScheme.primary
-                    anySelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                    else -> MaterialTheme.colorScheme.surface
-                },
-            )
-            .border(
-                1.dp,
-                when {
-                    both -> MaterialTheme.colorScheme.primary
-                    anySelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-                    else -> MaterialTheme.colorScheme.outlineVariant
-                },
-                shape,
-            )
-            .clickable { onTapPair(a, b) }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(18.dp))
+            .padding(horizontal = 3.dp, vertical = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            val dim = if (both) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
-            PeriodDigit(a, selectedA, both, accent)
-            Text("-", style = MaterialTheme.typography.labelMedium, color = dim)
-            PeriodDigit(b, selectedB, both, accent)
-            Text(
-                "节",
-                style = MaterialTheme.typography.labelMedium,
-                color = dim,
-                modifier = Modifier.padding(start = 1.dp),
-            )
-        }
+        PeriodSegment(a, b, a, selectedA, accent, onTapSegment)
+        PeriodSegment(a, b, b, selectedB, accent, onTapSegment)
+        Text(
+            "节",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 1.dp, end = 5.dp),
+        )
     }
 }
 
-/** 胶囊里的一个数字：选中加粗变色，旁边保留课程色圆点标出「这节你有课」。 */
+/** 胶囊里的一个节次开关：选中是实心主色小药丸白字，未选中透明底灰字；整对未选时点它会两节一起选上。 */
 @Composable
-private fun PeriodDigit(p: Int, selected: Boolean, bothSelected: Boolean, accent: Color?) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+private fun PeriodSegment(
+    pairA: Int,
+    pairB: Int,
+    p: Int,
+    selected: Boolean,
+    accent: Color?,
+    onTapSegment: (Int, Int, Int) -> Unit,
+) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(13.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+            .clickable { onTapSegment(pairA, pairB, p) }
+            .padding(horizontal = 9.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
             "$p",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = when {
-                bothSelected -> MaterialTheme.colorScheme.onPrimary
-                selected -> MaterialTheme.colorScheme.primary
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
-            },
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (accent != null) {
-            Box(Modifier.size(6.dp).clip(CircleShape).background(accent))
+            Box(
+                Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(if (selected) MaterialTheme.colorScheme.onPrimary else accent),
+            )
         }
     }
 }
