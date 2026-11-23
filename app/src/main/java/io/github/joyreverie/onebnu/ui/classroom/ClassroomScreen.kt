@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -66,6 +67,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +78,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.data.model.ClassSession
 import io.github.joyreverie.onebnu.data.model.Classroom
+import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.Option
 import io.github.joyreverie.onebnu.data.model.PeriodMapper
 import io.github.joyreverie.onebnu.ui.components.BnuCard
@@ -86,6 +89,7 @@ import io.github.joyreverie.onebnu.ui.components.RollingNumber
 import io.github.joyreverie.onebnu.ui.components.Shimmer
 import io.github.joyreverie.onebnu.ui.theme.LocalAccents
 import io.github.joyreverie.onebnu.ui.theme.LocalScreenInfo
+import io.github.joyreverie.onebnu.ui.theme.courseColorIndex
 import io.github.joyreverie.onebnu.ui.theme.listPadding
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -214,19 +218,50 @@ private fun FilterPanel(s: ClassroomUiState, vm: ClassroomViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
-        // 节次
+        // 节次。与我的课表联动：有课的大节带课程色圆点，下面一行直接说哪几节有课——
+        // 提示而不是禁用：帮同学代查空闲时仍可以选自己有课的时段。
+        val myByPeriod = myLessonAt(s)
+        val mySpans = myLessonSpans(s)
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             listOf(1 to 2, 3 to 4, 5 to 6, 7 to 8, 9 to 10, 11 to 12).forEach { (a, b) ->
+                val lesson = myByPeriod[a]
                 FilterChip(
                     selected = s.startPeriod == a && s.endPeriod == b,
                     onClick = { vm.setPeriods(a, b) },
-                    label = { Text("$a-$b 节") },
+                    label = {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("$a-$b 节")
+                            if (lesson != null) {
+                                Box(
+                                    Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(courseAccent(lesson.name)),
+                                )
+                            }
+                        }
+                    },
                 )
             }
+        }
+        if (mySpans.isNotEmpty()) {
+            Spacer(Modifier.height(7.dp))
+            Text(
+                "当天你有课：" + mySpans.joinToString(" · ") { (range, course) ->
+                    "${periodLabel(range)} ${course.name}"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
 
         Spacer(Modifier.height(12.dp))
@@ -352,6 +387,8 @@ private fun ResultList(
     onScrollDown: () -> Unit,
 ) {
     val free = s.freeRooms
+    // 我的课整张列表共享一份（同一节所有教室都一样），在这里算好传下去，别每张卡各算各的。
+    val myBusy = myLessonAt(s).keys
     // 向下滑 = 往列表深处翻，说明筛选已经用完：通知外层收起面板。只收不自动展开，展开只认箭头。
     // 阈值 100px 滤掉手抖；快速下滑时 snapshotFlow 会跳发，跨过的距离更大，同样触发。
     // 只 key 到 listState 不 key 回调：回调每次重组都是新实例，key 进去会在展开的一瞬重启并误收起。
@@ -391,6 +428,7 @@ private fun ResultList(
                 s.dayOfWeek,
                 s.startPeriod..s.endPeriod,
                 periodTimes,
+                myBusy,
                 modifier = Modifier.animateItem(),
             )
         }
@@ -450,6 +488,15 @@ private fun SummaryCard(s: ClassroomUiState, freeCount: Int, periodTimes: List<S
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
             )
+            val busyHere = (s.startPeriod..s.endPeriod).mapNotNull { myLessonAt(s)[it]?.name }.distinct()
+            if (busyHere.isNotEmpty()) {
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "所选时段你有课：" + busyHere.joinToString("、"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LocalAccents.current.warning,
+                )
+            }
             if (s.freshness != null) {
                 Spacer(Modifier.height(8.dp))
                 DataStatusRow(s.freshness)
@@ -469,6 +516,46 @@ private fun periodRangeLabel(s: ClassroomUiState, periodTimes: List<String>): St
         range
     }
 }
+
+/** 「第 3 节」/「第 3-4 节」。 */
+private fun periodLabel(range: IntRange): String =
+    if (range.first == range.last) "第 ${range.first} 节" else "第 ${range.first}-${range.last} 节"
+
+/** 所选周当天的「我的课」：节次 → 课程。课表取不到时为空表，界面各处静默退回无联动状态。 */
+private fun myLessonAt(s: ClassroomUiState): Map<Int, Course> {
+    val map = mutableMapOf<Int, Course>()
+    for (course in s.myCourses) {
+        for (session in course.sessions) {
+            if (session.dayOfWeek != s.dayOfWeek || !session.occursOn(s.week)) continue
+            for (p in session.startPeriod..session.endPeriod) if (p !in map) map[p] = course
+        }
+    }
+    return map
+}
+
+/** 当天的课按节次并成连续段，同一门课连堂只报一次。 */
+private fun myLessonSpans(s: ClassroomUiState): List<Pair<IntRange, Course>> {
+    val byPeriod = myLessonAt(s)
+    val spans = ArrayList<Pair<IntRange, Course>>()
+    var p = 1
+    while (p <= 12) {
+        val course = byPeriod[p]
+        if (course == null) {
+            p++
+            continue
+        }
+        var q = p
+        while (q < 12 && byPeriod[q + 1] === course) q++
+        spans += p..q to course
+        p = q + 1
+    }
+    return spans
+}
+
+/** 与课表页同一映射的课程色，取加深的 accent 画小圆点，浅色深色主题都看得清。 */
+@Composable
+private fun courseAccent(courseName: String): Color =
+    LocalAccents.current.courseAccents[courseColorIndex(courseName, LocalAccents.current.courseAccents.size)]
 
 /**
  * 当天 1-12 节的占用色带。「是否空闲」只回答所选那一段，
@@ -532,7 +619,7 @@ private fun stripDescription(busyOf: Map<Int, ClassSession>, selected: IntRange)
         parts += if (session == null) "$label 空闲" else "$label 有课（${session.location.ifBlank { "课程" }}）"
         p = q + 1
     }
-    val range = if (selected.first == selected.last) "第 ${selected.first} 节" else "第 ${selected.first}-${selected.last} 节"
+    val range = periodLabel(selected)
     return parts.joinToString("；") + "；主色描边为所选的$range"
 }
 
@@ -543,6 +630,7 @@ private fun RoomCard(
     dayOfWeek: Int,
     selected: IntRange,
     periodTimes: List<String>,
+    myBusy: Set<Int>,
     modifier: Modifier = Modifier,
 ) {
     BnuCard(modifier.fillMaxWidth()) {
@@ -572,7 +660,7 @@ private fun RoomCard(
             DayStrip(room, week, dayOfWeek, selected)
             Spacer(Modifier.height(6.dp))
             Text(
-                continuationLabel(room, week, dayOfWeek, selected, periodTimes),
+                continuationLabel(room, week, dayOfWeek, selected, periodTimes, myBusy),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -604,6 +692,8 @@ private fun FreeChip() {
 /**
  * 列表里的教室在所选时段都空闲，但能不能往后连下去因教室而异——
  * 「能自习到几点」比一句「空闲」更接近找座位的真实问题。
+ * 连续性同时被两种东西截断：教室被占（「下课」），以及你自己有课（「你有课」）——
+ * 课表联动在这里生效：教室再空，赶不上你的下一节课也用不上。
  */
 private fun continuationLabel(
     room: Classroom,
@@ -611,14 +701,32 @@ private fun continuationLabel(
     dayOfWeek: Int,
     selected: IntRange,
     periodTimes: List<String>,
+    myBusy: Set<Int>,
 ): String {
     val busyHere = room.busy.filter { it.dayOfWeek == dayOfWeek && it.occursOn(week) }
     var last = selected.last
-    while (last < 12 && busyHere.none { it.startPeriod <= last + 1 && it.endPeriod >= last + 1 }) last++
+    var stoppedByMe = false
+    while (last < 12) {
+        val next = last + 1
+        if (next in myBusy) {
+            stoppedByMe = true
+            break
+        }
+        if (busyHere.any { it.startPeriod <= next && it.endPeriod >= next }) break
+        last = next
+    }
     val endLabel = periodTimes.getOrNull(last - 1)
         ?.let { PeriodMapper.parsePeriod(it)?.second?.let(PeriodMapper::format) }
-    val head = if (last == selected.last) "空闲仅到第 $last 节" else "可连自习到第 $last 节"
-    return if (endLabel == null) head else "$head（$endLabel 下课）"
+    val nextStart = periodTimes.getOrNull(last)
+        ?.let { PeriodMapper.parsePeriod(it)?.first?.let(PeriodMapper::format) }
+    return when {
+        stoppedByMe && last == selected.last ->
+            if (nextStart == null) "第 ${last + 1} 节起你有课" else "第 ${last + 1} 节起你有课（$nextStart 上课）"
+        stoppedByMe ->
+            if (nextStart == null) "可用到第 $last 节（第 ${last + 1} 节你有课）" else "可用到第 $last 节（$nextStart 你有课）"
+        last == selected.last -> if (endLabel == null) "空闲仅到第 $last 节" else "空闲仅到第 $last 节（$endLabel 下课）"
+        else -> if (endLabel == null) "可连自习到第 $last 节" else "可连自习到第 $last 节（$endLabel 下课）"
+    }
 }
 
 /** 与结果卡同构的骨架：占位高度接近真实卡片，查询完成后页面不跳。 */

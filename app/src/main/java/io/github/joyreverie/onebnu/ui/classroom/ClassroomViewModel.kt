@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import io.github.joyreverie.onebnu.core.di.ServiceLocator
 import io.github.joyreverie.onebnu.data.model.AcademicCalendar
 import io.github.joyreverie.onebnu.data.model.Classroom
+import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.Option
 import io.github.joyreverie.onebnu.data.model.Term
 import io.github.joyreverie.onebnu.data.repo.AcademicRepository.Outcome
@@ -27,7 +28,8 @@ private val COMMON_BUILDING_KEYS = listOf("教二", "教三", "教四", "教七"
 
 private fun commonFirst(buildings: List<Option>): List<Option> = buildings.sortedWith(
     compareBy { option ->
-        COMMON_BUILDING_KEYS.indexOfFirst { option.name.contains(it) }.let { if (it >= 0) it else COMMON_BUILDING_KEYS.size }
+        val priority = COMMON_BUILDING_KEYS.indexOfFirst { option.name.contains(it) }
+        if (priority >= 0) priority else COMMON_BUILDING_KEYS.size
     },
 )
 
@@ -52,6 +54,8 @@ data class ClassroomUiState(
     val startPeriod: Int = 1,
     val endPeriod: Int = 2,
     val rooms: List<Classroom> = emptyList(),
+    /** 学生本人课表（缓存优先取自教务），用于节次选择与「可连自习」的课表联动；取不到就为空，界面各处按无联动处理。 */
+    val myCourses: List<Course> = emptyList(),
     val queried: Boolean = false,
 ) {
     /** 「第几周 + 周几」对应的具体日期；选日期会反过来改这两项。 */
@@ -119,6 +123,16 @@ class ClassroomViewModel : ViewModel() {
                     week = AcademicCalendar.weekOf(start, today).coerceIn(1, maxWeek),
                     dayOfWeek = today.dayOfWeek.value,
                 )
+            }
+
+            // 课表联动：学生课表另路取（缓存优先，几乎即时）。失败静默——联动是锦上添花，不能卡住楼房列表。
+            term?.let { t ->
+                viewModelScope.launch {
+                    when (val sc = repo.schedule(t, forceRefresh = forceRefresh)) {
+                        is Outcome.Ok -> _state.update { it.copy(myCourses = sc.data.courses) }
+                        else -> Unit
+                    }
+                }
             }
 
             when (val c = repo.classroomCampus(forceRefresh = forceRefresh)) {
