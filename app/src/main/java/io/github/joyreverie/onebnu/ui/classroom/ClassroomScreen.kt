@@ -218,26 +218,27 @@ private fun FilterPanel(s: ClassroomUiState, vm: ClassroomViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
-        // 节次。与我的课表联动：有课的大节带课程色圆点，下面一行直接说哪几节有课——
+        // 节次逐节点选（查询取「全部所选节次都空闲」的交集），配合下面的快速选一行。
+        // 与我的课表联动：有课的节次带课程色圆点，再下一行直接说哪几节有课——
         // 提示而不是禁用：帮同学代查空闲时仍可以选自己有课的时段。
         val myByPeriod = myLessonAt(s)
         val mySpans = myLessonSpans(s)
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            listOf(1 to 2, 3 to 4, 5 to 6, 7 to 8, 9 to 10, 11 to 12).forEach { (a, b) ->
-                val lesson = myByPeriod[a]
+            (1..12).forEach { p ->
+                val lesson = myByPeriod[p]
                 FilterChip(
-                    selected = s.startPeriod == a && s.endPeriod == b,
-                    onClick = { vm.setPeriods(a, b) },
+                    selected = p in s.periods,
+                    onClick = { vm.togglePeriod(p) },
                     label = {
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("$a-$b 节")
+                            Text("$p")
                             if (lesson != null) {
                                 Box(
                                     Modifier
@@ -250,6 +251,29 @@ private fun FilterPanel(s: ClassroomUiState, vm: ClassroomViewModel) {
                     },
                 )
             }
+        }
+        // 快速选：从所选最早一节出发——往后带两节 / 一路到晚间最后一段 / 全天。
+        Row(
+            Modifier.fillMaxWidth().padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            val anchor = s.periods.firstOrNull() ?: 1
+            val pairEnd = (anchor + 1).coerceAtMost(12)
+            FilterChip(
+                selected = s.periods == listOf(anchor, pairEnd),
+                onClick = { vm.applyPeriods(listOf(anchor, pairEnd)) },
+                label = { Text("后两节") },
+            )
+            FilterChip(
+                selected = s.periods == (anchor..12).toList(),
+                onClick = { vm.applyPeriods((anchor..12).toList()) },
+                label = { Text("到21:30") },
+            )
+            FilterChip(
+                selected = s.periods == (1..12).toList(),
+                onClick = { vm.applyPeriods((1..12).toList()) },
+                label = { Text("全天") },
+            )
         }
         if (mySpans.isNotEmpty()) {
             Spacer(Modifier.height(7.dp))
@@ -426,7 +450,7 @@ private fun ResultList(
                 room,
                 s.week,
                 s.dayOfWeek,
-                s.startPeriod..s.endPeriod,
+                s.periods,
                 periodTimes,
                 myBusy,
                 modifier = Modifier.animateItem(),
@@ -488,7 +512,7 @@ private fun SummaryCard(s: ClassroomUiState, freeCount: Int, periodTimes: List<S
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
             )
-            val busyHere = (s.startPeriod..s.endPeriod).mapNotNull { myLessonAt(s)[it]?.name }.distinct()
+            val busyHere = s.periods.mapNotNull { myLessonAt(s)[it]?.name }.distinct()
             if (busyHere.isNotEmpty()) {
                 Spacer(Modifier.height(7.dp))
                 Text(
@@ -505,11 +529,11 @@ private fun SummaryCard(s: ClassroomUiState, freeCount: Int, periodTimes: List<S
     }
 }
 
-/** 所查节次换算成钟点，如「第 3-4 节 · 10:00-11:40」；作息取不到时只报节次。 */
+/** 所查节次换算成钟点，如「第 3、5-6 节 · 10:00-17:10」；作息取不到时只报节次。 */
 private fun periodRangeLabel(s: ClassroomUiState, periodTimes: List<String>): String {
-    val range = if (s.startPeriod == s.endPeriod) "第 ${s.startPeriod} 节" else "第 ${s.startPeriod}-${s.endPeriod} 节"
-    val start = periodTimes.getOrNull(s.startPeriod - 1)?.let { PeriodMapper.parsePeriod(it)?.first }
-    val end = periodTimes.getOrNull(s.endPeriod - 1)?.let { PeriodMapper.parsePeriod(it)?.second }
+    val range = periodsLabel(s.periods)
+    val start = periodTimes.getOrNull(s.periods.first() - 1)?.let { PeriodMapper.parsePeriod(it)?.first }
+    val end = periodTimes.getOrNull(s.periods.last() - 1)?.let { PeriodMapper.parsePeriod(it)?.second }
     return if (start != null && end != null) {
         "$range · ${PeriodMapper.format(start)}-${PeriodMapper.format(end)}"
     } else {
@@ -520,6 +544,20 @@ private fun periodRangeLabel(s: ClassroomUiState, periodTimes: List<String>): St
 /** 「第 3 节」/「第 3-4 节」。 */
 private fun periodLabel(range: IntRange): String =
     if (range.first == range.last) "第 ${range.first} 节" else "第 ${range.first}-${range.last} 节"
+
+/** 任意节次集合的标签：连续段合并，如「第 3、5-6 节」。 */
+private fun periodsLabel(periods: List<Int>): String {
+    if (periods.isEmpty()) return "未选节次"
+    val parts = ArrayList<String>()
+    var i = 0
+    while (i < periods.size) {
+        var j = i
+        while (j + 1 < periods.size && periods[j + 1] == periods[j] + 1) j++
+        parts += if (i == j) "${periods[i]}" else "${periods[i]}-${periods[j]}"
+        i = j + 1
+    }
+    return "第 " + parts.joinToString("、") + " 节"
+}
 
 /** 所选周当天的「我的课」：节次 → 课程。课表取不到时为空表，界面各处静默退回无联动状态。 */
 private fun myLessonAt(s: ClassroomUiState): Map<Int, Course> {
@@ -566,7 +604,7 @@ private fun DayStrip(
     room: Classroom,
     week: Int,
     dayOfWeek: Int,
-    selected: IntRange,
+    selected: List<Int>,
     modifier: Modifier = Modifier,
 ) {
     // 每节课记录盖住它的一次安排；一次课可跨多节，同一实例连续出现，读屏文案按实例连续段生成
@@ -608,7 +646,7 @@ private fun DayStrip(
 }
 
 /** 色带的读屏文案：把 12 节并成连续段逐段念出，有课的段带上课程与教师。 */
-private fun stripDescription(busyOf: Map<Int, ClassSession>, selected: IntRange): String {
+private fun stripDescription(busyOf: Map<Int, ClassSession>, selected: List<Int>): String {
     val parts = ArrayList<String>()
     var p = 1
     while (p <= 12) {
@@ -619,7 +657,7 @@ private fun stripDescription(busyOf: Map<Int, ClassSession>, selected: IntRange)
         parts += if (session == null) "$label 空闲" else "$label 有课（${session.location.ifBlank { "课程" }}）"
         p = q + 1
     }
-    val range = periodLabel(selected)
+    val range = periodsLabel(selected)
     return parts.joinToString("；") + "；主色描边为所选的$range"
 }
 
@@ -628,7 +666,7 @@ private fun RoomCard(
     room: Classroom,
     week: Int,
     dayOfWeek: Int,
-    selected: IntRange,
+    selected: List<Int>,
     periodTimes: List<String>,
     myBusy: Set<Int>,
     modifier: Modifier = Modifier,
@@ -699,12 +737,13 @@ private fun continuationLabel(
     room: Classroom,
     week: Int,
     dayOfWeek: Int,
-    selected: IntRange,
+    selected: List<Int>,
     periodTimes: List<String>,
     myBusy: Set<Int>,
 ): String {
+    val from = selected.maxOrNull() ?: return "未选节次"
     val busyHere = room.busy.filter { it.dayOfWeek == dayOfWeek && it.occursOn(week) }
-    var last = selected.last
+    var last = from
     var stoppedByMe = false
     while (last < 12) {
         val next = last + 1
@@ -720,11 +759,11 @@ private fun continuationLabel(
     val nextStart = periodTimes.getOrNull(last)
         ?.let { PeriodMapper.parsePeriod(it)?.first?.let(PeriodMapper::format) }
     return when {
-        stoppedByMe && last == selected.last ->
+        stoppedByMe && last == from ->
             if (nextStart == null) "第 ${last + 1} 节起你有课" else "第 ${last + 1} 节起你有课（$nextStart 上课）"
         stoppedByMe ->
             if (nextStart == null) "可用到第 $last 节（第 ${last + 1} 节你有课）" else "可用到第 $last 节（$nextStart 你有课）"
-        last == selected.last -> if (endLabel == null) "空闲仅到第 $last 节" else "空闲仅到第 $last 节（$endLabel 下课）"
+        last == from -> if (endLabel == null) "空闲仅到第 $last 节" else "空闲仅到第 $last 节（$endLabel 下课）"
         else -> if (endLabel == null) "可连自习到第 $last 节" else "可连自习到第 $last 节（$endLabel 下课）"
     }
 }
