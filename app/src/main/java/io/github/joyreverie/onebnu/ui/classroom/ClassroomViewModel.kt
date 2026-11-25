@@ -11,6 +11,7 @@ import io.github.joyreverie.onebnu.data.model.Course
 import io.github.joyreverie.onebnu.data.model.Option
 import io.github.joyreverie.onebnu.data.model.Term
 import io.github.joyreverie.onebnu.data.repo.AcademicRepository.Outcome
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,11 +22,7 @@ import java.time.LocalTime
 /** 没有官方校历可依据时允许拨到的最大周次。 */
 private const val DEFAULT_MAX_WEEK = 25
 
-/**
- * 常用教学楼排前面：教务的楼房下拉按全称拼音序，常用的几栋淹没在几十栋楼里。
- * 口径与 BNU Sparks 网页端一致（教二到教九 + 化学楼、生地楼、艺术楼、电子楼）；
- * 用包含匹配兼容「教二楼 / 教二教学楼」这类全称差异，没匹配上的保持教务原顺序排在后面。
- */
+/** 常用教学楼排在楼房列表前面，其余保持教务原顺序。 */
 private val COMMON_BUILDING_KEYS = listOf("教二", "教三", "教四", "教七", "教八", "教九", "化学", "生地", "艺术", "电子")
 
 private fun commonFirst(buildings: List<Option>): List<Option> = buildings.sortedWith(
@@ -52,10 +49,10 @@ data class ClassroomUiState(
     val calendarNote: String = "",
     val week: Int = 1,
     val dayOfWeek: Int = 1,
-    /** 选中的节次，可多选、可不连续；查询语义是「全部选中节次都空闲」的交集。 */
+    /** 选中的节次，可不连续；空闲指所有选中节次都没有排课。为空表示整楼浏览。 */
     val periods: List<Int> = listOf(1, 2),
     val rooms: List<Classroom> = emptyList(),
-    /** 学生本人课表（缓存优先取自教务），用于节次选择与「可连自习」的课表联动；取不到就为空，界面各处按无联动处理。 */
+    /** 本人课表，只读本地快照；没有快照时为空。 */
     val myCourses: List<Course> = emptyList(),
     val queried: Boolean = false,
 ) {
@@ -67,7 +64,6 @@ data class ClassroomUiState(
 
     val freeRooms: List<Classroom>
         get() {
-            // 未选节次＝整楼浏览，没有「空闲」可言；界面各处按未选节次分支处理。
             if (periods.isEmpty()) return emptyList()
             return rooms.filter { room ->
                 periods.all { p ->
@@ -78,7 +74,7 @@ data class ClassroomUiState(
             }.sortedBy { it.name }
         }
 
-    /** 整楼状态：选了节次时空闲的排前面、占用的跟在后面；未选节次就是纯整楼浏览，按教室名排。 */
+    /** 整楼列表：空闲的在前，其余按教室名。 */
     val buildingRooms: List<Classroom>
         get() {
             val free = if (periods.isEmpty()) emptySet() else freeRooms.toSet()
@@ -139,26 +135,16 @@ class ClassroomViewModel : ViewModel() {
                     },
                     week = AcademicCalendar.weekOf(start, today).coerceIn(1, maxWeek),
                     dayOfWeek = today.dayOfWeek.value,
-                    // 默认选中「现在」所在的节次：进来就该看眼前能用的空教室。
+                    // 默认选中当前所在的节次
                     periods = PeriodMapper.periodsFor(
                         LocalTime.now(), LocalTime.now(), ServiceLocator.settings.periodTimes,
                     ).toList(),
                 )
             }
 
-            // 课表联动：学生课表另路取（缓存优先，几乎即时）。失败静默——联动是锦上添花，不能卡住楼房列表。
-            if (term == null) coursesResolved = true
-            term?.let { t ->
-                viewModelScope.launch {
-                    when (val sc = repo.schedule(t, forceRefresh = forceRefresh)) {
-                        is Outcome.Ok -> _state.update { it.copy(myCourses = sc.data.courses) }
-                        else -> Unit
-                    }.also {
-                        coursesResolved = true
-                        maybeAutoSelectBuilding()
-                    }
-                }
-            }
+            // 课表只读本地快照，不为教室页单独请求教务
+            val courses = term?.let { repo.cachedSchedule(it) }?.courses.orEmpty()
+            _state.update { it.copy(myCourses = courses) }
 
             when (val c = repo.classroomCampus(forceRefresh = forceRefresh)) {
                 is Outcome.Ok -> {
@@ -181,20 +167,16 @@ class ClassroomViewModel : ViewModel() {
         }
     }
 
-    /** 用户手动选过楼之后，自动选楼就退场，不再抢用户的决定。 */
     private var buildingManual = false
-
-    /** 课表是另路异步取的：不管取到还是确定取不到，都要放行自动选楼（否则兜底一直不生效）。 */
-    private var coursesResolved = false
+    private var queryJob: Job? = null
 
     /**
-     * 进入页面自动出结果：没手动选过楼时，优先跟随课表——正在看「今天」时，当前（或最近一节）
-     * 自己要上的课在哪栋楼就选哪栋（同时段几节课不在同一栋楼宁可不猜）；
-     * 猜不中再退回上次查看的楼。楼一定下来就直接查询，不再等用户点按钮。
+     * 进入页面时自动选楼并查询：查看今天时取当前或最近一节课所在的楼，
+     * 同一时刻几节课不在同一栋楼就不猜；猜不中用上次查看的楼。手动选过楼后不再自动选。
      */
     private fun maybeAutoSelectBuilding() {
         val s = _state.value
-        if (buildingManual || s.building != null || s.buildings.isEmpty() || !coursesResolved || s.loading) return
+        if (buildingManual || s.building != null || s.buildings.isEmpty() || s.loading) return
         val target = if (s.date == LocalDate.now()) currentCourseBuilding(s.myCourses, s.week, s.dayOfWeek) else null
         val name = target ?: ServiceLocator.settings.classroomLastBuilding ?: return
         val match = matchBuildingOption(s.buildings, name) ?: return
@@ -203,7 +185,7 @@ class ClassroomViewModel : ViewModel() {
         query()
     }
 
-    /** 当前正在上、不在上课则取与当前时刻最近的一节课；并列候选楼不一致时返回 null。 */
+    /** 正在上的课，或离现在最近的一节课所在的楼；并列的几节不在同一栋楼时返回 null。 */
     private fun currentCourseBuilding(courses: List<Course>, week: Int, day: Int): String? {
         val periodTimes = ServiceLocator.settings.periodTimes
         val now = LocalTime.now()
@@ -221,24 +203,23 @@ class ClassroomViewModel : ViewModel() {
         fun minuteOf(t: LocalTime): Long = t.hour * 60L + t.minute
         fun distance(t: Triple<LocalTime, LocalTime, String>): Long =
             maxOf(minuteOf(t.first) - nowMinute, nowMinute - minuteOf(t.second), 0L)
-        // 上课中距离为 0；都不在上课就取最近的一节，并列最近（同时段）的几节楼不同就放弃
         val ranked = timed.sortedBy { distance(it) }
         val best = distance(ranked.first())
         val buildings = ranked.takeWhile { distance(it) == best }.map { it.third }.toSet()
         return buildings.singleOrNull()
     }
 
-    /** 从上课地点猜教学楼：教务地点常省略「教」和「楼」，形如「七103」；具名楼（化学楼等）原样匹配。 */
+    /** 从上课地点取楼名：「七103」「教七201」→ 教七楼；化学楼等具名楼原样返回。 */
     private fun parseBuilding(location: String): String? {
         val text = location.trim()
         for (named in listOf("化学楼", "生地楼", "艺术楼", "电子楼")) {
             if (text.startsWith(named)) return named
         }
-        val m = Regex("""^([一二三四五六七八九十])\s*\d""").find(text) ?: return null
+        val m = Regex("""^教?([一二三四五六七八九十])楼?\s*\d""").find(text) ?: return null
         return "教${m.groupValues[1]}楼"
     }
 
-    /** 解析出的楼名对回楼房下拉的选项：全名 → 包含 → 去掉「楼」字前缀，三级兜底。 */
+    /** 楼名对回楼房选项：全名、互相包含、去掉「楼」后的前缀，依次尝试。 */
     private fun matchBuildingOption(buildings: List<Option>, target: String): Option? =
         buildings.firstOrNull { it.name == target }
             ?: buildings.firstOrNull { it.name.contains(target) || target.contains(it.name) }
@@ -247,7 +228,6 @@ class ClassroomViewModel : ViewModel() {
     fun selectBuilding(b: Option) {
         buildingManual = true
         _state.update { it.copy(building = b, rooms = emptyList(), queried = false, error = null) }
-        // 手动换楼同样直接查询并记住：换完就出结果，查询按钮留给强制刷新
         ServiceLocator.settings.classroomLastBuilding = b.name
         query()
     }
@@ -261,17 +241,7 @@ class ClassroomViewModel : ViewModel() {
         if (w in 1..it.maxWeek) it.copy(week = w, dayOfWeek = d.dayOfWeek.value) else it
     }
 
-    /** 点一个节次加进 / 移出所选。全部取消也合法：那就是整楼浏览，不按节次筛空闲。 */
-    fun togglePeriod(p: Int) = _state.update {
-        val next = if (p in it.periods) it.periods - p else it.periods + p
-        it.copy(periods = next.sorted())
-    }
-
-    /**
-     * 胶囊里一个数字的点按：只要这一对（两个数字）都没选——不管别处选了什么——点任一个
-     * 数字就把两节一起选上；胶囊已激活时点谁就只切换谁，两节都能单独取消。
-     * 全部取消也合法，那就是整楼浏览。
-     */
+    /** 成对节次里点一个数字：这一对都没选时两节一起选上，否则只切换被点的那节。 */
     fun tapSegment(pairA: Int, pairB: Int, p: Int) = _state.update {
         val pairInactive = pairA !in it.periods && pairB !in it.periods
         val next = when {
@@ -282,7 +252,7 @@ class ClassroomViewModel : ViewModel() {
         it.copy(periods = next.sorted())
     }
 
-    /** 快速选（后两节 / 到最后 / 全天）：整体替换所选节次，越界值丢掉、去重排序。 */
+    /** 整体替换所选节次。 */
     fun applyPeriods(ps: List<Int>) = _state.update {
         it.copy(periods = ps.filter { p -> p in 1..12 }.distinct().sorted())
     }
@@ -301,8 +271,12 @@ class ClassroomViewModel : ViewModel() {
             return
         }
         _state.value = s.copy(loading = true, error = null, emptyReason = null)
-        viewModelScope.launch {
-            when (val r = repo.classrooms(term, campusOpt.code, building.code, forceRefresh = forceRefresh)) {
+        // 换楼后旧请求的结果不能覆盖新楼
+        queryJob?.cancel()
+        queryJob = viewModelScope.launch {
+            val r = repo.classrooms(term, campusOpt.code, building.code, forceRefresh = forceRefresh)
+            if (_state.value.building?.code != building.code) return@launch
+            when (r) {
                 is Outcome.Ok -> _state.value = _state.value.copy(
                     loading = false, rooms = r.data, freshness = r.freshness, queried = true, error = null, emptyReason = null,
                 )

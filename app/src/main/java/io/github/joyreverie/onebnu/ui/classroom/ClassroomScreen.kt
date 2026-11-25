@@ -103,9 +103,7 @@ private const val DAY_MILLIS = 86_400_000L
 @Composable
 fun ClassroomScreen(onBack: () -> Unit, vm: ClassroomViewModel = viewModel()) {
     val s by vm.state.collectAsState()
-    // 色带的「可连自习到几点」按用户自定义作息换算成钟点；设置里改完作息，这里跟着变。
     val periodTimes by ServiceLocator.settings.periodTimesFlow.collectAsState()
-    // 收起状态放在这一层：收起的是筛选面板，滚动发生在它下面的结果列表，两者是兄弟节点。
     var filtersExpanded by remember { mutableStateOf(true) }
     val listState = rememberLazyListState()
 
@@ -126,7 +124,7 @@ fun ClassroomScreen(onBack: () -> Unit, vm: ClassroomViewModel = viewModel()) {
                 // 楼房都没拿到，筛选面板无从展示，整页给出错误与重试
                 s.buildings.isEmpty() && s.error != null -> ErrorBox(s.error!!) { vm.retry() }
                 else -> {
-                    // 查完之后筛选就完成了：结果列表向下滑时收起面板，把屏幕还给内容；点箭头再展开。
+                    // 结果列表下滑时收起筛选面板，点箭头展开
                     Column(Modifier.animateContentSize()) {
                         AnimatedVisibility(
                             filtersExpanded,
@@ -143,10 +141,7 @@ fun ClassroomScreen(onBack: () -> Unit, vm: ClassroomViewModel = viewModel()) {
                         when {
                             s.loading -> ClassroomLoading("正在拉取整栋楼的课表…")
                             s.error != null -> ErrorBox(s.error!!) { vm.retry() }
-                            !s.queried -> EmptyBox(
-                                "选择楼房与时间后点击查询",
-                                hint = "结果由教室课表取补集算出，只反映排课占用，不含临时借用",
-                            )
+                            !s.queried -> EmptyBox("选择楼房后查看空闲教室")
                             s.emptyReason != null -> EmptyBox(s.emptyReason!!, onRetry = { vm.query() })
                             else -> ResultList(s, periodTimes, listState) { filtersExpanded = false }
                         }
@@ -219,10 +214,7 @@ private fun FilterPanel(s: ClassroomUiState, vm: ClassroomViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
-        // 节次成对摆放（1-2、3-4……）好点不散；整对未选时点一下两节都选上，
-        // 之后每个数字就是自己的开关，点选中状态里的某个数字只取消它。
-        // 与我的课表联动：有课的节次带课程色圆点，下面几行直接说哪几节有课——
-        // 提示而不是禁用：帮同学代查空闲时仍可以选自己有课的时段。
+        // 节次成对显示；自己有课的节次带课程色圆点，只提示不禁用
         val myByPeriod = myLessonAt(s)
         val mySpans = myLessonSpans(s)
         Row(
@@ -234,7 +226,8 @@ private fun FilterPanel(s: ClassroomUiState, vm: ClassroomViewModel) {
                 PeriodPairChip(a, b, s.periods, myByPeriod[a] ?: myByPeriod[b], vm::tapSegment)
             }
         }
-        // 快速选：从所选最早一节出发——往后带两节 / 一路到晚间最后一段 / 全天。
+        val periodTimes by ServiceLocator.settings.periodTimesFlow.collectAsState()
+        val dayEnd = periodTimes.getOrNull(11)?.let { PeriodMapper.parsePeriod(it)?.second }
         Row(
             Modifier.fillMaxWidth().padding(top = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -249,7 +242,7 @@ private fun FilterPanel(s: ClassroomUiState, vm: ClassroomViewModel) {
             FilterChip(
                 selected = s.periods == (anchor..12).toList(),
                 onClick = { vm.applyPeriods((anchor..12).toList()) },
-                label = { Text("到21:30") },
+                label = { Text(dayEnd?.let { "到${PeriodMapper.format(it)}" } ?: "到最后") },
             )
             FilterChip(
                 selected = s.periods == (1..12).toList(),
@@ -375,7 +368,7 @@ private fun OptionPicker(
     }
 }
 
-/** 收起后的那颗箭头：点它把筛选面板再展开。保持 48dp 点击域，别缩成小图标。 */
+/** 筛选面板收起后的展开按钮。 */
 @Composable
 private fun CollapsedFilterBar(onExpand: () -> Unit, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
@@ -385,12 +378,7 @@ private fun CollapsedFilterBar(onExpand: () -> Unit, modifier: Modifier = Modifi
     }
 }
 
-/**
- * 一对节次一颗胶囊，里面两个数字各是独立的实心开关：
- * 整对都没选时，点任一个数字会把两节一起选上（首次激活不用点两下）；
- * 之后点哪个数字就只切换哪一节，两节都能单独取消，任意组合都可达。
- * 选中是实心主色小药丸 + 白字加粗，未选中是空心灰字——状态一眼可辨。
- */
+/** 一对节次一个胶囊，两个数字各自开关；整对未选时点任一个两节一起选上。 */
 @Composable
 private fun PeriodPairChip(
     a: Int,
@@ -430,7 +418,6 @@ private fun PeriodPairChip(
     }
 }
 
-/** 胶囊里的一个节次开关：选中是实心主色小药丸白字，未选中透明底灰字；整对未选时点它会两节一起选上。 */
 @Composable
 private fun PeriodSegment(
     pairA: Int,
@@ -475,15 +462,11 @@ private fun ResultList(
 ) {
     val free = s.freeRooms
     val freeSet = free.toSet()
-    // 整楼状态：空闲的排前面，占用的跟在后面。我的课整张列表共享一份（同一节所有教室都一样），
-    // 在这里算好传下去，别每张卡各算各的。
     val ordered = s.buildingRooms
     val myBusy = myLessonAt(s).keys
-    // 向下滑 = 往列表深处翻，说明筛选已经用完：通知外层收起面板。只收不自动展开，展开只认箭头。
-    // 阈值 100px 滤掉手抖；快速下滑时 snapshotFlow 会跳发，跨过的距离更大，同样触发。
-    // 只 key 到 listState 不 key 回调：回调每次重组都是新实例，key 进去会在展开的一瞬重启并误收起。
+    // 下滑超过 100px 收起筛选面板；只 key listState，回调每次重组都是新实例
     LaunchedEffect(listState) {
-        var last = 0
+        var last = listState.firstVisibleItemIndex * 10000 + listState.firstVisibleItemScrollOffset
         snapshotFlow { listState.firstVisibleItemIndex * 10000 + listState.firstVisibleItemScrollOffset }
             .collect { pos ->
                 if (pos > last + 100) onScrollDown()
@@ -510,7 +493,6 @@ private fun ResultList(
             }
         }
 
-        // key 去掉下标：换查询条件时同一间教室仍是同一个身份，animateItem 才能接管它的移动
         itemsIndexed(ordered, key = { _, room -> "${room.building}|${room.name}" }) { _, room ->
             RoomCard(
                 room,
@@ -526,10 +508,7 @@ private fun ResultList(
     }
 }
 
-/**
- * 结果汇总卡。原来是一行小字，但每张教室卡都值得配一个醒目的总数：
- * 绿色占比条与卡片色带同用 success 色，「这栋楼紧不紧张」一眼可见。
- */
+/** 结果汇总：空闲数、占比条与数据状态。 */
 @Composable
 private fun SummaryCard(s: ClassroomUiState, freeCount: Int, periodTimes: List<String>, modifier: Modifier = Modifier) {
     val ratio = if (s.rooms.isEmpty()) 0f else freeCount.toFloat() / s.rooms.size
@@ -545,7 +524,7 @@ private fun SummaryCard(s: ClassroomUiState, freeCount: Int, periodTimes: List<S
             Spacer(Modifier.height(10.dp))
             if (s.periods.isEmpty()) {
                 Text(
-                    "整楼 ${s.rooms.size} 间教室 · 未选节次，点上方数字即可筛选空闲",
+                    "整楼 ${s.rooms.size} 间教室",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -581,12 +560,6 @@ private fun SummaryCard(s: ClassroomUiState, freeCount: Int, periodTimes: List<S
                     )
                 }
             }
-            Spacer(Modifier.height(9.dp))
-            Text(
-                "卡片下方色带＝当天 1-12 节：绿＝空闲，灰＝有课，描边＝所选时段；只反映排课占用，不含临时借用。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
             val busyHere = s.periods.mapNotNull { myLessonAt(s)[it]?.name }.distinct()
             if (busyHere.isNotEmpty()) {
                 Spacer(Modifier.height(7.dp))
@@ -635,7 +608,7 @@ private fun periodsLabel(periods: List<Int>): String {
     return "第 " + parts.joinToString("、") + " 节"
 }
 
-/** 所选周当天的「我的课」：节次 → 课程。课表取不到时为空表，界面各处静默退回无联动状态。 */
+/** 所选日期自己的课：节次 → 课程。 */
 private fun myLessonAt(s: ClassroomUiState): Map<Int, Course> {
     val map = mutableMapOf<Int, Course>()
     for (course in s.myCourses) {
@@ -647,7 +620,7 @@ private fun myLessonAt(s: ClassroomUiState): Map<Int, Course> {
     return map
 }
 
-/** 当天的课按节次并成连续段，同一门课连堂只报一次。 */
+/** 自己的课按节次并成连续段。 */
 private fun myLessonSpans(s: ClassroomUiState): List<Pair<IntRange, Course>> {
     val byPeriod = myLessonAt(s)
     val spans = ArrayList<Pair<IntRange, Course>>()
@@ -666,15 +639,12 @@ private fun myLessonSpans(s: ClassroomUiState): List<Pair<IntRange, Course>> {
     return spans
 }
 
-/** 与课表页同一映射的课程色，取加深的 accent 画小圆点，浅色深色主题都看得清。 */
+/** 与课表页一致的课程色。 */
 @Composable
 private fun courseAccent(courseName: String): Color =
     LocalAccents.current.courseAccents[courseColorIndex(courseName, LocalAccents.current.courseAccents.size)]
 
-/**
- * 当天 1-12 节的占用色带。「是否空闲」只回答所选那一段，
- * 这条带把前后也亮出来：选完时段往往还想看看前后能不能多学一会儿。
- */
+/** 当天 1-12 节占用色带：绿为空闲，灰为有课，主色描边为所选节次。 */
 @Composable
 private fun DayStrip(
     room: Classroom,
@@ -683,7 +653,6 @@ private fun DayStrip(
     selected: List<Int>,
     modifier: Modifier = Modifier,
 ) {
-    // 每节课记录盖住它的一次安排；一次课可跨多节，同一实例连续出现，读屏文案按实例连续段生成
     val busyOf = remember(room, week, dayOfWeek) {
         val map = mutableMapOf<Int, ClassSession>()
         for (session in room.busy) {
@@ -765,7 +734,6 @@ private fun RoomCard(
                         listOfNotNull(
                             room.type.takeIf { it.isNotBlank() },
                             room.capacity?.let { "$it 座" },
-                            // 只数所查那一周真正发生的，不是整学期的排课条数
                             "本周共 ${room.busy.count { it.occursOn(week) }} 次排课",
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
@@ -773,7 +741,7 @@ private fun RoomCard(
                     )
                 }
                 if (selected.isEmpty()) {
-                    // 未选节次＝整楼浏览，空闲 / 占用的说法不成立，不放 chip
+                    // 整楼浏览不标空闲 / 占用
                 } else if (isFree) {
                     FreeChip()
                 } else {
@@ -794,10 +762,6 @@ private fun RoomCard(
     }
 }
 
-/**
- * 「空闲」从 AssistChip 换成 success 色块：绿色在这里只表达「可用」，
- * 不与选中态的浅蓝混淆，也不用 AssistChip 的点击涟漪误导「可以点它」。
- */
 @Composable
 private fun FreeChip() {
     Box(
@@ -815,7 +779,6 @@ private fun FreeChip() {
     }
 }
 
-/** 整楼列表里排在后面的占用教室：灰 chip 与绿色的「空闲」形成对照，色带仍是主角。 */
 @Composable
 private fun OccupiedChip() {
     Box(
@@ -832,12 +795,7 @@ private fun OccupiedChip() {
     }
 }
 
-/**
- * 列表里的教室在所选时段都空闲，但能不能往后连下去因教室而异——
- * 「能自习到几点」比一句「空闲」更接近找座位的真实问题。
- * 连续性同时被两种东西截断：教室被占（「下课」），以及你自己有课（「你有课」）——
- * 课表联动在这里生效：教室再空，赶不上你的下一节课也用不上。
- */
+/** 从所选最后一节往后能连续用到第几节：遇到教室有课或自己有课就停。 */
 private fun continuationLabel(
     room: Classroom,
     week: Int,
@@ -873,7 +831,7 @@ private fun continuationLabel(
     }
 }
 
-/** 与结果卡同构的骨架：占位高度接近真实卡片，查询完成后页面不跳。 */
+/** 与结果卡同结构的加载骨架。 */
 @Composable
 private fun ClassroomLoading(text: String, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().padding(LocalScreenInfo.current.listPadding())) {
