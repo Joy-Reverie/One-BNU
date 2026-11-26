@@ -94,6 +94,11 @@ class Settings(
         get() = prefs.getFloat(KEY_SCHEDULE_ZOOM, 1f)
         set(value) { prefs.edit().putFloat(KEY_SCHEDULE_ZOOM, value).apply() }
 
+    /** 教室页上次查看的教学楼名；课表猜不中楼时的默认落点。 */
+    var classroomLastBuilding: String?
+        get() = prefs.getString(KEY_CLASSROOM_LAST_BUILDING, null)
+        set(value) { prefs.edit().putString(KEY_CLASSROOM_LAST_BUILDING, value).apply() }
+
     private val _showOtherWeeks = MutableStateFlow(prefs.getBoolean(KEY_SHOW_OTHER_WEEKS, false))
 
     /**
@@ -206,6 +211,7 @@ class Settings(
         private const val KEY_GRADE_OVERVIEW = "grade_overview_mode"
         private const val KEY_LOCK = "require_unlock"
         private const val KEY_SCHEDULE_ZOOM = "schedule_zoom"
+        private const val KEY_CLASSROOM_LAST_BUILDING = "classroom_last_building"
         private const val KEY_SHOW_OTHER_WEEKS = "schedule_show_other_weeks"
         private const val KEY_PINNED_SERVICE_ENTRIES = "home_pinned_service_entries"
         private const val KEY_REMIND_CLASSES = "remind_classes"

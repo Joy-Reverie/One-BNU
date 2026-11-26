@@ -283,6 +283,12 @@ class AcademicRepository(
         } else o
     }
 
+    /** 只读本地课表快照，不发请求；没有快照返回 null。 */
+    suspend fun cachedSchedule(term: Term): Schedule? =
+        cachedParsed(offlineCache?.key(OfflineCache.SCHEDULE, term.code) ?: "schedule_${term.code}") { html ->
+            Parsers.parseSchedule(html, term)
+        }?.data
+
     /**
      * 原始成绩是成绩页的主数据源：只有它包含平时 / 期末分项。
      * 有效成绩只在原始接口失败或确实为空时作为兼容回退，避免连续请求触发教务限流。
