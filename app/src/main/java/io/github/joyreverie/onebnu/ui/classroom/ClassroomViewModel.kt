@@ -180,8 +180,8 @@ class ClassroomViewModel : ViewModel() {
         val target = if (s.date == LocalDate.now()) currentCourseBuilding(s.myCourses, s.week, s.dayOfWeek) else null
         val name = target ?: ServiceLocator.settings.classroomLastBuilding ?: return
         val match = matchBuildingOption(s.buildings, name) ?: return
+        // 自动选的楼不写回「上次查看」，那里只记手动选择
         _state.update { it.copy(building = match) }
-        ServiceLocator.settings.classroomLastBuilding = match.name
         query()
     }
 

@@ -13,6 +13,11 @@
             android:label="Credits preview"
             android:theme="@style/Theme.OneBNU" />
         <activity
+            android:name=".widget.ClassroomPreviewActivity"
+            android:exported="true"
+            android:label="Classroom preview"
+            android:theme="@style/Theme.OneBNU" />
+        <activity
             android:name=".widget.GradePreviewActivity"
             android:exported="true"
             android:label="Grade preview"

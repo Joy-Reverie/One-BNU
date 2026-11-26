@@ -581,6 +581,8 @@ private fun SummaryCard(s: ClassroomUiState, freeCount: Int, periodTimes: List<S
 private fun periodRangeLabel(s: ClassroomUiState, periodTimes: List<String>): String {
     if (s.periods.isEmpty()) return "整楼浏览"
     val range = periodsLabel(s.periods)
+    // 不连续的节次不给一段起止钟点，免得看成整段都查了
+    if (s.periods.last() - s.periods.first() + 1 != s.periods.size) return range
     val start = periodTimes.getOrNull(s.periods.first() - 1)?.let { PeriodMapper.parsePeriod(it)?.first }
     val end = periodTimes.getOrNull(s.periods.last() - 1)?.let { PeriodMapper.parsePeriod(it)?.second }
     return if (start != null && end != null) {
@@ -678,8 +680,8 @@ private fun DayStrip(
                     .fillMaxHeight()
                     .clip(cellShape)
                     .background(
-                        if (session == null) LocalAccents.current.success.copy(alpha = 0.30f)
-                        else MaterialTheme.colorScheme.surfaceVariant,
+                        if (session == null) LocalAccents.current.success.copy(alpha = 0.60f)
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
                     )
                     .then(
                         if (p in selected) Modifier.border(1.dp, MaterialTheme.colorScheme.primary, cellShape)
